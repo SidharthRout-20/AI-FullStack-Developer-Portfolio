@@ -1,0 +1,328 @@
+@import 'tailwindcss';
+@import '@xyflow/react/dist/style.css';
+@import './styles/theme-light.css';
+
+/* ─── Design tokens ──────────────────────────────────────────────────────── */
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  --color-ink-950: #05060a;
+  --color-ink-925: #080a10;
+  --color-ink-900: #0b0d14;
+  --color-ink-850: #10131c;
+  --color-ink-800: #161a26;
+  --color-ink-700: #212637;
+  --color-ink-600: #2e3449;
+  --color-ink-500: #4a5170;
+  --color-ink-400: #6f7792;
+  --color-ink-300: #a0a7bf;
+  --color-ink-200: #c9cee0;
+  --color-ink-100: #e8eaf2;
+
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-cyan-glow: #22d3ee;
+  --color-on-accent: #ffffff; /* text on saturated gradients: white in both themes */
+
+  --animate-blink: blink 1s step-end infinite;
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-gradient: gradient-pan 8s ease infinite;
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  @keyframes gradient-pan {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+}
+
+:root {
+  color-scheme: dark;
+  /* Surface tokens (overridden in styles/theme-light.css) */
+  --hairline: rgb(255 255 255 / 0.06);
+  --glass-from: rgb(22 26 38 / 0.72);
+  --glass-to: rgb(11 13 20 / 0.72);
+  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 20px 40px -24px rgb(0 0 0 / 0.8);
+  --grid-line: rgb(255 255 255 / 0.035);
+  --aurora-opacity: 0.35;
+  --gradient-text: linear-gradient(110deg, #c7d2fe 0%, #818cf8 30%, #22d3ee 60%, #a7f3d0 100%);
+  --grain-opacity: 0.035;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-950 font-sans text-ink-100 antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink-700) transparent;
+}
+
+::selection {
+  background: rgb(99 102 241 / 0.35);
+}
+
+/* ─── Surfaces ───────────────────────────────────────────────────────────── */
+@utility glass {
+  background: linear-gradient(180deg, var(--glass-from), var(--glass-to));
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--glass-shadow);
+}
+
+@utility text-gradient {
+  background: var(--gradient-text);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Small pill action (Keeper cards, brief actions) */
+@utility chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 9999px;
+  border: 1px solid var(--hairline);
+  background: color-mix(in oklab, var(--color-white) 4%, transparent);
+  padding: 0.25rem 0.625rem;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--color-ink-200);
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  &:hover:not(:disabled) {
+    color: var(--color-white);
+    background: color-mix(in oklab, var(--color-white) 9%, transparent);
+  }
+  &:disabled { opacity: 0.45; }
+}
+
+/* "Thinking" status text with a moving highlight */
+@utility text-shimmer {
+  background: linear-gradient(90deg, var(--color-ink-400) 0%, var(--color-ink-100) 50%, var(--color-ink-400) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: var(--animate-shimmer);
+}
+
+/* ─── Hub: cursor spotlight cards + stack marquee ─────────────────────────── */
+.spotlight::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(420px circle at var(--x, 50%) var(--y, 0%), rgb(129 140 248 / 0.14), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.spotlight:hover::before { opacity: 1; }
+
+.marquee { animation: marquee 38s linear infinite; }
+.marquee:hover { animation-play-state: paused; }
+@keyframes marquee {
+  to { transform: translateX(-50%); }
+}
+
+html { scroll-behavior: smooth; }
+
+/* ─── Animated backdrop (aurora + grid) ──────────────────────────────────── */
+.aurora-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: var(--aurora-opacity);
+  will-change: transform;
+}
+.aurora-a { animation: drift-a 22s ease-in-out infinite; }
+.aurora-b { animation: drift-b 28s ease-in-out infinite; }
+.aurora-c { animation: drift-c 34s ease-in-out infinite; }
+@keyframes drift-a { 50% { transform: translate(18vw, 10vh) scale(1.15); } }
+@keyframes drift-b { 50% { transform: translate(-14vw, 14vh) scale(0.9); } }
+@keyframes drift-c { 50% { transform: translate(8vw, -12vh) scale(1.2); } }
+
+.bg-grid {
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 30%, transparent 75%);
+}
+
+/* ─── Pipeline nodes ─────────────────────────────────────────────────────── */
+@property --angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.node-card {
+  position: relative;
+  border-radius: 14px;
+  transition:
+    opacity 0.5s ease,
+    transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.5s ease,
+    border-color 0.5s ease,
+    background 0.5s ease;
+}
+/* Active node: a rotating conic-gradient border + glow */
+.node-card--active {
+  transform: translateY(-2px) scale(1.03);
+  border-color: transparent !important;
+  background:
+    linear-gradient(var(--color-ink-850), var(--color-ink-850)) padding-box,
+    conic-gradient(from var(--angle), #6366f1, #22d3ee, #34d399, #a78bfa, #6366f1) border-box !important;
+  animation: spin-border 2.4s linear infinite;
+  box-shadow:
+    0 0 0 4px rgb(99 102 241 / 0.12),
+    0 12px 40px -6px rgb(99 102 241 / 0.55);
+}
+@keyframes spin-border {
+  to { --angle: 360deg; }
+}
+.node-card--done {
+  box-shadow: 0 10px 30px -14px rgb(52 211 153 / 0.45);
+}
+.node-card--skipped {
+  opacity: 0.32;
+  filter: saturate(0.3);
+}
+
+/* ─── Edges ──────────────────────────────────────────────────────────────── */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: var(--color-ink-600);
+  --xy-edge-stroke-width: 1.5;
+}
+.react-flow__attribution {
+  background: transparent !important;
+  color: var(--color-ink-500) !important;
+  font-size: 9px;
+}
+.react-flow__attribution a { color: inherit !important; }
+.react-flow__controls {
+  box-shadow: none !important;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: var(--color-ink-850) !important;
+  border-bottom: 1px solid var(--hairline) !important;
+  fill: var(--color-ink-300) !important;
+}
+.react-flow__controls-button:hover { background: var(--color-ink-800) !important; }
+
+.flow-edge { transition: stroke 0.4s ease, opacity 0.4s ease; }
+.flow-edge--idle { stroke: var(--color-ink-600) !important; }
+.flow-edge--traversed {
+  stroke: #34d399 !important;
+  stroke-width: 2.25 !important;
+  filter: drop-shadow(0 0 4px rgb(52 211 153 / 0.55));
+}
+.flow-edge--live {
+  stroke: #818cf8 !important;
+  stroke-width: 2.5 !important;
+  stroke-dasharray: 6 6;
+  animation: dash 0.6s linear infinite;
+  filter: drop-shadow(0 0 6px rgb(129 140 248 / 0.9));
+}
+.flow-edge--dim { stroke: var(--color-ink-700) !important; opacity: 0.45; }
+@keyframes dash {
+  to { stroke-dashoffset: -12; }
+}
+
+/* ─── Markdown answer styling ────────────────────────────────────────────── */
+.prose-answer { line-height: 1.65; }
+.prose-answer p { @apply my-2; }
+.prose-answer ul { @apply my-2 list-disc space-y-1 pl-5 marker:text-brand-400; }
+.prose-answer ol { @apply my-2 list-decimal space-y-1 pl-5 marker:text-ink-400; }
+.prose-answer strong { @apply font-semibold text-white; }
+.prose-answer em { @apply text-ink-200; }
+.prose-answer code { @apply rounded-md bg-ink-700/70 px-1.5 py-0.5 font-mono text-[0.85em] text-indigo-200; }
+.prose-answer a:not(.cite) { @apply text-indigo-300 underline decoration-indigo-300/40 underline-offset-2; }
+.prose-answer h1, .prose-answer h2, .prose-answer h3 { @apply mt-4 mb-1.5 font-semibold tracking-tight text-white; }
+.prose-answer hr { @apply my-3 border-ink-700; }
+.prose-answer table { @apply my-2 w-full text-sm; }
+.prose-answer th, .prose-answer td { @apply border border-ink-700 px-2 py-1 text-left; }
+.prose-answer blockquote { @apply border-l-2 border-brand-400/60 pl-3 text-ink-300; }
+
+/* ─── Accessibility: respect reduced-motion preferences ─────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .aurora-blob { display: none; }
+}
+
+/* ─── Theme switch: circular reveal (View Transitions API) ───────────────── */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+html.theme-reveal::view-transition-new(root) {
+  animation: reveal 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes reveal {
+  from { clip-path: circle(0 at var(--reveal-x, 50%) var(--reveal-y, 0%)); }
+  to { clip-path: circle(var(--reveal-r, 150vmax) at var(--reveal-x, 50%) var(--reveal-y, 0%)); }
+}
+/* Route changes: a quick cross-fade + lift */
+html.route-change::view-transition-old(root) { animation: route-out 0.18s ease-in both; }
+html.route-change::view-transition-new(root) { animation: route-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes route-out { to { opacity: 0; transform: translateY(-6px); } }
+@keyframes route-in { from { opacity: 0; transform: translateY(10px); } }
+
+/* Smooth colour hand-over when the theme flips without view transitions (e.g. auto at 7 pm) */
+html.theme-fade, html.theme-fade * {
+  transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease, fill 0.35s ease !important;
+}
+
+/* ─── Film grain (subtle texture that keeps large gradients from banding) ── */
+.grain::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* TripWeaver: dark basemap from the standard OSM tiles */
+.map-tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.6); }
+.leaflet-container { background: var(--color-ink-900); font-family: inherit; }
+
+/* Consistent keyboard focus ring */
+:focus-visible {
+  outline: 2px solid var(--color-brand-400);
+  outline-offset: 2px;
+  border-radius: 6px;
+}

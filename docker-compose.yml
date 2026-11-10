@@ -1,0 +1,33 @@
+# Local production-like run:
+#   docker compose up --build                      → uses Groq (set GROQ_API_KEY in .env)
+#   docker compose --profile local-llm up --build  → also starts Ollama (fully offline)
+#     then: docker compose exec ollama ollama pull llama3.2
+services:
+  app:
+    build: .
+    ports:
+      - "7860:7860"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ENVIRONMENT: production
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      - ./documents:/app/documents:ro   # drop files in ./documents, restart to re-index
+      - app-data:/app/backend/data      # persists the Chroma index + model cache
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [local-llm]
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  ollama:
