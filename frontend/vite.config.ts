@@ -1,6 +1,6 @@
-import tailwindcss from '@tailwindcss/vite'
-import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vitest/config'
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vitest/config";
 
 // In dev, the Vite server proxies /api → FastAPI so the browser sees a single
 // origin (no CORS needed). In production FastAPI serves the built files itself.
@@ -9,7 +9,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: 'http://localhost:8000', changeOrigin: true },
+      "/api": {
+        target: "https://ai-full-stack-developer-portfolio-j.vercel.app/",
+        changeOrigin: true,
+      },
     },
   },
   build: {
@@ -17,6 +20,6 @@ export default defineConfig({
     chunkSizeWarningLimit: 600, // main chunk ≈175 kB gzipped (React + Markdown + Motion)
   },
   test: {
-    environment: 'node',
+    environment: "node",
   },
-})
+});
