@@ -1,0 +1,13 @@
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC"]
+ignore = ["S101"]  # asserts are fine in tests
+
+[lint.per-file-ignores]
+"tests/*" = ["S", "E501"]
+# Regex tables and user-facing sentence templates read better unwrapped.
+"app/keeper/parser.py" = ["E501"]
+"app/keeper/agent.py" = ["E501"]
+"app/products/*.py" = ["E501"]
