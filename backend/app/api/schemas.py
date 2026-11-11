@@ -71,6 +71,7 @@ class HealthResponse(BaseModel):
     llm_ready: bool
     index_version: int = 1
     last_ingest: dict | None = None
+    storage: Literal["postgres", "sqlite"] = "sqlite"
 
 
 class GraphNode(BaseModel):

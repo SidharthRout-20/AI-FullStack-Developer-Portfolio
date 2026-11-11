@@ -131,3 +131,16 @@ def test_allowed_origins_always_include_deployed_frontend() -> None:
     s = Settings(_env_file=None, cors_origins="http://localhost:5173/", frontend_url="https://site.vercel.app/")
     assert s.allowed_origins == ["http://localhost:5173", "https://site.vercel.app"]
     assert Settings(_env_file=None, cors_origins="https://a.dev", frontend_url="").allowed_origins == ["https://a.dev"]
+
+
+def test_database_url_is_found_under_any_integration_name():
+    from app.config import discover_database_url
+
+    url = "postgresql://u:p@ep-x-pooler.neon.tech/db?sslmode=require"
+    assert discover_database_url({"PORTFOLIO_DB_DATABASE_URL": url}) == url
+    assert discover_database_url({"STORAGE_URL": url, "STORAGE_URL_UNPOOLED": url + "&x=1"}) == url
+    assert discover_database_url({"POSTGRES_URL_NON_POOLING": "postgres://a", "POSTGRES_URL": url}) == url
+    assert discover_database_url({"PGHOST": "h", "PGUSER": "u", "PGPASSWORD": "p", "PGDATABASE": "d"}) == (
+        "postgresql://u:p@h/d?sslmode=require"
+    )
+    assert discover_database_url({"HOME": "/root", "SOME_URL": "https://x"}) is None

@@ -6,6 +6,8 @@ validated once at startup by pydantic-settings. Nothing secret is hard-coded.
 
 from __future__ import annotations
 
+import os
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
@@ -125,7 +127,14 @@ class Settings(BaseSettings):
 
     @property
     def db_url(self) -> str | None:
-        return self.database_url.get_secret_value() if self.database_url else None
+        if self.database_url and self.database_url.get_secret_value().strip():
+            return self.database_url.get_secret_value().strip()
+        return discover_database_url(os.environ)
+
+    @property
+    def storage(self) -> str:
+        """ "postgres" (shared, persistent) or "sqlite" (local files; NOT persistent on serverless hosts)."""
+        return "postgres" if self.db_url else "sqlite"
 
     @property
     def allowed_origins(self) -> list[str]:
@@ -148,6 +157,28 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+
+_DB_VAR = re.compile(r"^(?:\w+_)?(?:DATABASE_URL|POSTGRES_URL)$")
+
+
+def discover_database_url(env: dict[str, str] | os._Environ[str]) -> str | None:
+    """Find a Postgres URL however the hosting integration named it.
+
+    The Vercel Neon integration lets you pick a prefix (STORAGE_URL, PORTFOLIO_DB_DATABASE_URL, …) and also sets
+    unpooled / non-SSL variants. Prefer a pooled URL; fall back to building one from PGHOST/PGUSER/… .
+    """
+    candidates = sorted(
+        (k for k, v in env.items() if v and v.startswith(("postgres://", "postgresql://")) and _DB_VAR.match(k)
+         or (k.endswith(("_URL", "_DATABASE_URL")) and v and v.startswith(("postgres://", "postgresql://")))),
+        key=lambda k: ("UNPOOLED" in k or "NON_POOLING" in k or "NO_SSL" in k, k != "DATABASE_URL", k),
+    )  # fmt: skip
+    if candidates:
+        return env[candidates[0]]
+    host, user, password, db = (env.get(k) for k in ("PGHOST", "PGUSER", "PGPASSWORD", "PGDATABASE"))
+    if host and user and password and db:
+        return f"postgresql://{user}:{password}@{host}/{db}?sslmode=require"
+    return None
 
 
 @lru_cache

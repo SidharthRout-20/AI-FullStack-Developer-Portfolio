@@ -53,6 +53,7 @@ async def health(rag: Rag) -> dict[str, Any]:
         "llm_ready": rag.llm_ready,
         "index_version": rag.index_version,
         "last_ingest": rag.last_ingest,
+        "storage": rag.settings.storage,
     }
 
 
