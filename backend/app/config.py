@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Comma-separated list in the env var, e.g. "http://localhost:5173,https://me.dev"
     # NoDecode: read the raw string (not JSON) so the CSV validator below can split it.
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["http://localhost:5173"])
+    # The deployed frontend (a separate Vercel project) is always allowed, on top of CORS_ORIGINS, so the live
+    # site keeps working whatever CORS_ORIGINS is set to. Set FRONTEND_URL="" to turn this off.
+    frontend_url: str = "https://ai-full-stack-developer-portfolio-p.vercel.app"
 
     # Serve the built React app (frontend/dist) from FastAPI → single deployable unit.
     serve_frontend: bool = True
@@ -109,6 +112,12 @@ class Settings(BaseSettings):
             # Browsers send Origin without a trailing slash, so "https://site.app/" would never match.
             return [o.strip().strip("\"'").rstrip("/") for o in v if isinstance(o, str) and o.strip()]
         return v
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        """CORS allow-list: CORS_ORIGINS plus the deployed frontend, without duplicates."""
+        extra = [self.frontend_url.strip().rstrip("/")] if self.frontend_url.strip() else []
+        return list(dict.fromkeys([*self.cors_origins, *extra]))
 
     @property
     def vector_dir(self) -> Path:

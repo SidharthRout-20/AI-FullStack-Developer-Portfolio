@@ -123,3 +123,11 @@ def test_settings_parse_real_env_file(tmp_path, monkeypatch):
     s = Settings(_env_file=env)
     assert s.cors_origins == ["http://localhost:5173", "https://me.dev"]
     assert s.llm_provider == "groq" and s.groq_api_key is not None
+
+
+def test_allowed_origins_always_include_deployed_frontend() -> None:
+    from app.config import Settings
+
+    s = Settings(_env_file=None, cors_origins="http://localhost:5173/", frontend_url="https://site.vercel.app/")
+    assert s.allowed_origins == ["http://localhost:5173", "https://site.vercel.app"]
+    assert Settings(_env_file=None, cors_origins="https://a.dev", frontend_url="").allowed_origins == ["https://a.dev"]
