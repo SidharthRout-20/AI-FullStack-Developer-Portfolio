@@ -1,0 +1,9 @@
+frontend/
+backend/tests/
+backend/data/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+.github/

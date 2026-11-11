@@ -35,6 +35,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { apiUrl } from '../../lib/apiBase'
 import { ApiError, del, errorText, get, post, put, streamPost } from '../shared/http'
 import { Button, Card, ErrorNote, Field, inputClass, Pill, ProductShell, Spinner } from '../shared/ui'
 
@@ -286,7 +287,7 @@ export default function FlowForgeApp() {
     setNodes((ns) => ns.map((n) => (n.id === selected ? { ...n, data: { ...n.data, [key]: value } } : n)))
     setDirty(true)
   }
-  const hookUrl = meta?.hook_token ? `${location.origin}/api/hooks/${meta.hook_token}` : null
+  const hookUrl = meta?.hook_token ? apiUrl(`/api/hooks/${meta.hook_token}`) : null
   const refs = useMemo(() => ['input', ...nodes.filter((n) => n.id !== selected && fromCanvas(n.type) !== 'trigger').map((n) => n.id)], [nodes, selected])
 
   return (

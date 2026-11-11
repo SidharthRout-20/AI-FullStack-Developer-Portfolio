@@ -173,17 +173,30 @@ def test_document_watcher_reindexes_when_files_change(client, settings):
     from app.rag.watcher import DocumentWatcher
 
     watcher = DocumentWatcher(client.app.state.rag)
+    v0 = watcher.version  # startup ingest already counted as a change
     assert watcher.poll() is None  # nothing changed
     (settings.documents_dir / "notes.txt").write_text("Education: MSc in Machine Learning.", encoding="utf-8")
     (settings.documents_dir / "extra.md").write_text("# Extra: Kubernetes operators in Go.", encoding="utf-8")
     assert watcher.poll() is None  # first sight of the change: wait for it to settle
     report = watcher.poll()
     assert report and set(report["updated"]) == {"notes.txt"} and report["added"] == ["extra.md"]
-    assert watcher.version == 2
+    assert watcher.version == v0 + 1
     assert {d["source"] for d in client.get("/api/documents").json()} == {"extra.md", "notes.txt", "resume.md"}
     (settings.documents_dir / "extra.md").unlink()
     watcher.poll()
     assert watcher.poll()["removed"] == ["extra.md"]
-    assert (
-        client.get("/api/health").json()["index_version"] == 1
-    )  # the app's own watcher saw nothing (test-only instance)
+    health = client.get("/api/health").json()  # the version lives on the RAG service, so the UI sees it
+    assert health["index_version"] == v0 + 2 and health["last_ingest"]["removed"] == ["extra.md"]
+    (settings.documents_dir / "notes.txt").touch()  # mtime changes, content does not → no new version
+    watcher.poll()
+    assert watcher.poll() is None and watcher.version == v0 + 2
+
+
+def test_manual_reindex_bumps_index_version(client, settings):
+    rag = client.app.state.rag
+    v0 = rag.index_version
+    (settings.documents_dir / "notes.txt").write_text("Education: PhD in NLP.", encoding="utf-8")
+    report = rag.ingest()  # what POST /api/admin/reindex runs
+    assert report.updated == ["notes.txt"]
+    health = client.get("/api/health").json()
+    assert health["index_version"] == v0 + 1 and health["last_ingest"]["updated"] == ["notes.txt"]

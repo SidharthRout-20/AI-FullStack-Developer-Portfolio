@@ -1,4 +1,5 @@
 /** Typed client for /api/keeper. Sends the local timezone offset and the optional access key. */
+import { API_BASE as BASE } from '../../lib/apiBase'
 
 export type Kind = 'stash' | 'parking' | 'loan' | 'expiry' | 'bill' | 'occasion' | 'appliance' | 'pantry' | 'care'
 
@@ -69,7 +70,6 @@ export interface KeeperStatus {
 
 export type EntryInput = Partial<Omit<Entry, 'id' | 'status' | 'created_at' | 'updated_at'>> & { kind: Kind; title: string }
 
-const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 const KEY_STORAGE = 'keeper-access-key'
 
 export class KeyRequiredError extends Error {

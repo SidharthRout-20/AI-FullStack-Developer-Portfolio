@@ -21,6 +21,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { navigate, usePath } from '../../router'
+import { API_BASE } from '../../lib/apiBase'
 import { del, errorText, get, post, streamPost } from '../shared/http'
 import { Button, Card, Empty, ErrorNote, inputClass, Pill, ProductShell, Spinner, Steps } from '../shared/ui'
 import { DAY_COLORS } from './colors'
@@ -225,7 +226,7 @@ function TripView({ id }: { id: string }) {
     }
     function connect() {
       es?.close()
-      es = new EventSource(`/api/trips/${id}/live`)
+      es = new EventSource(`${API_BASE}/api/trips/${id}/live`)
       es.onopen = () => {
         setLive(true)
         resync()

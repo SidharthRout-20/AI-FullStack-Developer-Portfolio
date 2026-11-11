@@ -1,6 +1,5 @@
+import { API_BASE as BASE } from '../../lib/apiBase'
 import { createSSEParser } from '../../lib/sse'
-
-const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
 /** FastAPI errors carry a safe `detail` (string, or {message, errors[]} for validation problems). */
 export class ApiError extends Error {

@@ -63,6 +63,42 @@ def test_ingestion_is_incremental(settings):
     assert set(store.indexed_sources()) == {"notes.txt"}
 
 
+def test_textless_files_are_not_reparsed_every_ingest(settings):
+    store, emb = VectorStore(settings), FakeEmbedder()
+    (settings.documents_dir / "empty.txt").write_text("   ", encoding="utf-8")
+    assert "empty.txt" in ingest(settings, store, emb).added
+    again = ingest(settings, store, emb)
+    assert not again.changed and "empty.txt" in again.unchanged  # remembered, not re-parsed
+    (settings.documents_dir / "empty.txt").write_text("Certifications: AWS Solutions Architect.", encoding="utf-8")
+    assert ingest(settings, store, emb).updated == ["empty.txt"]
+    assert "empty.txt" in store.indexed_sources()
+    (settings.documents_dir / "empty.txt").write_text("", encoding="utf-8")  # emptied → its old chunks go
+    assert ingest(settings, store, emb).updated == ["empty.txt"]
+    assert "empty.txt" not in store.indexed_sources()
+    (settings.documents_dir / "empty.txt").unlink()
+    assert ingest(settings, store, emb).removed == ["empty.txt"]
+
+
+def test_corrupt_file_does_not_abort_ingest_or_drop_old_chunks(settings):
+    store, emb = VectorStore(settings), FakeEmbedder()
+    (settings.documents_dir / "cv.pdf").write_bytes(b"%PDF-1.4 not really a pdf")
+    first = ingest(settings, store, emb)
+    assert first.failed == ["cv.pdf"] and sorted(first.added) == ["notes.txt", "resume.md"]
+
+    (settings.documents_dir / "cv.pdf").unlink()
+    (settings.documents_dir / "notes.txt").write_text("Education: MTech in AI.", encoding="utf-8")
+    original = emb.embed_documents
+
+    def boom(texts):
+        raise RuntimeError("embedding model unavailable")
+
+    emb.embed_documents = boom
+    second = ingest(settings, store, emb)
+    assert second.failed == ["notes.txt"] and "notes.txt" in store.indexed_sources()  # old version still searchable
+    emb.embed_documents = original
+    assert ingest(settings, store, emb).updated == ["notes.txt"]
+
+
 def test_discover_ignores_unsupported_and_oversized(settings):
     (settings.documents_dir / "script.exe").write_bytes(b"MZ")
     (settings.documents_dir / "big.txt").write_bytes(b"x" * (2 * 1024 * 1024))

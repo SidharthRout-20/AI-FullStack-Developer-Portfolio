@@ -48,7 +48,7 @@ export interface Health {
   llm_model: string
   llm_ready: boolean
   index_version: number
-  last_ingest: { at: string; added: string[]; updated: string[]; removed: string[]; chunks_written: number } | null
+  last_ingest: { at: string; added: string[]; updated: string[]; removed: string[]; failed?: string[]; chunks_written: number } | null
 }
 
 export interface DocumentInfo {

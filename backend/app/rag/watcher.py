@@ -9,7 +9,6 @@ per file), so an unchanged file costs nothing.
 from __future__ import annotations
 
 import asyncio
-import datetime as dt
 import logging
 from pathlib import Path
 from typing import Any
@@ -36,10 +35,17 @@ def snapshot(documents_dir: Path, max_file_mb: int) -> Snapshot:
 class DocumentWatcher:
     def __init__(self, rag: RAGService) -> None:
         self.rag = rag
-        self.version = 1  # bumps on every re-index; the UI polls it
-        self.last_ingest: dict[str, Any] | None = None
         self._seen = snapshot(rag.settings.documents_dir, rag.settings.max_file_mb)
         self._pending: Snapshot | None = None
+
+    # The index version lives on RAGService so manual re-indexes bump it too.
+    @property
+    def version(self) -> int:
+        return self.rag.index_version
+
+    @property
+    def last_ingest(self) -> dict[str, Any] | None:
+        return self.rag.last_ingest
 
     def poll(self) -> dict[str, Any] | None:
         """One tick. Returns the ingest report when a stable change was applied, else None."""
@@ -55,20 +61,15 @@ class DocumentWatcher:
         report = self.rag.ingest()
         self._seen = current
         self._pending = None
-        self.version += 1
-        self.last_ingest = {
-            "at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
-            "added": report.added,
-            "updated": report.updated,
-            "removed": report.removed,
-            "chunks_written": report.chunks_written,
-        }
         logger.info(
-            "Documents changed → re-indexed: added=%s updated=%s removed=%s",
+            "Documents changed → re-indexed: added=%s updated=%s removed=%s failed=%s",
             report.added,
             report.updated,
             report.removed,
+            report.failed,
         )
+        if not report.changed:
+            return None  # e.g. only mtime changed (file touched/re-saved with identical content)
         return self.last_ingest
 
     async def run(self, interval_s: float) -> None:

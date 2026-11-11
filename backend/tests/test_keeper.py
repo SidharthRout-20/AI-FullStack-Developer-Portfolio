@@ -193,7 +193,7 @@ def test_loans_pantry_and_brief(client):
     say(client, "bought milk")
     assert [e["title"] for e in say(client, "shopping list")["entries"]] == ["Eggs"]
     say(client, "remind me to call the bank today")
-    brief = client.get("/api/keeper/brief", headers={"X-TZ-Offset": "0"}).json()
+    brief = client.get("/api/keeper/brief", headers={"X-TZ-Offset": "-330"}).json()  # same tz as `say`
     assert brief["agenda"][0]["bucket"] == "today" and brief["agenda"][0]["label"].startswith("Call the bank")
     assert brief["source"] == "llm"  # the fake LLM's prose is used as the brief text
     text = schedule.template_brief(

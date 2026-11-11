@@ -94,5 +94,6 @@ class IngestResponse(BaseModel):
     added: list[str]
     updated: list[str]
     removed: list[str]
+    failed: list[str] = []
     unchanged: int
     chunks_written: int

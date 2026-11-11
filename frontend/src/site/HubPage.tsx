@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, motion, useScroll, useSpring } from 'motion/react'
 import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react'
+import { API_BASE } from '../lib/apiBase'
 import { Link } from '../router'
 import { ThemeToggle } from '../theme/ThemeToggle'
 import { PaletteButton } from './CommandPalette'
@@ -479,7 +480,7 @@ function useBackendOnline(): boolean | null {
   const [online, setOnline] = useState<boolean | null>(null)
   useEffect(() => {
     const ctrl = new AbortController()
-    fetch('/api/health', { signal: ctrl.signal })
+    fetch(`${API_BASE}/api/health`, { signal: ctrl.signal })
       .then((r) => setOnline(r.ok))
       .catch(() => !ctrl.signal.aborted && setOnline(false))
     return () => ctrl.abort()
@@ -624,7 +625,7 @@ function ContactSection() {
     setState('sending')
     setError('')
     try {
-      const res = await fetch('/api/contact', {
+      const res = await fetch(`${API_BASE}/api/contact`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),

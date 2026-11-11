@@ -44,16 +44,15 @@ def _sse(event: str, data: Any) -> str:
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health(request: Request, rag: Rag) -> dict[str, Any]:
-    watcher = getattr(request.app.state, "watcher", None)
+async def health(rag: Rag) -> dict[str, Any]:
     return {
         "status": "ok",
         "chunks_indexed": rag.store.count(),
         "llm_provider": rag.settings.llm_provider,
         "llm_model": rag.settings.active_model,
         "llm_ready": rag.llm_ready,
-        "index_version": watcher.version if watcher else 1,
-        "last_ingest": watcher.last_ingest if watcher else None,
+        "index_version": rag.index_version,
+        "last_ingest": rag.last_ingest,
     }
 
 
@@ -105,6 +104,7 @@ async def reindex(rag: Rag) -> dict[str, Any]:
         "added": report.added,
         "updated": report.updated,
         "removed": report.removed,
+        "failed": report.failed,
         "unchanged": len(report.unchanged),
         "chunks_written": report.chunks_written,
     }

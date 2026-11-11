@@ -6,6 +6,7 @@ separate from AI concerns (LangGraph/Chroma) and makes both easy to test.
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import threading
 from collections import defaultdict
@@ -37,6 +38,9 @@ class RAGService:
         self._llm: ChatLLM | None = None
         self._llm_lock = threading.Lock()
         self._ingest_lock = threading.Lock()
+        # Bumped whenever the index content changes (watcher or manual reindex); the UI polls it via /api/health.
+        self.index_version = 1
+        self.last_ingest: dict[str, Any] | None = None
 
         self.embedder = embedder or Embedder(settings)
         self.store = VectorStore(settings)
@@ -68,6 +72,15 @@ class RAGService:
             report = ingest(self.settings, self.store, self.embedder)
             if report.changed:
                 self.retriever.refresh()
+                self.index_version += 1
+                self.last_ingest = {
+                    "at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+                    "added": report.added,
+                    "updated": report.updated,
+                    "removed": report.removed,
+                    "failed": report.failed,
+                    "chunks_written": report.chunks_written,
+                }
             return report
 
     def documents(self) -> list[dict[str, Any]]:

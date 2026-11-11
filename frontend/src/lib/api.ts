@@ -1,9 +1,7 @@
 import type { DocumentBrief, DocumentInfo, GraphTopology, Health, MatchEvent, StreamEvent } from '../types'
+import { API_BASE as BASE } from './apiBase'
 import { createSSEParser } from './sse'
 
-// Empty string → same origin (Vite proxy in dev, FastAPI static hosting in prod).
-// Set VITE_API_BASE_URL only when the frontend is hosted separately (e.g. Vercel).
-const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
 async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { signal, headers: { Accept: 'application/json' } })
