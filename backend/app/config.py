@@ -111,8 +111,8 @@ class Settings(BaseSettings):
         return v
 
     @property
-    def chroma_dir(self) -> Path:
-        return self.data_dir / "chroma"
+    def vector_dir(self) -> Path:
+        return self.data_dir / "vectors"
 
     @property
     def model_cache_dir(self) -> Path:

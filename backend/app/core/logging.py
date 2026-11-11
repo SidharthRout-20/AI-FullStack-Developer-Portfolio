@@ -14,5 +14,5 @@ def configure_logging(level: str = "INFO") -> None:
         force=True,
     )
     # Third-party libraries are chatty at INFO.
-    for noisy in ("httpx", "chromadb", "urllib3", "fastembed"):
+    for noisy in ("httpx", "urllib3", "fastembed"):
         logging.getLogger(noisy).setLevel(logging.WARNING)

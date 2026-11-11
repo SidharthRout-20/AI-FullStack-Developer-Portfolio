@@ -5,7 +5,6 @@
  * the scroll-linked transforms are skipped (MotionConfig only covers `animate`/`whileInView`, not values
  * bound through `style`, so each component checks `useReducedMotion()` itself).
  */
-import Lenis from 'lenis'
 import {
   animate,
   motion,
@@ -24,26 +23,14 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 're
 
 const EASE = [0.2, 0.8, 0.2, 1] as const
 
-// ── Smooth (inertial) scrolling ────────────────────────────────────────────
-/** Lenis smooth scrolling for mouse/trackpad users. Touch devices keep native momentum scrolling. */
-export function useSmoothScroll() {
-  const reduce = useReducedMotion()
-  useEffect(() => {
-    if (reduce || !window.matchMedia('(pointer: fine)').matches) return
-    const lenis = new Lenis({ duration: 1.1, autoRaf: true, anchors: true, allowNestedScroll: true })
-    return () => lenis.destroy()
-  }, [reduce])
-}
-
 // ── Page-level chrome ──────────────────────────────────────────────────────
 /** Thin gradient bar at the very top that fills as you read down the page. */
 export function ScrollProgressBar() {
   const { scrollYProgress } = useScroll()
-  const scaleX = useSpring(scrollYProgress, { stiffness: 140, damping: 30, restDelta: 0.001 })
   return (
     <motion.div
       aria-hidden
-      style={{ scaleX }}
+      style={{ scaleX: scrollYProgress }}
       className="fixed inset-x-0 top-0 z-50 h-[2px] origin-left bg-gradient-to-r from-indigo-500 via-cyan-400 to-emerald-400"
     />
   )
@@ -93,34 +80,6 @@ export function BackToTop() {
   )
 }
 
-/** Soft glow that trails the cursor across the page (fine pointers only). */
-export function CursorGlow() {
-  const reduce = useReducedMotion()
-  const x = useMotionValue(-600)
-  const y = useMotionValue(-600)
-  const sx = useSpring(x, { stiffness: 90, damping: 22, mass: 0.6 })
-  const sy = useSpring(y, { stiffness: 90, damping: 22, mass: 0.6 })
-  const [finePointer] = useState(() => window.matchMedia('(pointer: fine)').matches)
-  const enabled = finePointer && !reduce
-  useEffect(() => {
-    if (!enabled) return
-    const move = (e: PointerEvent) => {
-      x.set(e.clientX)
-      y.set(e.clientY)
-    }
-    window.addEventListener('pointermove', move, { passive: true })
-    return () => window.removeEventListener('pointermove', move)
-  }, [enabled, x, y])
-  if (!enabled) return null
-  return (
-    <motion.div
-      aria-hidden
-      style={{ x: sx, y: sy }}
-      className="cursor-glow pointer-events-none fixed top-0 left-0 -z-[5]size-[520px] -translate-x-1/2 -translate-y-1/2 rounded-full"
-    />
-  )
-}
-
 // ── Reveals ────────────────────────────────────────────────────────────────
 type From = 'up' | 'left' | 'right' | 'scale'
 const OFFSET: Record<From, { x?: number; y?: number; scale?: number }> = {
@@ -130,7 +89,7 @@ const OFFSET: Record<From, { x?: number; y?: number; scale?: number }> = {
   scale: { scale: 0.92, y: 24 },
 }
 
-/** Fades content in (with a slight blur and slide) the first time it scrolls into view. */
+/** Fades and slides content in the first time it scrolls into view. */
 export function Reveal({
   children,
   delay = 0,
@@ -145,10 +104,10 @@ export function Reveal({
   return (
     <motion.div
       className={className}
-      initial={{ opacity: 0, filter: 'blur(8px)', ...OFFSET[from] }}
-      whileInView={{ opacity: 1, filter: 'blur(0px)', x: 0, y: 0, scale: 1 }}
+      initial={{ opacity: 0, ...OFFSET[from] }}
+      whileInView={{ opacity: 1, x: 0, y: 0, scale: 1 }}
       viewport={{ once: true, margin: '-70px' }}
-      transition={{ duration: 0.8, delay, ease: EASE }}
+      transition={{ duration: 0.6, delay, ease: EASE }}
     >
       {children}
     </motion.div>
@@ -192,20 +151,16 @@ export function Parallax({ children, speed = 60, className = '' }: { children: R
   )
 }
 
-/** A card that rises and un-tilts as it scrolls into place; `index` staggers siblings. */
+/** A card that rises into place as it scrolls in, locked 1:1 to the scroll position; `index` staggers siblings. */
 export function ScrollRise({ children, index = 0, className = '' }: { children: ReactNode; index?: number; className?: string }) {
   const ref = useRef<HTMLDivElement>(null)
   const reduce = useReducedMotion()
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'start 55%'] })
-  const p = useSpring(scrollYProgress, { stiffness: 110, damping: 26, restDelta: 0.001 })
-  const lag = index * 0.12
-  const y = useTransform(p, [0, 1], [110 + index * 40, 0])
-  const rotateX = useTransform(p, [0, 1], [18, 0])
-  const opacity = useTransform(p, [0, 0.35 + lag, 1], [0, 0.6, 1])
-  const scale = useTransform(p, [0, 1], [0.9, 1])
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'start 70%'] })
+  const y = useTransform(scrollYProgress, [0, 1], [48 + index * 16, 0])
+  const opacity = useTransform(scrollYProgress, [0, 1], [0, 1])
   return (
-    <div ref={ref} className={`[perspective:1200px] ${className}`}>
-      <motion.div style={reduce ? undefined : { y, rotateX, opacity, scale, transformOrigin: '50% 100%' }} className="h-full">
+    <div ref={ref} className={className}>
+      <motion.div style={reduce ? undefined : { y, opacity }} className="h-full">
         {children}
       </motion.div>
     </div>

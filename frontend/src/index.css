@@ -59,8 +59,6 @@
   --gradient-text: linear-gradient(110deg, #c7d2fe 0%, #818cf8 30%, #22d3ee 60%, #a7f3d0 100%);
   --grain-opacity: 0.035;
   --outline-stroke: rgb(255 255 255 / 0.16);
-  --cursor-glow: rgb(99 102 241 / 0.13);
-  --cursor-blend: screen;
 }
 
 html,
@@ -150,23 +148,10 @@ body {
 
 html { scroll-behavior: smooth; }
 
-/* Lenis smooth scrolling (hub page, fine pointers): it drives the scroll itself, so native smoothing must be off. */
-html.lenis,
-html.lenis body { height: auto; }
-.lenis.lenis-smooth { scroll-behavior: auto !important; }
-.lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
-.lenis.lenis-stopped { overflow: clip; }
-
 /* Oversized outline type for the scroll-linked text bands */
 .text-outline {
   color: transparent;
   -webkit-text-stroke: 1px var(--outline-stroke);
-}
-
-/* Glow that trails the cursor */
-.cursor-glow {
-  background: radial-gradient(circle, var(--cursor-glow) 0%, transparent 62%);
-  mix-blend-mode: var(--cursor-blend);
 }
 
 /* ─── Animated backdrop (aurora + grid) ──────────────────────────────────── */

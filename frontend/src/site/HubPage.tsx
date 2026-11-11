@@ -25,7 +25,6 @@ import { PRODUCTS, type Product } from './products'
 import {
   BackToTop,
   CountUp,
-  CursorGlow,
   Reveal,
   RevealWords,
   ScrollCue,
@@ -34,7 +33,6 @@ import {
   ScrollTextBand,
   TiltCard,
   VelocityMarquee,
-  useSmoothScroll,
 } from './scrollFx'
 
 const SECTIONS = [
@@ -242,12 +240,10 @@ export function SiteHeader({ home = false }: { home?: boolean }) {
 
 // ── Page ───────────────────────────────────────────────────────────────────
 export function HubPage() {
-  useSmoothScroll()
   return (
     // overflow-x-clip: cards that slide in from the side must not widen the page before they arrive
     <div className="min-h-full overflow-x-clip">
       <ScrollProgressBar />
-      <CursorGlow />
       <SiteHeader home />
       <main>
         <Hero />
