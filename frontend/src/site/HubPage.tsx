@@ -14,14 +14,28 @@ import {
   ServerCog,
   X,
 } from 'lucide-react'
-import { AnimatePresence, motion, useScroll, useSpring } from 'motion/react'
-import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react'
+import { AnimatePresence, motion, useInView, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { API_BASE } from '../lib/apiBase'
 import { Link } from '../router'
 import { ThemeToggle } from '../theme/ThemeToggle'
 import { PaletteButton } from './CommandPalette'
 import { EXPERTISE, SITE, TIMELINE, type Expertise } from './config'
 import { PRODUCTS, type Product } from './products'
+import {
+  BackToTop,
+  CountUp,
+  CursorGlow,
+  Reveal,
+  RevealWords,
+  ScrollCue,
+  ScrollProgressBar,
+  ScrollRise,
+  ScrollTextBand,
+  TiltCard,
+  VelocityMarquee,
+  useSmoothScroll,
+} from './scrollFx'
 
 const SECTIONS = [
   { id: 'about', label: 'About' },
@@ -82,27 +96,31 @@ function Socials({ size = 'md' }: { size?: 'md' | 'lg' }) {
   )
 }
 
-function Reveal({ children, delay = 0, className = '' }: { children: ReactNode; delay?: number; className?: string }) {
-  return (
-    <motion.div
-      className={className}
-      initial={{ opacity: 0, y: 24 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-60px' }}
-      transition={{ duration: 0.6, delay, ease: [0.2, 0.8, 0.2, 1] }}
-    >
-      {children}
-    </motion.div>
-  )
-}
-
 function SectionTitle({ kicker, title, text }: { kicker: string; title: string; text?: string }) {
   return (
-    <Reveal className="mb-10 max-w-2xl">
-      <p className="text-[12px] font-semibold tracking-[0.2em] text-cyan-300 uppercase">{kicker}</p>
-      <h2 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-4xl">{title}</h2>
-      {text && <p className="mt-3 text-[15px] leading-relaxed text-ink-300">{text}</p>}
-    </Reveal>
+    <div className="mb-10 max-w-2xl">
+      <Reveal>
+        <p className="flex items-center gap-3 text-[12px] font-semibold tracking-[0.2em] text-cyan-300 uppercase">
+          <motion.span
+            aria-hidden
+            className="h-px w-8 origin-left bg-gradient-to-r from-cyan-400 to-transparent"
+            initial={{ scaleX: 0 }}
+            whileInView={{ scaleX: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.9, ease: [0.2, 0.8, 0.2, 1] }}
+          />
+          {kicker}
+        </p>
+      </Reveal>
+      <h2 className="mt-2 text-3xl font-semibold tracking-tight text-white sm:text-5xl">
+        <RevealWords text={title} />
+      </h2>
+      {text && (
+        <Reveal delay={0.15}>
+          <p className="mt-4 text-[15px] leading-relaxed text-ink-300">{text}</p>
+        </Reveal>
+      )}
+    </div>
   )
 }
 
@@ -110,12 +128,6 @@ function Chip({ children }: { children: ReactNode }) {
   return (
     <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[12px] text-ink-200">{children}</span>
   )
-}
-
-function spotlight(e: MouseEvent<HTMLElement>) {
-  const r = e.currentTarget.getBoundingClientRect()
-  e.currentTarget.style.setProperty('--x', `${e.clientX - r.left}px`)
-  e.currentTarget.style.setProperty('--y', `${e.clientY - r.top}px`)
 }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
@@ -230,17 +242,24 @@ export function SiteHeader({ home = false }: { home?: boolean }) {
 
 // ── Page ───────────────────────────────────────────────────────────────────
 export function HubPage() {
+  useSmoothScroll()
   return (
-    <div className="min-h-full">
+    // overflow-x-clip: cards that slide in from the side must not widen the page before they arrive
+    <div className="min-h-full overflow-x-clip">
+      <ScrollProgressBar />
+      <CursorGlow />
       <SiteHeader home />
       <main>
         <Hero />
         <ExpertiseSection />
+        <ScrollTextBand rows={['Generative AI  ·  RAG  ·  Agents', 'React  ·  TypeScript  ·  Python']} />
         <ExperienceSection />
         <ProjectsSection />
+        <ScrollTextBand rows={["Let's build  ·  Ship it  ·  Iterate", 'Idea  ·  Prototype  ·  Product']} />
         <ContactSection />
       </main>
       <SiteFooter />
+      <BackToTop />
     </div>
   )
 }
@@ -296,10 +315,20 @@ function FloatingBadge({ children, className, delay }: { children: ReactNode; cl
 }
 
 function Hero() {
+  const ref = useRef<HTMLElement>(null)
+  const reduce = useReducedMotion()
+  // As the hero scrolls away: text drifts up and fades, the avatar sinks and shrinks (depth parallax).
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] })
+  const textY = useTransform(scrollYProgress, [0, 1], [0, -120])
+  const textOpacity = useTransform(scrollYProgress, [0, 0.75], [1, 0])
+  const avatarY = useTransform(scrollYProgress, [0, 1], [0, 140])
+  const avatarScale = useTransform(scrollYProgress, [0, 1], [1, 0.82])
+  const avatarRotate = useTransform(scrollYProgress, [0, 1], [0, -8])
+
   return (
-    <section id="about" className="relative scroll-mt-20 px-5 pt-28 pb-16 sm:pt-36 lg:pb-24">
+    <section ref={ref} id="about" className="relative scroll-mt-20 px-5 pt-28 pb-10 sm:pt-36 lg:pb-16">
       <div className="mx-auto grid max-w-6xl items-center gap-14 lg:grid-cols-[1.15fr_0.85fr]">
-        <div>
+        <motion.div style={reduce ? undefined : { y: textY, opacity: textOpacity }}>
           <motion.p
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -320,7 +349,9 @@ function Hero() {
             className="mt-5 text-4xl leading-[1.05] font-semibold tracking-tight text-white sm:text-6xl"
           >
             Hi, I'm {SITE.owner.split(' ')[0]}.
-            <span className="mt-2 block text-gradient animate-gradient bg-[length:200%_auto]">{SITE.role}</span>
+            <span className="mt-2 block text-gradient animate-gradient bg-[length:200%_auto]">
+              <RevealWords text={SITE.role} delay={0.25} />
+            </span>
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 16 }}
@@ -353,16 +384,23 @@ function Hero() {
           >
             {STATS.map((s) => (
               <div key={s.label}>
-                <dt className="font-mono text-2xl font-semibold text-white">{s.value}</dt>
+                <dt className="font-mono text-2xl font-semibold text-white">
+                  <CountUp value={s.value} />
+                </dt>
                 <dd className="mt-0.5 text-[12px] text-ink-400">{s.label}</dd>
               </div>
             ))}
           </motion.dl>
-        </div>
-        <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15, duration: 0.7 }}>
-          <Avatar />
+        </motion.div>
+        <motion.div style={reduce ? undefined : { y: avatarY, scale: avatarScale, rotate: avatarRotate }}>
+          <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15, duration: 0.7 }}>
+            <Avatar />
+          </motion.div>
         </motion.div>
       </div>
+      <motion.div style={reduce ? undefined : { opacity: textOpacity }}>
+        <ScrollCue />
+      </motion.div>
     </section>
   )
 }
@@ -382,9 +420,11 @@ function ExpertiseSection() {
         <SectionTitle kicker="Expertise" title="What I bring to a team" text="Frontend craft from enterprise delivery, with the AI and backend depth to ship a whole product." />
         <div className="grid gap-5 md:grid-cols-3">
           {EXPERTISE.map((x, i) => (
-            <Reveal key={x.title} delay={i * 0.08}>
-              <ExpertiseCard x={x} />
-            </Reveal>
+            <ScrollRise key={x.title} index={i}>
+              <TiltCard>
+                <ExpertiseCard x={x} />
+              </TiltCard>
+            </ScrollRise>
           ))}
         </div>
       </div>
@@ -395,11 +435,8 @@ function ExpertiseSection() {
 function ExpertiseCard({ x }: { x: Expertise }) {
   const Icon = EXPERTISE_ICON[x.icon]
   return (
-    <article
-      onMouseMove={spotlight}
-      className="spotlight group relative h-full rounded-3xl border border-white/[0.07] bg-ink-900/60 p-6 transition duration-300 hover:-translate-y-1 hover:border-white/15"
-    >
-      <span className={`grid size-12 place-items-center rounded-2xl bg-gradient-to-br ${EXPERTISE_TINT[x.icon]}`}>
+    <article className="spotlight group relative h-full rounded-3xl border border-white/[0.07] bg-ink-900/60 p-6 transition-colors duration-300 hover:border-white/15 hover:shadow-2xl hover:shadow-indigo-950/20">
+      <span className={`grid size-12 place-items-center rounded-2xl bg-gradient-to-br transition-transform duration-500 group-hover:scale-110 group-hover:-rotate-6 ${EXPERTISE_TINT[x.icon]}`}>
         <Icon className="size-6" />
       </span>
       <h3 className="mt-5 text-lg font-semibold text-white">{x.title}</h3>
@@ -437,11 +474,9 @@ function ExperienceSection() {
             const right = i % 2 === 1
             return (
               <li key={t.title + t.period} className="relative mb-10 pl-14 last:mb-0 md:grid md:grid-cols-2 md:gap-14 md:pl-0">
-                <span className="absolute top-1 left-0 z-10 grid size-10 place-items-center rounded-full border border-white/10 bg-ink-900 text-cyan-300 shadow-lg shadow-cyan-950/30 md:left-1/2 md:-translate-x-1/2">
-                  <Icon className="size-4.5" />
-                </span>
-                <Reveal className={right ? 'md:col-start-2' : 'md:col-start-1'}>
-                  <article className="rounded-3xl border border-white/[0.07] bg-ink-900/60 p-5 transition hover:border-white/15 sm:p-6">
+                <TimelineNode icon={<Icon className="size-4.5" />} />
+                <Reveal from={right ? 'right' : 'left'} className={right ? 'md:col-start-2' : 'md:col-start-1'}>
+                  <article className="rounded-3xl border border-white/[0.07] bg-ink-900/60 p-5 transition duration-300 hover:-translate-y-0.5 hover:border-white/15 hover:shadow-xl hover:shadow-cyan-950/20 sm:p-6">
                     <p className="inline-flex rounded-full bg-cyan-500/10 px-2.5 py-0.5 font-mono text-[11.5px] text-cyan-300">{t.period}</p>
                     <h3 className="mt-2 text-lg font-semibold text-white">{t.title}</h3>
                     <p className="text-[13.5px] text-ink-300">
@@ -469,6 +504,25 @@ function ExperienceSection() {
         </ol>
       </div>
     </section>
+  )
+}
+
+/** Timeline dot that lights up (pulse + glow) once the drawing line reaches it. */
+function TimelineNode({ icon }: { icon: ReactNode }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const lit = useInView(ref, { margin: '0px 0px -40% 0px', once: true })
+  return (
+    <motion.span
+      ref={ref}
+      initial={false}
+      animate={lit ? { scale: [0.6, 1.15, 1], opacity: 1 } : { scale: 0.85, opacity: 0.5 }}
+      transition={{ duration: 0.6, ease: 'easeOut' }}
+      className={`absolute top-1 left-0 z-10 grid size-10 place-items-center rounded-full border bg-ink-900 transition-[color,border-color,box-shadow] duration-500 md:left-1/2 md:-ml-5 ${
+        lit ? 'border-cyan-400/50 text-cyan-300 shadow-[0_0_0_6px_rgb(34_211_238/0.08),0_0_28px_rgb(34_211_238/0.35)]' : 'border-white/10 text-ink-500'
+      }`}
+    >
+      {icon}
+    </motion.span>
   )
 }
 
@@ -528,13 +582,15 @@ function ProjectsSection() {
               <motion.li
                 key={p.slug}
                 layout
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 60, scale: 0.94, filter: 'blur(10px)' }}
+                whileInView={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
                 exit={{ opacity: 0, scale: 0.96 }}
-                viewport={{ once: true, margin: '-40px' }}
-                transition={{ duration: 0.45, delay: (i % 3) * 0.06 }}
+                viewport={{ once: true, margin: '-60px' }}
+                transition={{ duration: 0.7, delay: (i % 3) * 0.1, ease: [0.2, 0.8, 0.2, 1] }}
               >
-                <ProjectCard p={p} online={online} />
+                <TiltCard max={5}>
+                  <ProjectCard p={p} online={online} />
+                </TiltCard>
               </motion.li>
             ))}
           </AnimatePresence>
@@ -549,19 +605,9 @@ function ProjectCard({ p, online }: { p: Product; online: boolean | null }) {
   const Icon = p.icon
   const to = p.route ?? `/products/${p.slug}`
   return (
-    <article
-      onMouseMove={spotlight}
-      className="spotlight group relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/[0.07] bg-ink-900/60 transition duration-300 hover:-translate-y-1 hover:border-white/15 hover:shadow-2xl hover:shadow-black/20"
-    >
+    <article className="spotlight group relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/[0.07] bg-ink-900/60 transition-colors duration-300 hover:border-white/15 hover:shadow-2xl hover:shadow-black/20">
       <Link to={to} className="relative block aspect-[16/10] overflow-hidden border-b border-white/[0.06] bg-ink-800" aria-label={`Open ${p.name}`}>
-        <img
-          src={`/projects/${p.slug}.webp`}
-          alt={`${p.name} screenshot`}
-          loading="lazy"
-          width={960}
-          height={600}
-          className="size-full object-cover object-top transition duration-700 group-hover:scale-[1.04]"
-        />
+        <ParallaxImage src={`/projects/${p.slug}.webp`} alt={`${p.name} screenshot`} fallback={<ShotFallback p={p} />} />
         <span className={`absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r ${p.accent}`} />
         <span className="glass absolute top-3 left-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-ink-100">
           <span className={`size-1.5 rounded-full ${online === false ? 'bg-rose-400' : 'bg-emerald-400'}`} />
@@ -595,20 +641,62 @@ function ProjectCard({ p, online }: { p: Product; online: boolean | null }) {
   )
 }
 
+/** Shown when a project has no screenshot yet: the product's gradient with its icon. */
+function ShotFallback({ p }: { p: Product }) {
+  const Icon = p.icon
+  return (
+    <div className="relative grid size-full place-items-center overflow-hidden bg-ink-850">
+      <div aria-hidden className={`absolute inset-0 bg-gradient-to-br opacity-25 ${p.accent}`} />
+      <div aria-hidden className="bg-grid absolute inset-0 opacity-60" />
+      <span className={`relative grid size-16 place-items-center rounded-2xl bg-gradient-to-br text-on-accent shadow-xl transition-transform duration-500 group-hover:scale-110 ${p.accent}`}>
+        <Icon className="size-8" />
+      </span>
+    </div>
+  )
+}
+
+/** Screenshot that drifts inside its frame as the card scrolls past. */
+function ParallaxImage({ src, alt, fallback }: { src: string; alt: string; fallback: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const reduce = useReducedMotion()
+  const [broken, setBroken] = useState(false)
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] })
+  const y = useTransform(scrollYProgress, [0, 1], ['-7%', '7%'])
+  return (
+    <div ref={ref} className="size-full">
+      {broken ? (
+        fallback
+      ) : (
+        <motion.img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          width={960}
+          height={600}
+          onError={() => setBroken(true)}
+          style={reduce ? undefined : { y, scale: 1.16 }}
+          className="size-full object-cover object-top"
+        />
+      )}
+      <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-ink-950/40 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+    </div>
+  )
+}
+
 const STACK = ['React 19', 'TypeScript', 'Tailwind v4', 'Motion', 'React Flow', 'Leaflet', 'Python', 'FastAPI', 'LangGraph', 'Claude', 'Groq', 'Whisper', 'FastEmbed', 'ChromaDB', 'SQLite', 'Docker', 'GitHub Actions']
 
 function Stack() {
   return (
     <Reveal className="mt-14">
       <p className="text-center text-[11px] font-semibold tracking-[0.2em] text-ink-500 uppercase">Built with</p>
-      <div className="relative mt-4 overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)]">
-        <div className="marquee flex w-max gap-2.5">
-          {[...STACK, ...STACK].map((s, i) => (
-            <span key={i} className="rounded-full border border-white/[0.07] px-3.5 py-1.5 font-mono text-[12px] whitespace-nowrap text-ink-300">
+      <div className="mt-4">
+        <VelocityMarquee>
+          {STACK.map((s) => (
+            <span key={s} className="rounded-full border border-white/[0.07] px-3.5 py-1.5 font-mono text-[12px] whitespace-nowrap text-ink-300 transition-colors hover:border-cyan-400/40 hover:text-white">
               {s}
             </span>
           ))}
-        </div>
+        </VelocityMarquee>
       </div>
     </Reveal>
   )
@@ -654,7 +742,7 @@ function ContactSection() {
       <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr]">
         <div>
           <SectionTitle kicker="Contact" title="Let's build something" text="Open to roles building AI products end to end, and to collaborations. Send a note and I'll get back to you." />
-          <Reveal className="-mt-4 space-y-3">
+          <Reveal from="left" className="-mt-4 space-y-3">
             {SITE.links.email && (
               <a href={`mailto:${SITE.links.email}`} className="flex items-center gap-3 text-[15px] break-all text-ink-100 hover:text-white">
                 <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-white/[0.05] text-cyan-300"><Mail className="size-4.5" /></span>
@@ -668,7 +756,7 @@ function ContactSection() {
             <div className="pt-3"><Socials size="lg" /></div>
           </Reveal>
         </div>
-        <Reveal>
+        <Reveal from="right">
           <form onSubmit={(e) => void submit(e)} className="glass relative overflow-hidden rounded-3xl p-6 sm:p-8" aria-label="Contact form">
             <AnimatePresence mode="wait">
               {state === 'sent' ? (
