@@ -1,37 +1,36 @@
-"""Local SQLite storage for Keeper (one file, no server) plus photo files on disk."""
+"""Keeper storage: entries, settings and photos in one database (local SQLite file, or shared Postgres)."""
 
 from __future__ import annotations
 
 import datetime as dt
 import json
 import re
-import sqlite3
-import threading
 import uuid
-from collections.abc import Iterator
-from contextlib import closing, contextmanager
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
+from app.core.db import open_db
 from app.keeper.models import Entry, EntryIn
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS entries (
-    id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL,
-    title TEXT NOT NULL,
-    place TEXT, person TEXT, note TEXT, photo_id TEXT,
-    lat REAL, lng REAL,
-    due TEXT, due_time TEXT,
-    status TEXT NOT NULL DEFAULT 'active',
-    data TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_entries_kind ON entries(kind, status);
-CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-"""
+_SCHEMA = (
+    """CREATE TABLE IF NOT EXISTS {entries} (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        place TEXT, person TEXT, note TEXT, photo_id TEXT,
+        lat {real}, lng {real},
+        due TEXT, due_time TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        data TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )""",
+    "CREATE INDEX IF NOT EXISTS {ix_entries_kind} ON {entries}(kind, status)",
+    "CREATE TABLE IF NOT EXISTS {meta} (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS {photos} "
+    "(id TEXT PRIMARY KEY, mime TEXT NOT NULL, data {blob} NOT NULL, created_at TEXT NOT NULL)",
+)
 
 _COLUMNS = ("title", "place", "person", "note", "photo_id", "lat", "lng", "due", "due_time", "status", "data")
 _WORD = re.compile(r"[a-z0-9]+")
@@ -76,25 +75,12 @@ def image_type(blob: bytes) -> tuple[str, str] | None:
 
 
 class KeeperStore:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.photos = root / "photos"
-        self.photos.mkdir(parents=True, exist_ok=True)
-        self._db = root / "keeper.sqlite3"
-        self._lock = threading.Lock()
-        with self._conn() as c:
-            c.executescript(_SCHEMA)
-            c.execute("PRAGMA journal_mode=WAL")
-
-    @contextmanager
-    def _conn(self) -> Iterator[sqlite3.Connection]:
-        with self._lock, closing(sqlite3.connect(self._db, timeout=10)) as conn:
-            conn.row_factory = sqlite3.Row
-            with conn:  # commit / rollback
-                yield conn
+    def __init__(self, root: Path, url: str | None = None) -> None:
+        self.db = open_db("keeper", root / "keeper.sqlite3", url)
+        self.db.migrate(_SCHEMA)
 
     @staticmethod
-    def _row(r: sqlite3.Row) -> Entry:
+    def _row(r: Any) -> Entry:
         d = dict(r)
         d["data"] = json.loads(d["data"] or "{}")
         return Entry.model_validate(d)
@@ -115,17 +101,17 @@ class KeeperStore:
         }
         if isinstance(row["due"], dt.date):
             row["due"] = row["due"].isoformat()
-        with self._conn() as c:
+        with self.db.tx() as c:
             c.execute(
                 # Column names come from the fixed _COLUMNS whitelist; values are always bound parameters.
-                f"INSERT INTO entries ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",  # noqa: S608
+                f"INSERT INTO {{entries}} ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",  # noqa: S608
                 tuple(row.values()),
             )
         return self.get(row["id"])  # type: ignore[return-value]
 
     def get(self, entry_id: str) -> Entry | None:
-        with self._conn() as c:
-            r = c.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
+        with self.db.tx() as c:
+            r = c.execute("SELECT * FROM {entries} WHERE id = ?", (entry_id,)).fetchone()
         return self._row(r) if r else None
 
     def update(self, entry_id: str, changes: dict[str, Any]) -> Entry | None:
@@ -137,9 +123,9 @@ class KeeperStore:
         if not sets:
             return self.get(entry_id)
         sets["updated_at"] = _now()
-        with self._conn() as c:
+        with self.db.tx() as c:
             c.execute(
-                f"UPDATE entries SET {', '.join(f'{k} = ?' for k in sets)} WHERE id = ?",  # noqa: S608 - whitelisted columns
+                f"UPDATE {{entries}} SET {', '.join(f'{k} = ?' for k in sets)} WHERE id = ?",  # noqa: S608 - whitelisted columns
                 (*sets.values(), entry_id),
             )
         return self.get(entry_id)
@@ -148,21 +134,21 @@ class KeeperStore:
         entry = self.get(entry_id)
         if entry is None:
             return False
-        with self._conn() as c:
-            c.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
+        with self.db.tx() as c:
+            c.execute("DELETE FROM {entries} WHERE id = ?", (entry_id,))
         if entry.photo_id:
             self.delete_photo(entry.photo_id)
         return True
 
     def list(self, kind: str | None = None, *, include_done: bool = False) -> list[Entry]:
-        sql, args = "SELECT * FROM entries WHERE 1=1", []
+        sql, args = "SELECT * FROM {entries} WHERE 1=1", []
         if kind:
             sql += " AND kind = ?"
             args.append(kind)
         if not include_done:
             sql += " AND status = 'active'"
-        sql += " ORDER BY (due IS NULL), due, due_time, updated_at DESC"
-        with self._conn() as c:
+        sql += " ORDER BY (due IS NULL), due, due_time, updated_at DESC, title, id"  # fully deterministic
+        with self.db.tx() as c:
             return [self._row(r) for r in c.execute(sql, args).fetchall()]
 
     def search(self, query: str, kind: str | None = None, limit: int = 5) -> list[Entry]:
@@ -181,20 +167,20 @@ class KeeperStore:
         return hits[0] if hits else None
 
     def counts(self) -> dict[str, int]:
-        with self._conn() as c:
-            rows = c.execute("SELECT kind, COUNT(*) n FROM entries WHERE status = 'active' GROUP BY kind").fetchall()
+        with self.db.tx() as c:
+            rows = c.execute("SELECT kind, COUNT(*) n FROM {entries} WHERE status = 'active' GROUP BY kind").fetchall()
         return {r["kind"]: r["n"] for r in rows}
 
     # ── Meta (small key/value: last timezone seen, last brief sent) ────────
     def get_meta(self, key: str) -> str | None:
-        with self._conn() as c:
-            r = c.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        with self.db.tx() as c:
+            r = c.execute("SELECT value FROM {meta} WHERE key = ?", (key,)).fetchone()
         return r["value"] if r else None
 
     def set_meta(self, key: str, value: str) -> None:
-        with self._conn() as c:
+        with self.db.tx() as c:
             c.execute(
-                "INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                "INSERT INTO {meta}(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 (key, value),
             )
 
@@ -204,30 +190,30 @@ class KeeperStore:
         if kind is None:
             raise ValueError("Only JPEG, PNG or WebP images are accepted.")
         photo_id = uuid.uuid4().hex
-        (self.photos / f"{photo_id}.{kind[0]}").write_bytes(blob)
+        with self.db.tx() as c:
+            c.execute(
+                "INSERT INTO {photos}(id, mime, data, created_at) VALUES(?,?,?,?)", (photo_id, kind[1], blob, _now())
+            )
         return photo_id
 
-    def photo_path(self, photo_id: str) -> tuple[Path, str] | None:
-        if not PHOTO_ID.match(photo_id):  # ids are generated by us: no path traversal possible
+    def photo(self, photo_id: str) -> tuple[bytes, str] | None:
+        """(image bytes, mime type), or None for an unknown id."""
+        if not PHOTO_ID.match(photo_id):
             return None
-        for ext, mime in (("jpg", "image/jpeg"), ("png", "image/png"), ("webp", "image/webp")):
-            p = self.photos / f"{photo_id}.{ext}"
-            if p.is_file():
-                return p, mime
-        return None
+        with self.db.tx() as c:
+            r = c.execute("SELECT data, mime FROM {photos} WHERE id = ?", (photo_id,)).fetchone()
+        return (bytes(r["data"]), r["mime"]) if r else None
 
     def prune_photos(self, older_than_hours: float = 24) -> int:
         """Delete photos no entry references (e.g. a scan that was never saved), once they are a day old."""
-        with self._conn() as c:
-            used = {r["photo_id"] for r in c.execute("SELECT photo_id FROM entries WHERE photo_id IS NOT NULL")}
-        cutoff = dt.datetime.now().timestamp() - older_than_hours * 3600
-        removed = 0
-        for f in self.photos.iterdir():
-            if f.is_file() and f.stem not in used and f.stat().st_mtime < cutoff:
-                f.unlink(missing_ok=True)
-                removed += 1
-        return removed
+        cutoff = (dt.datetime.now(dt.UTC) - dt.timedelta(hours=older_than_hours)).isoformat(timespec="seconds")
+        with self.db.tx() as c:
+            return c.execute(
+                "DELETE FROM {photos} WHERE created_at < ? AND id NOT IN "
+                "(SELECT photo_id FROM {entries} WHERE photo_id IS NOT NULL)",
+                (cutoff,),
+            ).rowcount
 
     def delete_photo(self, photo_id: str) -> None:
-        if found := self.photo_path(photo_id):
-            found[0].unlink(missing_ok=True)
+        with self.db.tx() as c:
+            c.execute("DELETE FROM {photos} WHERE id = ?", (photo_id,))

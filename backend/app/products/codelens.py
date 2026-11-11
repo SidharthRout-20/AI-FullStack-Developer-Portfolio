@@ -218,12 +218,10 @@ def read_zip(blob: bytes) -> tuple[dict[str, str], str]:
 
 
 class CodeService:
-    def __init__(self, store: DocStore, get_llm, embedder, data_dir: Path) -> None:  # noqa: ANN001
-        self.db = store
+    def __init__(self, store: DocStore, get_llm, embedder) -> None:  # noqa: ANN001
+        self.db = store  # repo metadata as documents; the search index (vectors + chunks) as blobs
         self.get_llm = get_llm
         self.embedder = embedder
-        self.dir = data_dir
-        self.dir.mkdir(parents=True, exist_ok=True)
         self.fetcher = None  # injectable for tests: async (owner, repo, ref) -> bytes
         self._cache: dict[str, tuple[list[dict[str, Any]], np.ndarray, BM25Okapi]] = {}
 
@@ -279,8 +277,10 @@ class CodeService:
             langs[lang] = langs.get(lang, 0) + t.count("\n") + 1
 
         repo_id = new_id()
-        np.save(self.dir / f"{repo_id}.npy", np.asarray(vectors, dtype=np.float32))
-        (self.dir / f"{repo_id}.json").write_text(json.dumps(chunks), encoding="utf-8")
+        buf = io.BytesIO()
+        np.save(buf, np.asarray(vectors, dtype=np.float32))
+        self.db.put_blob(f"{repo_id}.npy", buf.getvalue())
+        self.db.put_blob(f"{repo_id}.json", json.dumps(chunks).encode("utf-8"))
         doc = self.db.put(
             "repos",
             {
@@ -295,8 +295,11 @@ class CodeService:
 
     def _load(self, repo_id: str) -> tuple[list[dict[str, Any]], np.ndarray, BM25Okapi]:
         if repo_id not in self._cache:
-            chunks = json.loads((self.dir / f"{repo_id}.json").read_text(encoding="utf-8"))
-            vecs = np.load(self.dir / f"{repo_id}.npy")
+            raw_chunks, raw_vecs = self.db.get_blob(f"{repo_id}.json"), self.db.get_blob(f"{repo_id}.npy")
+            if raw_chunks is None or raw_vecs is None:
+                raise KeyError(repo_id)
+            chunks = json.loads(raw_chunks)
+            vecs = np.load(io.BytesIO(raw_vecs))
             bm25 = BM25Okapi([tokenize(f"{c['path']} {c['symbol'] or ''} {c['text']}") or ["_"] for c in chunks])
             self._cache = {repo_id: (chunks, vecs, bm25)}  # keep one repo hot
         return self._cache[repo_id]
@@ -348,7 +351,7 @@ class CodeService:
 
     def delete(self, repo_id: str) -> None:
         for ext in ("npy", "json"):
-            (self.dir / f"{repo_id}.{ext}").unlink(missing_ok=True)
+            self.db.delete_blob(f"{repo_id}.{ext}")
         self._cache.pop(repo_id, None)
         self.db.delete("repos", repo_id)
 

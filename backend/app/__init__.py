@@ -18,6 +18,7 @@ if os.environ.get("VERCEL"):
         "XDG_CACHE_HOME": "/tmp/cache",  # noqa: S108
         "HF_HUB_DISABLE_TELEMETRY": "1",
         "WATCH_DOCUMENTS": "false",  # no background tasks between serverless invocations
+        "BACKGROUND_JOBS": "false",  # reminders & scheduled flows run from the /api/cron/tick endpoint
         "SERVE_FRONTEND": "false",  # the frontend is its own Vercel project
         "ENVIRONMENT": "production",
     }.items():

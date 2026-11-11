@@ -300,18 +300,25 @@ class FlowService:
             last = ev
         return last
 
+    async def run_scheduled(self) -> int:
+        """One pass: run every scheduled flow whose interval has elapsed. Returns how many ran."""
+        ran = 0
+        now = time.time()
+        for f in self.db.list("flows"):
+            trig = f.get("trigger") or {}
+            if trig.get("type") != "schedule" or not trig.get("every_minutes") or not f.get("enabled", True):
+                continue
+            if now - float(f.get("last_scheduled", 0)) >= trig["every_minutes"] * 60:
+                self.db.patch("flows", f["id"], {"last_scheduled": now})
+                await self.run_to_end(self.db.get("flows", f["id"]) or f, None, "schedule")
+                ran += 1
+        return ran
+
     async def scheduler(self) -> None:
-        """Run scheduled flows (≥ every 5 minutes)."""
+        """Always-on hosts: check scheduled flows every 30 s. Serverless hosts call run_scheduled from a cron."""
         while True:
             try:
-                now = time.time()
-                for f in self.db.list("flows"):
-                    trig = f.get("trigger") or {}
-                    if trig.get("type") != "schedule" or not trig.get("every_minutes") or not f.get("enabled", True):
-                        continue
-                    if now - float(f.get("last_scheduled", 0)) >= trig["every_minutes"] * 60:
-                        self.db.patch("flows", f["id"], {"last_scheduled": now})
-                        await self.run_to_end(self.db.get("flows", f["id"]) or f, None, "schedule")
+                await self.run_scheduled()
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001

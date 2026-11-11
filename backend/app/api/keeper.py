@@ -6,16 +6,18 @@ import asyncio
 import base64
 import binascii
 import datetime as dt
+import html
 import secrets
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.security import limiter, rate_limit_value
-from app.keeper import schedule
+from app.keeper import reminders, schedule
 from app.keeper.models import KINDS, AgendaItem, Entry, EntryIn, EntryPatch, ScanResult
+from app.keeper.reminders import ReminderSettings
 from app.keeper.service import KeeperService
 from app.rag.guardrails import normalize
 from app.rag.llm import user_facing_error
@@ -113,7 +115,7 @@ async def keeper_status(keeper: Keeper) -> dict[str, Any]:
 @router.post("/command", response_model=CommandOut)
 @limiter.limit(rate_limit_value)
 async def command(request: Request, body: CommandIn, keeper: Keeper, now: Now) -> dict[str, Any]:
-    if body.photo_id and keeper.store.photo_path(body.photo_id) is None:
+    if body.photo_id and keeper.store.photo(body.photo_id) is None:
         raise HTTPException(404, "Photo not found.")
     state = await keeper.agent.run(normalize(body.text), now, body.photo_id, body.lat, body.lng)
     cmd = state["command"]
@@ -170,8 +172,8 @@ def patch_entry(entry_id: str, body: EntryPatch, keeper: Keeper) -> Entry:
 
 @router.post("/entries/{entry_id}/done", response_model=Entry)
 def complete_entry(entry_id: str, keeper: Keeper, now: Now) -> Entry:
-    entry = _entry_or_404(keeper, entry_id)
-    return keeper.store.update(entry_id, schedule.on_done(entry, now))  # type: ignore[return-value]
+    _entry_or_404(keeper, entry_id)
+    return keeper.complete(entry_id)  # type: ignore[return-value]
 
 
 @router.post("/entries/{entry_id}/used", response_model=Entry)
@@ -229,11 +231,11 @@ def upload_photo(request: Request, body: PhotoIn, keeper: Keeper) -> dict[str, s
 
 
 @router.get("/photos/{photo_id}")
-def get_photo(photo_id: str, keeper: Keeper) -> FileResponse:
-    found = keeper.store.photo_path(photo_id)
+def get_photo(photo_id: str, keeper: Keeper) -> Response:
+    found = keeper.store.photo(photo_id)
     if found is None:
         raise HTTPException(404, "Photo not found.")
-    return FileResponse(found[0], media_type=found[1], headers={"Cache-Control": "private, max-age=86400"})
+    return Response(found[0], media_type=found[1], headers={"Cache-Control": "private, max-age=86400"})
 
 
 @router.post("/scan", response_model=ScanResult)
@@ -246,3 +248,116 @@ async def scan_photo(request: Request, body: ScanIn, keeper: Keeper, now: Now) -
     except Exception as exc:  # noqa: BLE001
         message = user_facing_error(exc) or "Couldn't read the photo right now. You can still fill the details in."
         raise HTTPException(503, message) from exc
+
+
+# ── Reminders ─────────────────────────────────────────────────────────────
+class AlertOut(BaseModel):
+    key: str
+    entry_id: str
+    title: str
+    label: str
+    at: dt.datetime
+    urgent: bool
+    quiet: bool
+
+
+class AckIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    key: str = Field(min_length=1, max_length=120)
+
+
+class SnoozeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    minutes: int = Field(10, ge=1, le=1440)
+    key: str | None = Field(None, max_length=120)
+
+
+class ReminderSettingsOut(ReminderSettings):
+    telegram_configured: bool
+    cron_configured: bool
+
+
+def _settings_out(keeper: KeeperService) -> dict[str, Any]:
+    secret = keeper.settings.cron_secret
+    return {
+        **keeper.reminder_settings().model_dump(),
+        "telegram_configured": keeper.telegram_ready,
+        "cron_configured": bool(secret and secret.get_secret_value()) or keeper.settings.background_jobs,
+    }
+
+
+@router.get("/reminders/settings", response_model=ReminderSettingsOut)
+def get_reminder_settings(keeper: Keeper) -> dict[str, Any]:
+    return _settings_out(keeper)
+
+
+@router.put("/reminders/settings", response_model=ReminderSettingsOut)
+def put_reminder_settings(body: ReminderSettings, keeper: Keeper) -> dict[str, Any]:
+    keeper.save_reminder_settings(body)
+    return _settings_out(keeper)
+
+
+@router.post("/reminders/test")
+@limiter.limit("5/minute")
+async def test_reminder(request: Request, keeper: Keeper) -> dict[str, list[str]]:
+    sent = await keeper.test_channels(keeper.reminder_settings())
+    if not sent:
+        raise HTTPException(422, "No phone channel accepted the test. Set an ntfy topic (or configure Telegram).")
+    return {"sent": sent}
+
+
+@router.get("/reminders/due", response_model=list[AlertOut])
+def due_reminders(keeper: Keeper, now: Now) -> list[dict[str, Any]]:
+    """Alerts due right now (the open app chimes / reads them aloud)."""
+    quiet = reminders.in_quiet_hours(now, keeper.reminder_settings())
+    return [
+        {
+            "key": a.key,
+            "entry_id": a.entry.id,
+            "title": a.entry.title,
+            "label": a.label,
+            "at": a.at.replace(tzinfo=dt.UTC),  # explicit UTC so browsers show the right local time
+            "urgent": a.urgent,
+            "quiet": quiet,
+        }  # fmt: skip
+        for a in keeper.due_alerts()
+    ]
+
+
+@router.post("/entries/{entry_id}/ack", response_model=Entry)
+def ack_reminder(entry_id: str, body: AckIn, keeper: Keeper) -> Entry:
+    _entry_or_404(keeper, entry_id)
+    return keeper.ack(entry_id, body.key)  # type: ignore[return-value]
+
+
+@router.post("/entries/{entry_id}/snooze", response_model=Entry)
+def snooze_reminder(entry_id: str, body: SnoozeIn, keeper: Keeper) -> Entry:
+    _entry_or_404(keeper, entry_id)
+    return keeper.snooze(entry_id, body.minutes, body.key)  # type: ignore[return-value]
+
+
+# One-tap actions from phone notifications: authorised by the signed token itself, not the Keeper access key.
+actions_router = APIRouter(prefix="/api/keeper", tags=["keeper"])
+
+_ACT_PAGE = """<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Keeper</title><body style="font:16px system-ui;display:grid;place-items:center;min-height:90vh;margin:0">
+<p>{message}</p></body>"""
+
+
+@actions_router.api_route("/act", methods=["GET", "POST"])
+@limiter.limit("30/minute")
+def act(
+    request: Request,
+    a: Annotated[Literal["done", "snooze", "ack"], Query()],
+    t: Annotated[str, Query(min_length=10, max_length=400)],
+) -> Response:
+    entry = get_keeper(request).act(t, a)
+    if entry is None:
+        message, code = "This link has expired or is invalid.", 410
+    else:
+        message = {"done": f"Done: {entry.title}.", "snooze": f"Snoozed for 10 minutes: {entry.title}.",
+                   "ack": f"Got it: {entry.title}."}[a]  # fmt: skip
+        code = 200
+    if request.method == "POST":  # ntfy action buttons
+        return Response(f'{{"message": "{message}"}}', status_code=code, media_type="application/json")
+    return Response(_ACT_PAGE.format(message=html.escape(message)), status_code=code, media_type="text/html")

@@ -273,7 +273,13 @@ function TaskView({ id, samples, onBack }: { id: string; samples: string[]; onBa
     return () => window.clearInterval(t)
   }, [task?.reflecting, refresh])
 
-  if (error && !task) return <ErrorNote message={error} />
+  if (error && !task)
+    return (
+      <div className="space-y-3">
+        <ErrorNote message={error.includes('not found') ? 'This task no longer exists (it may have been deleted).' : error} />
+        <button type="button" onClick={onBack} className="chip"><ArrowLeft className="size-3.5" /> Back to tasks</button>
+      </div>
+    )
   if (!task) return <Spinner label="Loading task…" />
   const current = task.versions.find((v) => v.n === task.current_version)
 

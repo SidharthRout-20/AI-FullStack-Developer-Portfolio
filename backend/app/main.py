@@ -18,6 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.api.cron import router as cron_router
+from app.api.keeper import actions_router
 from app.api.keeper import router as keeper_router
 from app.api.products import router as products_router
 from app.api.routes import router
@@ -64,16 +66,18 @@ def create_app(
         # Keeper shares the (lazily created) LLM client with DocuMind.
         keeper = (keeper_factory or (lambda s, r: KeeperService(s, r.get_llm)))(settings, rag)
         app.state.keeper = keeper
-        brief_task = asyncio.create_task(keeper.brief_loop()) if keeper.telegram_ready else None
+        jobs = settings.background_jobs
+        reminder_task = asyncio.create_task(keeper.scheduler_loop(settings.public_url)) if jobs else None
         app.state.suite = Suite(settings, rag, keeper)
-        scheduler = asyncio.create_task(app.state.suite.flows.scheduler())
+        scheduler = asyncio.create_task(app.state.suite.flows.scheduler()) if jobs else None
         logger.info("Ready - %d chunks indexed, LLM provider=%s", rag.store.count(), settings.llm_provider)
         yield
-        scheduler.cancel()
+        if scheduler:
+            scheduler.cancel()
         if watch_task:
             watch_task.cancel()
-        if brief_task:
-            brief_task.cancel()
+        if reminder_task:
+            reminder_task.cancel()
 
     app = FastAPI(
         title=settings.app_name,
@@ -107,6 +111,8 @@ def create_app(
     app.include_router(router)
     app.include_router(products_router)
     app.include_router(keeper_router)
+    app.include_router(actions_router)
+    app.include_router(cron_router)
     for product in (careerpilot, meetingmind, codelens, flowforge, tripweaver, evolve, contact):
         app.include_router(product.router)
     app.include_router(flowforge.hooks)

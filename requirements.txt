@@ -23,5 +23,8 @@ rank-bm25==0.2.2
 numpy==2.5.4
 pypdf==7.0.0
 
+# Shared database on serverless hosts (Neon Postgres via DATABASE_URL); SQLite is used without it
+psycopg[binary]==3.3.2
+
 # Use the OS certificate store for outbound TLS (works behind corporate/antivirus HTTPS inspection)
 truststore==0.10.5

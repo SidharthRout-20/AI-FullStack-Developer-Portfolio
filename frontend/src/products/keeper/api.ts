@@ -68,6 +68,32 @@ export interface KeeperStatus {
   counts: Partial<Record<Kind, number>>
 }
 
+/** A reminder whose time has come (the open app chimes and reads it aloud). */
+export interface DueAlert {
+  key: string
+  entry_id: string
+  title: string
+  label: string
+  at: string
+  urgent: boolean
+  quiet: boolean
+}
+
+export interface ReminderSettings {
+  ntfy_topic: string | null
+  ntfy_server: string
+  telegram: boolean
+  quiet_enabled: boolean
+  quiet_start: string
+  quiet_end: string
+  escalate_min: number
+  brief_push: boolean
+  brief_hour: number
+  /** read-only, from the server */
+  telegram_configured?: boolean
+  cron_configured?: boolean
+}
+
 export type EntryInput = Partial<Omit<Entry, 'id' | 'status' | 'created_at' | 'updated_at'>> & { kind: Kind; title: string }
 
 const KEY_STORAGE = 'keeper-access-key'
@@ -132,6 +158,17 @@ export const keeperApi = {
   sendBrief: () => post<{ status: string }>('/brief/telegram'),
   uploadPhoto: (dataUrl: string) => post<{ photo_id: string }>('/photos', { image: dataUrl }),
   scan: (photo_id: string, hint = 'auto') => post<ScanResult>('/scan', { photo_id, hint }),
+  dueAlerts: () => call<DueAlert[]>('/reminders/due'),
+  ack: (id: string, key: string) => post<Entry>(`/entries/${id}/ack`, { key }),
+  snooze: (id: string, minutes: number, key?: string) => post<Entry>(`/entries/${id}/snooze`, { minutes, key }),
+  reminderSettings: () => call<ReminderSettings>('/reminders/settings'),
+  saveReminderSettings: (s: ReminderSettings) => {
+    const body: Partial<ReminderSettings> = { ...s }
+    delete body.telegram_configured // read-only fields reported by the server
+    delete body.cron_configured
+    return call<ReminderSettings>('/reminders/settings', { method: 'PUT', body: JSON.stringify(body) })
+  },
+  testReminder: () => post<{ sent: string[] }>('/reminders/test'),
   /** Photos go through fetch (not <img src>) so the access-key header is sent; returns an object URL. */
   photoUrl: async (id: string) => {
     const key = getAccessKey()

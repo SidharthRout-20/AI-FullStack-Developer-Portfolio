@@ -24,13 +24,16 @@ class Suite:
             state = await keeper.agent.run(text, local_now(offset))
             return state["reply"]
 
-        self.career = CareerService(
-            DocStore(data / "careerpilot.sqlite3"), rag.get_llm, settings.documents_dir, settings.max_file_mb
-        )
-        self.meetings = MeetingService(DocStore(data / "meetingmind.sqlite3"), rag.get_llm, rag.embedder, settings)
-        self.code = CodeService(DocStore(data / "codelens.sqlite3"), rag.get_llm, rag.embedder, data / "codelens")
-        self.flows = FlowService(DocStore(data / "flowforge.sqlite3"), rag.get_llm, keeper_command)
-        self.trips = TripService(DocStore(data / "tripweaver.sqlite3"), rag.get_llm)
-        self.evolve = EvolveService(DocStore(data / "evolve.sqlite3"), rag.get_llm)
-        self.inbox = DocStore(data / "contact.sqlite3")  # portfolio contact form
+        url = settings.db_url  # shared Postgres when set; otherwise one SQLite file per product
+
+        def store(name: str) -> DocStore:
+            return DocStore(data / f"{name}.sqlite3", url)
+
+        self.career = CareerService(store("careerpilot"), rag.get_llm, settings.documents_dir, settings.max_file_mb)
+        self.meetings = MeetingService(store("meetingmind"), rag.get_llm, rag.embedder, settings)
+        self.code = CodeService(store("codelens"), rag.get_llm, rag.embedder)
+        self.flows = FlowService(store("flowforge"), rag.get_llm, keeper_command)
+        self.trips = TripService(store("tripweaver"), rag.get_llm)
+        self.evolve = EvolveService(store("evolve"), rag.get_llm)
+        self.inbox = store("contact")  # portfolio contact form
         self.settings = settings

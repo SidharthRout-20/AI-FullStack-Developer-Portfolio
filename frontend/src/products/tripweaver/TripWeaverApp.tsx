@@ -1,5 +1,6 @@
 import {
   CalendarDays,
+  Compass,
   CloudRain,
   CloudSun,
   History,
@@ -10,21 +11,24 @@ import {
   Share2,
   ThumbsDown,
   ThumbsUp,
+  Shuffle,
   Trash2,
   TrainFront,
   Trees,
   Users,
   UtensilsCrossed,
+  Soup,
   WifiOff,
   Wand2,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { navigate, usePath } from '../../router'
 import { API_BASE } from '../../lib/apiBase'
 import { del, errorText, get, post, streamPost } from '../shared/http'
 import { Button, Card, Empty, ErrorNote, inputClass, Pill, ProductShell, Spinner, Steps } from '../shared/ui'
 import { DAY_COLORS } from './colors'
+import { DayInsights, LegRow, NearbyPanel, RouteSummary, fmtMin, type DayRoute, type Insight } from './Travel'
 
 const TripMap = lazy(() => import('./TripMap').then((m) => ({ default: m.TripMap })))
 const ACCENT = 'from-lime-500 via-emerald-500 to-teal-500'
@@ -41,14 +45,17 @@ interface Activity {
   lng: number | null
   label: string | null
   votes: Record<string, number>
+  added?: 'meal' | 'nearby'
 }
 interface Day {
   day: number
   date: string | null
   theme: string
-  weather: { code: number; tmax: number; tmin: number; rain: number } | null
+  weather: { code: number; tmax: number; tmin: number; rain: number; uv?: number; feels_max?: number; aqi?: number } | null
   activities: Activity[]
   changed?: boolean
+  route?: DayRoute
+  insights?: Insight[]
 }
 interface Trip {
   id: string
@@ -189,6 +196,7 @@ function TripView({ id }: { id: string }) {
   const [alerts, setAlerts] = useState<{ day: number; rain: number; outdoor: string[] }[]>([])
   const [voter, setVoter] = useVoter()
   const [live, setLive] = useState(false)
+  const [nearbyFor, setNearbyFor] = useState<string | null>(null)
 
   const keep = (t: Trip) => {
     setTrip(t)
@@ -285,6 +293,35 @@ function TripView({ id }: { id: string }) {
       setBusy(null)
     }
   }
+  const optimise = async (dayNo: number) => {
+    if (!trip) return
+    setBusy(`Optimising day ${dayNo}…`)
+    setError(null)
+    try {
+      const out = await post<{ trip: Trip; travel_before: number; travel_after: number }>(`/api/trips/${trip.id}/days/${dayNo}/optimise`)
+      keep(out.trip)
+      const saved = out.travel_before - out.travel_after
+      setNote(saved > 0 ? `Day ${dayNo} reordered: ${fmtMin(saved)} less travel, times updated.` : `Day ${dayNo} was already in the best order; times updated for travel and rush hour.`)
+    } catch (e) {
+      setError(errorText(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+  const addMeals = async () => {
+    if (!trip) return
+    setBusy('Finding restaurants near your stops…')
+    setError(null)
+    try {
+      const out = await post<{ trip: Trip; added: number }>(`/api/trips/${trip.id}/meals`)
+      keep(out.trip)
+      setNote(out.added ? `Added ${out.added} meal stop${out.added > 1 ? 's' : ''} near where you'll be.` : 'Every day already has its meals planned.')
+    } catch (e) {
+      setError(errorText(e))
+    } finally {
+      setBusy(null)
+    }
+  }
   const vote = async (a: Activity, value: number) => {
     if (!trip || !voter.trim()) return setNote('Add your name (top right of the itinerary) to vote.')
     const current = a.votes[voter] ?? 0
@@ -311,7 +348,13 @@ function TripView({ id }: { id: string }) {
       .catch((e) => setError(errorText(e)))
   }
 
-  if (error && !trip) return <ErrorNote message={error} />
+  if (error && !trip)
+    return (
+      <div className="space-y-3">
+        <ErrorNote message={error.includes('not found') ? 'This trip no longer exists (it may have been deleted).' : error} />
+        <button type="button" className="chip" onClick={() => navigate('/tripweaver')}>← All trips</button>
+      </div>
+    )
   if (!trip) return <Spinner label="Loading trip…" />
   const shown = day == null ? trip.days : trip.days.filter((d) => d.day === day)
 
@@ -335,6 +378,7 @@ function TripView({ id }: { id: string }) {
             <Share2 className="size-4" /> Share
           </Button>
           <Button variant="ghost" onClick={() => void checkWeather()} disabled={!!busy}><CloudSun className="size-4" /> Check weather</Button>
+          <Button variant="ghost" onClick={() => void addMeals()} disabled={!!busy}><Soup className="size-4" /> Add meal stops</Button>
         </div>
       </div>
 
@@ -370,14 +414,29 @@ function TripView({ id }: { id: string }) {
                 {d.date && <span className="text-[12px] text-ink-400">{new Date(d.date + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>}
                 {d.weather && <Pill tone={d.weather.rain >= 60 ? 'info' : 'neutral'}>{d.weather.rain >= 60 ? <CloudRain className="size-3" /> : <CloudSun className="size-3" />} {Math.round(d.weather.tmin)}–{Math.round(d.weather.tmax)}°C · {d.weather.rain}% rain</Pill>}
                 {d.changed && <Pill tone="warn">re-planned</Pill>}
+                <span className="ml-auto flex items-center gap-2">
+                  <RouteSummary route={d.route} />
+                  <button type="button" className="chip" disabled={!!busy} onClick={() => void optimise(d.day)} title="Reorder for the least travel and re-time around rush hour">
+                    <Shuffle className="size-3" /> Optimise route
+                  </button>
+                </span>
               </div>
+              <DayInsights insights={d.insights} />
               <ol className="mt-3 space-y-1">
                 {d.activities.map((a, i) => {
                   const Icon = KIND_ICON[a.kind]
                   const score = Object.values(a.votes).reduce((s, v) => s + v, 0)
                   const mine = a.votes[voter] ?? 0
+                  const leg = d.route?.legs.find((l) => l.to === a.id)
+                  const ends = (() => {
+                    const [h, m] = a.time.split(':').map(Number)
+                    const t = Math.min(23 * 60 + 30, (h ?? 9) * 60 + (m ?? 0) + a.duration_min)
+                    return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
+                  })()
                   return (
-                    <li key={a.id} className={`flex items-start gap-3 rounded-xl p-2 transition ${focus === a.id ? 'bg-white/[0.06]' : 'hover:bg-white/[0.03]'}`}>
+                    <Fragment key={a.id}>
+                    {leg && <LegRow leg={leg} />}
+                    <li className={`flex items-start gap-3 rounded-xl p-2 transition ${focus === a.id ? 'bg-white/[0.06]' : 'hover:bg-white/[0.03]'}`}>
                       <span className="w-11 shrink-0 pt-0.5 font-mono text-[12px] text-ink-400">{a.time}</span>
                       <button type="button" onClick={() => setFocus(a.id)} className="min-w-0 flex-1 text-left">
                         <p className="flex items-center gap-1.5 text-[14px] font-medium text-white">
@@ -385,14 +444,23 @@ function TripView({ id }: { id: string }) {
                           {a.lat == null && <span className="text-[10.5px] text-ink-500">(not on map)</span>}
                         </p>
                         {a.note && <p className="text-[12.5px] text-ink-400">{a.note}</p>}
-                        <p className="text-[11px] text-ink-500">{d.day}.{i + 1} · {a.duration_min} min{a.label ? ` · ${a.label}` : ''}</p>
+                        <p className="text-[11px] text-ink-500">{d.day}.{i + 1} · {a.duration_min} min{a.label ? ` · ${a.label}` : ''}{a.added ? ` · added (${a.added === 'meal' ? 'meal slot' : 'nearby'})` : ''}</p>
                       </button>
                       <div className="flex shrink-0 items-center gap-0.5">
+                        {a.lat != null && (
+                          <button type="button" aria-label={`Explore near ${a.name}`} aria-expanded={nearbyFor === a.id} onClick={() => setNearbyFor(nearbyFor === a.id ? null : a.id)} className={`grid size-7 place-items-center rounded-lg ${nearbyFor === a.id ? 'bg-white/10 text-white' : 'text-ink-500 hover:text-white'}`} title="Food and sights nearby"><Compass className="size-3.5" /></button>
+                        )}
                         <button type="button" aria-label={`Upvote ${a.name}`} onClick={() => void vote(a, 1)} className={`grid size-7 place-items-center rounded-lg ${mine === 1 ? 'bg-emerald-500/15 text-emerald-300' : 'text-ink-500 hover:text-white'}`}><ThumbsUp className="size-3.5" /></button>
                         <span className={`w-5 text-center text-[12px] tabular-nums ${score > 0 ? 'text-emerald-300' : score < 0 ? 'text-rose-300' : 'text-ink-500'}`}>{score}</span>
                         <button type="button" aria-label={`Downvote ${a.name}`} onClick={() => void vote(a, -1)} className={`grid size-7 place-items-center rounded-lg ${mine === -1 ? 'bg-rose-500/15 text-rose-300' : 'text-ink-500 hover:text-white'}`}><ThumbsDown className="size-3.5" /></button>
                       </div>
                     </li>
+                    {nearbyFor === a.id && (
+                      <li className="pl-14">
+                        <NearbyPanel tripId={trip.id} day={d.day} activityId={a.id} defaultTime={ends} onAdded={(t) => { keep(t as Trip); setNearbyFor(null); setNote(`Added to day ${d.day}; travel times updated.`) }} />
+                      </li>
+                    )}
+                    </Fragment>
                   )
                 })}
               </ol>

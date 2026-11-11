@@ -159,13 +159,13 @@ def test_store_search_and_photos(tmp_path):
     assert image_type(PNG) == ("png", "image/png")
     with pytest.raises(ValueError):
         store.save_photo(b"<svg onload=alert(1)>")
-    assert store.photo_path("../../etc/passwd") is None
+    assert store.photo("../../etc/passwd") is None
     kept = store.save_photo(PNG)
     store.add({"kind": "stash", "title": "Bag", "photo_id": kept})
     orphan = store.save_photo(PNG)
     assert store.prune_photos(older_than_hours=24) == 0  # too recent
     assert store.prune_photos(older_than_hours=-1) == 1  # orphan removed, referenced photo kept
-    assert store.photo_path(kept) and store.photo_path(orphan) is None
+    assert store.photo(kept) and store.photo(orphan) is None
 
 
 # ── API ───────────────────────────────────────────────────────────────────
@@ -189,7 +189,7 @@ def test_loans_pantry_and_brief(client):
     say(client, "lent my drill to Raj")
     assert say(client, "Raj returned the drill")["entries"][0]["status"] == "done"
     say(client, "we're out of milk and eggs")
-    assert "Milk, Eggs" in say(client, "shopping list")["reply"]
+    assert "Eggs, Milk" in say(client, "shopping list")["reply"]
     say(client, "bought milk")
     assert [e["title"] for e in say(client, "shopping list")["entries"]] == ["Eggs"]
     say(client, "remind me to call the bank today")

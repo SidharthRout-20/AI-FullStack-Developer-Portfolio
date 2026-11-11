@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import re
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any, TypedDict
@@ -136,7 +137,8 @@ class KeeperAgent:
         elif cmd.action == "list" and cmd.kind:
             entries = self.store.list(cmd.kind)
             if cmd.kind == "pantry":
-                entries = [e for e in entries if e.data.get("state") == "need"]
+                # alphabetical: a stable order (timestamps have 1-second resolution, so ties are arbitrary)
+                entries = sorted((e for e in entries if e.data.get("state") == "need"), key=lambda e: e.title.lower())
         detail = f"{len(entries)} entr{'y' if len(entries) == 1 else 'ies'} {'matched' if cmd.action in ('find', 'list') else 'updated'}"
         return {"entries": entries, "trace": _trace(state, "act", start, detail)}
 
@@ -146,6 +148,8 @@ class KeeperAgent:
         photo_id = state.get("photo_id")
         caption = await self._caption(photo_id) if photo_id and self._caption else None
         base: dict[str, Any] = {"kind": c.kind, "title": title, "photo_id": photo_id, "note": c.note, "data": {}}
+        if _URGENT.search(state.get("text") or ""):
+            base["data"]["urgent"] = True  # alerts break through quiet hours, sent at high priority
         if caption:
             base["data"]["caption"] = caption
 
@@ -269,6 +273,9 @@ class KeeperAgent:
 
 
 _CURRENCY = {"INR": "₹", "RS": "₹", "RS.": "₹", "USD": "$", "EUR": "€", "GBP": "£"}
+
+
+_URGENT = re.compile(r"(urgent(ly)?|important|asap|don'?t forget|must not forget|critical)", re.I)
 
 
 def _plausible(c: Command) -> bool:

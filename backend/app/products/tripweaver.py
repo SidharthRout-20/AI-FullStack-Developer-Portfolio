@@ -2,7 +2,9 @@
 
 Tools (all free, no API keys):
   * geocoding: Open-Meteo geocoding (cities) and Photon / OpenStreetMap (places, biased to the destination)
-  * weather:   Open-Meteo daily forecast (≈16 days ahead), precipitation probability drives indoor/outdoor swaps
+  * weather:   Open-Meteo daily forecast (≈16 days ahead) with UV and feels-like temperature, plus air quality
+  * routing:   OSRM (leg times, best visiting order); rush-hour advice uses typical traffic patterns
+  * nearby:    Overpass / OpenStreetMap attractions and food (cuisine, vegetarian, opening hours)
 The agent: understand the request → geocode destination → fetch the forecast → LLM drafts a day-by-day plan that
 must respect the weather → every activity is geocoded onto the map. Re-planning rewrites only the affected days.
 Group mode: votes are shared live to every open browser through Server-Sent Events.
@@ -26,11 +28,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.core.ai import Lenient, ask_json, llm_failure, sse
 from app.core.docstore import DocStore, new_id
 from app.core.security import limiter, rate_limit_value
+from app.products import travel
 from app.rag.guardrails import normalize
 
 logger = logging.getLogger(__name__)
 UA = {"User-Agent": "TripWeaver-portfolio/1.0"}
 RAINY = 60  # % precipitation probability that counts as a wet day
+# One server, short timeout: when it is at capacity the Nominatim fallback answers in ~2 s instead of waiting
+# on mirrors that are usually just as busy.
+OVERPASS = ("https://overpass-api.de/api/interpreter",)
 
 
 class TripRequest(Lenient):
@@ -125,6 +131,7 @@ class Tools:
         self._sem = asyncio.Semaphore(4)
         self._nominatim_lock = asyncio.Lock()  # OSM policy: max 1 request/second
         self._photon_down_until = 0.0
+        self._overpass_down_until = 0.0
         self._cache: dict[tuple[str, float, float], dict[str, Any] | None] = {}
 
     @property
@@ -204,16 +211,148 @@ class Tools:
         r = await self.client.get(
             "https://api.open-meteo.com/v1/forecast",
             params={"latitude": lat, "longitude": lng, "timezone": tz or "auto", "forecast_days": 16,
-                    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"},
+                    "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,"
+                             "uv_index_max,apparent_temperature_max"},
         )  # fmt: skip
         d = r.json().get("daily") or {}
+        n = len(d.get("time", []))
+        col = lambda k: d.get(k) or [None] * n  # noqa: E731
         return {
-            day: {"code": code, "tmax": tmax, "tmin": tmin, "rain": rain}
-            for day, code, tmax, tmin, rain in zip(
-                d.get("time", []), d.get("weather_code", []), d.get("temperature_2m_max", []),
-                d.get("temperature_2m_min", []), d.get("precipitation_probability_max", []), strict=False,
+            day: {"code": code, "tmax": tmax, "tmin": tmin, "rain": rain, "uv": uv, "feels_max": feels}
+            for day, code, tmax, tmin, rain, uv, feels in zip(
+                d.get("time", []), col("weather_code"), col("temperature_2m_max"), col("temperature_2m_min"),
+                col("precipitation_probability_max"), col("uv_index_max"), col("apparent_temperature_max"), strict=False,
             )
         }  # fmt: skip
+
+    async def air_quality(self, lat: float, lng: float) -> dict[str, float]:
+        """Daily max US AQI for the next ~5 days (Open-Meteo air quality)."""
+        r = await self.client.get(
+            "https://air-quality-api.open-meteo.com/v1/air-quality",
+            params={"latitude": lat, "longitude": lng, "hourly": "us_aqi", "timezone": "auto", "forecast_days": 5},
+        )
+        h = r.json().get("hourly") or {}
+        out: dict[str, float] = {}
+        for t, v in zip(h.get("time", []), h.get("us_aqi", []), strict=False):
+            if v is not None:
+                out[t[:10]] = max(out.get(t[:10], 0), float(v))
+        return out
+
+    async def route(self, stops: list[tuple[float, float]]) -> list[dict[str, float]]:
+        """Driving legs between consecutive stops (OSRM): [{duration_s, distance_m}]."""
+        coords = ";".join(f"{lng:.5f},{lat:.5f}" for lat, lng in stops)
+        async with self._sem:
+            r = await self.client.get(f"https://router.project-osrm.org/route/v1/driving/{coords}",
+                                      params={"overview": "false", "steps": "false"})  # fmt: skip
+        body = r.json()
+        if body.get("code") != "Ok":
+            return []
+        return [{"duration_s": leg["duration"], "distance_m": leg["distance"]} for leg in body["routes"][0]["legs"]]
+
+    async def best_order(self, stops: list[tuple[float, float]]) -> list[int]:
+        """Fastest visiting order that starts at the first stop (OSRM trip service): stop indices in order."""
+        coords = ";".join(f"{lng:.5f},{lat:.5f}" for lat, lng in stops)
+        async with self._sem:
+            r = await self.client.get(f"https://router.project-osrm.org/trip/v1/driving/{coords}",
+                                      params={"source": "first", "roundtrip": "false", "destination": "any",
+                                              "overview": "false"})  # fmt: skip
+        body = r.json()
+        if body.get("code") != "Ok":
+            return list(range(len(stops)))
+        visit = [w["waypoint_index"] for w in body["waypoints"]]  # input i is visited at position visit[i]
+        return sorted(range(len(stops)), key=lambda i: visit[i])
+
+    async def nearby(self, lat: float, lng: float, group: str, radius: int = 900) -> list[dict[str, Any]]:
+        """Named attractions ("sights") or eateries ("food") around a point, from OpenStreetMap (Overpass)."""
+        key = ("nearby:" + group, round(lat, 3), round(lng, 3))
+        if key in self._cache:
+            return self._cache[key]  # type: ignore[return-value]
+        around = f"(around:{radius},{lat:.5f},{lng:.5f})"
+        if group == "food":
+            body = f'nwr{around}["amenity"~"^(restaurant|cafe|fast_food|food_court|ice_cream)$"]["name"];'
+        else:
+            body = (f'nwr{around}["tourism"~"^(attraction|museum|viewpoint|gallery|artwork|zoo|aquarium|theme_park)$"]["name"];'
+                    f'nwr{around}["historic"]["name"];nwr{around}["leisure"~"^(park|garden|nature_reserve)$"]["name"];')  # fmt: skip
+        query = f"[out:json][timeout:15];({body});out center tags 80;"
+        try:
+            raw = await self._overpass(query)
+        except httpx.HTTPError:
+            raw = await self._nominatim_area(lat, lng, group, radius)  # Overpass busy: OSM search as a fallback
+        places: dict[str, dict[str, Any]] = {}
+        for tags, plat, plng in raw:
+            if not tags.get("name") or plat is None:
+                continue
+            grp, category = travel.describe_place(tags)
+            if grp != group:
+                continue
+            diet = (tags.get("diet:vegetarian") or "") + (tags.get("diet:vegan") or "")
+            places.setdefault(tags["name"].lower(), {
+                "name": tags["name"], "group": grp, "category": category, "lat": plat, "lng": plng,
+                "distance_m": round(travel.km_between((lat, lng), (plat, plng)) * 1000),
+                "cuisine": (tags.get("cuisine") or "").replace(";", ", ").replace("_", " ") or None,
+                "veg": diet.startswith(("yes", "only")) or "only" in diet,
+                "opening_hours": tags.get("opening_hours"),
+                "website": tags.get("website") or tags.get("contact:website"),
+                "wheelchair": tags.get("wheelchair"),
+            })  # fmt: skip
+        out = sorted(places.values(), key=lambda p: p["distance_m"])[:40]
+        self._cache[key] = out  # type: ignore[assignment]
+        return out
+
+    async def _overpass(self, query: str) -> list[tuple[dict[str, str], float | None, float | None]]:
+        if time.monotonic() < self._overpass_down_until:
+            raise httpx.HTTPError("Overpass recently unavailable")
+        for server in OVERPASS:  # public servers are often at capacity: fall through to the next mirror
+            try:
+                async with self._sem:
+                    r = await self.client.post(server, data={"data": query}, timeout=httpx.Timeout(7, connect=4))
+                if r.status_code == 200:
+                    return [
+                        (el.get("tags") or {}, el.get("lat") or (el.get("center") or {}).get("lat"),
+                         el.get("lon") or (el.get("center") or {}).get("lon"))
+                        for el in r.json().get("elements", [])
+                    ]  # fmt: skip
+            except (httpx.HTTPError, ValueError):
+                continue
+        self._overpass_down_until = time.monotonic() + 600  # skip it for 10 minutes; use the fallback meanwhile
+        logger.info("Overpass unavailable; using Nominatim for nearby places for 10 minutes")
+        raise httpx.HTTPError("All Overpass servers are busy")
+
+    async def _nominatim_area(
+        self, lat: float, lng: float, group: str, radius: int
+    ) -> list[tuple[dict[str, str], float | None, float | None]]:
+        """OpenStreetMap search inside a box around the point (1 request/second, per the usage policy)."""
+        d = radius / 111_000
+        box = f"{lng - d * 1.3},{lat + d},{lng + d * 1.3},{lat - d}"
+        words = ["restaurant", "cafe"] if group == "food" else ["museum", "attraction", "viewpoint", "park"]
+        out: list[tuple[dict[str, str], float | None, float | None]] = []
+        for word in words:
+            async with self._nominatim_lock:
+                started = time.monotonic()
+                try:
+                    r = await self.client.get(
+                        "https://nominatim.openstreetmap.org/search",
+                        params={
+                            "q": word,
+                            "format": "jsonv2",
+                            "limit": 30,
+                            "viewbox": box,
+                            "bounded": 1,
+                            "extratags": 1,
+                        },
+                        timeout=httpx.Timeout(10, connect=5),
+                    )
+                    rows = r.json() if r.status_code == 200 else []
+                except (httpx.HTTPError, ValueError):
+                    rows = []
+                finally:
+                    await asyncio.sleep(max(0.0, 1.05 - (time.monotonic() - started)))
+            for row in rows:
+                tags = {k: str(v) for k, v in (row.get("extratags") or {}).items()}
+                tags.setdefault(row.get("category", ""), row.get("type", "yes"))
+                tags["name"] = row.get("name") or row.get("display_name", "").split(",")[0]
+                out.append((tags, float(row["lat"]), float(row["lon"])))
+        return out
 
 
 # ── Live updates for group mode ──────────────────────────────────────────
@@ -225,15 +364,31 @@ class Hub:
         for q in list(self._subs.get(trip_id, ())):
             q.put_nowait(event)
 
-    async def subscribe(self, trip_id: str) -> AsyncIterator[dict[str, Any]]:
+    async def subscribe(
+        self, trip_id: str, load: Callable[[], dict[str, Any] | None] | None = None
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Live events for one trip. On serverless hosts a change may happen on another instance, so the
+        stored trip is also re-read every few seconds and pushed when its version/updated_at moved."""
         q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)
         self._subs[trip_id].add(q)
+        seen = (load() or {}).get("updated_at") if load else None
+        idle = 0.0
         try:
             while True:
                 try:
-                    yield await asyncio.wait_for(q.get(), 20)
+                    ev = await asyncio.wait_for(q.get(), 4)
+                    if ev.get("event") == "trip":
+                        seen = ev["trip"].get("updated_at")
+                    yield ev
                 except TimeoutError:
-                    yield {"event": "ping"}
+                    idle += 4
+                    current = load() if load else None
+                    if current and current.get("updated_at") != seen:
+                        seen = current.get("updated_at")
+                        yield {"event": "trip", "trip": current}
+                    elif idle >= 20:
+                        idle = 0
+                        yield {"event": "ping"}
         finally:
             self._subs[trip_id].discard(q)
 
@@ -302,6 +457,15 @@ class TripService:
         for i, d in enumerate(days):
             d["date"] = dates[i] if i < len(dates) else None
             d["weather"] = wx[i] if i < len(wx) else None
+        draft = {"request": req.model_dump(mode="json"), "city": city, "days": days}
+        meals = await self._add_meals(draft)
+        yield step("meals", f"{meals} meal stop{'s' if meals != 1 else ''} added near your route" if meals
+                   else "Meals already planned (or no restaurant data nearby)")  # fmt: skip
+        await self._enrich(draft)
+        warn = sum(1 for d in days for x in d.get("insights", []) if x["level"] == "warn")
+        drive = sum((d.get("route") or {}).get("drive_min", 0) for d in days)
+        yield step("wellbeing", f"Routes timed ({drive} min driving in total) · {warn} heads-up"
+                   f"{'s' if warn != 1 else ''} on traffic, heat, air or pace")  # fmt: skip
         trip = self.db.put(
             "trips",
             {"request": req.model_dump(mode="json"), "prompt": prompt, "title": plan.title, "summary": plan.summary,
@@ -353,6 +517,7 @@ class TripService:
                 )
             else:
                 days.append({**d, "changed": False})
+        await self._enrich({**trip, "days": days})
         history = [*trip.get("history", []), {"version": trip.get("version", 1), "event": event, "explanation": result.explanation,
                                               "days_changed": sorted(located), "at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds")}][-10:]  # fmt: skip
         updated = self.db.patch(
@@ -375,6 +540,133 @@ class TripService:
         updated = self.db.patch("trips", trip["id"], {"days": days})
         self.hub.publish(trip["id"], {"event": "trip", "trip": updated})
         return {"trip": updated, "alerts": alerts}
+
+    # ── routes, wellbeing, nearby places and meals ────────────────────────
+    async def _enrich(self, trip: dict[str, Any]) -> None:
+        """Fill each day's route (leg times, rush-hour flags), air quality and insights in place. Best effort."""
+        city = trip["city"]
+        req = trip.get("request") or {}
+        aqi: dict[str, float] = {}
+        try:
+            aqi = await self.tools.air_quality(city["lat"], city["lng"])
+        except Exception:  # noqa: BLE001 - optional data
+            logger.info("air quality unavailable")
+
+        async def one(d: dict[str, Any]) -> None:
+            stops = travel.located(d["activities"])
+            legs = None
+            if len(stops) >= 2:
+                try:
+                    legs = await self.tools.route([(a["lat"], a["lng"]) for a in stops])
+                except Exception:  # noqa: BLE001 - fall back to straight-line estimates
+                    logger.info("routing unavailable")
+            d["route"] = travel.build_route(d["activities"], legs)
+            if d.get("date") in aqi:
+                d["weather"] = {**(d.get("weather") or {}), "aqi": aqi[d["date"]]}
+            d["insights"] = travel.insights(d, req.get("travellers"), req.get("pace", "balanced"))
+
+        await asyncio.gather(*(one(d) for d in trip["days"]))
+
+    async def _places(self, lat: float, lng: float, group: str) -> list[dict[str, Any]]:
+        try:
+            return await self.tools.nearby(lat, lng, group)
+        except Exception:  # noqa: BLE001
+            logger.info("nearby search unavailable")
+            return []
+
+    async def _add_meals(self, trip: dict[str, Any]) -> int:
+        """Slot lunch/dinner near where the travellers will be, when a day has none. Returns meals added."""
+        prefer_veg = any(w in " ".join((trip.get("request") or {}).get("interests") or []).lower()
+                         for w in ("vegetarian", "vegan", "veg"))  # fmt: skip
+        added = 0
+        for d in trip["days"]:
+            for label, hhmm in travel.meal_gaps(d["activities"]):
+                anchor = travel.anchor_for(d["activities"], hhmm)
+                if anchor is None:
+                    continue
+                when = dt.datetime.combine(
+                    dt.date.fromisoformat(d["date"]) if d.get("date") else dt.date.today(),
+                    dt.time(*map(int, hhmm.split(":"))),
+                )
+                pick = travel.pick_meal(await self._places(anchor["lat"], anchor["lng"], "food"), when, prefer_veg)
+                if pick is None:
+                    continue
+                note = " · ".join(filter(None, [f"{label.title()} near {anchor['name']}", pick.get("cuisine"),
+                                                f"{pick['distance_m']} m away", "vegetarian-friendly" if pick.get("veg") else None]))  # fmt: skip
+                d["activities"] = self._insert(d["activities"], {
+                    "time": hhmm, "name": pick["name"], "place_query": pick["name"], "kind": "food",
+                    "duration_min": 60 if label == "lunch" else 75, "note": note, "id": new_id(), "votes": {},
+                    "lat": pick["lat"], "lng": pick["lng"], "label": pick["name"], "added": "meal",
+                })  # fmt: skip
+                added += 1
+        return added
+
+    @staticmethod
+    def _insert(acts: list[dict[str, Any]], act: dict[str, Any]) -> list[dict[str, Any]]:
+        out = [*acts, act]
+        out.sort(key=lambda a: travel.to_min(a.get("time", "09:00")))
+        return out
+
+    def _save(self, trip: dict[str, Any], days: list[dict[str, Any]]) -> dict[str, Any]:
+        updated = self.db.patch("trips", trip["id"], {"days": days, "version": trip.get("version", 1) + 1})
+        self.hub.publish(trip["id"], {"event": "trip", "trip": updated})
+        return updated  # type: ignore[return-value]
+
+    def _day(self, trip: dict[str, Any], day: int) -> dict[str, Any]:
+        for d in trip["days"]:
+            if d["day"] == day:
+                return d
+        raise HTTPException(404, "Day not found.")
+
+    async def optimise_day(self, trip: dict[str, Any], day: int) -> dict[str, Any]:
+        """Reorder a day's sights for the least travel (meals keep their slots), then re-time and re-check it."""
+        d = self._day(trip, day)
+        movable = [a for a in d["activities"] if a.get("kind") != "food" and a.get("lat") is not None]
+        before = (d.get("route") or {}).get("drive_min", 0) + (d.get("route") or {}).get("walk_min", 0)
+        if len(movable) >= 3:
+            order = await self.tools.best_order([(a["lat"], a["lng"]) for a in movable])
+            d["activities"] = travel.reorder(d["activities"], order)
+        await self._enrich({**trip, "days": [d]})
+        d["activities"] = travel.retime(d["activities"], d["route"])
+        await self._enrich({**trip, "days": [d]})
+        after = d["route"].get("drive_min", 0) + d["route"].get("walk_min", 0)
+        return {"trip": self._save(trip, trip["days"]), "travel_before": before, "travel_after": after}
+
+    async def nearby(
+        self, trip: dict[str, Any], activity_id: str, group: str, cuisine: str | None, veg: bool, open_now: bool
+    ) -> dict[str, Any]:
+        for d in trip["days"]:
+            for a in d["activities"]:
+                if a["id"] == activity_id:
+                    if a.get("lat") is None:
+                        raise HTTPException(422, "This stop isn't on the map, so there's nothing to search around.")
+                    places = await self._places(a["lat"], a["lng"], group)
+                    when = None
+                    if open_now and d.get("date"):
+                        end = travel.to_min(a.get("time", "09:00")) + int(a.get("duration_min", 60))
+                        when = dt.datetime.combine(
+                            dt.date.fromisoformat(d["date"]), dt.time(*divmod(min(end, 1435), 60))
+                        )
+                    # "Breakfast at Pastelaria Versailles" already covers the café "Pastelaria Versailles".
+                    planned = " | ".join(
+                        f"{x['name']} {x.get('label') or ''}".lower() for day in trip["days"] for x in day["activities"]
+                    )
+                    out = [{**p, "planned": p["name"].lower() in planned}
+                           for p in travel.filter_places(places, cuisine=cuisine, veg=veg, open_at=when)]  # fmt: skip
+                    return {"day": d["day"], "around": a["name"], "places": out[:25]}
+        raise HTTPException(404, "Activity not found.")
+
+    async def add_stop(self, trip: dict[str, Any], day: int, stop: dict[str, Any]) -> dict[str, Any]:
+        d = self._day(trip, day)
+        d["activities"] = self._insert(d["activities"], {**stop, "id": new_id(), "votes": {}, "label": stop["name"],
+                                                          "place_query": stop["name"], "added": "nearby"})  # fmt: skip
+        await self._enrich({**trip, "days": [d]})
+        return self._save(trip, trip["days"])
+
+    async def add_meals(self, trip: dict[str, Any]) -> dict[str, Any]:
+        added = await self._add_meals(trip)
+        await self._enrich(trip)
+        return {"trip": self._save(trip, trip["days"]), "added": added}
 
     def vote(self, trip: dict[str, Any], activity_id: str, voter: str, value: int) -> dict[str, Any]:
         days = trip["days"]
@@ -410,6 +702,17 @@ class PlanIn(BaseModel):
 class ReplanIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     event: str = Field(min_length=5, max_length=500)
+
+
+class StopIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=120)
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    kind: Literal["outdoor", "indoor", "food"] = "outdoor"
+    time: str = Field("12:00", pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    duration_min: int = Field(60, ge=10, le=600)
+    note: str = Field("", max_length=300)
 
 
 class VoteIn(BaseModel):
@@ -503,9 +806,44 @@ async def live(trip_id: str, svc: Trips) -> StreamingResponse:
     _trip(svc, trip_id)
 
     async def events() -> AsyncIterator[str]:
-        async for ev in svc.hub.subscribe(trip_id[:40]):
+        async for ev in svc.hub.subscribe(trip_id[:40], lambda: svc.db.get("trips", trip_id[:40])):
             yield sse(ev.pop("event"), ev)
 
     return StreamingResponse(
         events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     )
+
+
+@router.post("/{trip_id}/days/{day}/optimise")
+@limiter.limit(rate_limit_value)
+async def optimise_day(request: Request, trip_id: str, day: int, svc: Trips) -> dict[str, Any]:
+    return await _guard(svc.optimise_day(_trip(svc, trip_id), day))
+
+
+@router.get("/{trip_id}/nearby")
+@limiter.limit("30/minute")
+async def nearby(
+    request: Request,
+    trip_id: str,
+    activity_id: str,
+    svc: Trips,
+    group: Literal["food", "sights"] = "food",
+    cuisine: str | None = None,
+    veg: bool = False,
+    open_now: bool = False,
+) -> dict[str, Any]:
+    return await _guard(
+        svc.nearby(_trip(svc, trip_id), activity_id[:40], group, (cuisine or "")[:40] or None, veg, open_now)
+    )
+
+
+@router.post("/{trip_id}/days/{day}/stops")
+@limiter.limit(rate_limit_value)
+async def add_stop(request: Request, trip_id: str, day: int, body: StopIn, svc: Trips) -> dict[str, Any]:
+    return await _guard(svc.add_stop(_trip(svc, trip_id), day, body.model_dump()))
+
+
+@router.post("/{trip_id}/meals")
+@limiter.limit(rate_limit_value)
+async def add_meals(request: Request, trip_id: str, svc: Trips) -> dict[str, Any]:
+    return await _guard(svc.add_meals(_trip(svc, trip_id)))

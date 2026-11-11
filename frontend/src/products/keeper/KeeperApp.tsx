@@ -18,6 +18,7 @@ import {
 import { Capture, type CaptureInput } from './Capture'
 import { currentPosition, notify, registerServiceWorker } from './device'
 import { EntryCard } from './EntryCard'
+import { AlarmBanner, ReminderSettingsCard, useAlarms } from './Reminders'
 import { localISO, MODULES, moduleOf, type ModuleId } from './modules'
 import { ScanSheet, type ScanState } from './ScanSheet'
 import { TodayView } from './TodayView'
@@ -66,6 +67,9 @@ export default function KeeperApp() {
     }
   }, [handle])
 
+  // Timed reminders: chime + read aloud + notification while Keeper is open.
+  const alarms = useAlarms(!!status && !needKey, () => void refresh())
+
   const loadBrief = useCallback(async () => {
     setBriefLoading(true)
     try {
@@ -100,7 +104,7 @@ export default function KeeperApp() {
     return () => link.remove()
   }, [boot])
 
-  // Local reminders while the app is open (or installed and backgrounded): once per entry per day.
+  // Daily nudge for things due today without a set time (timed reminders come from useAlarms).
   useEffect(() => {
     if (perm !== 'granted') return
     const fire = () => {
@@ -113,7 +117,7 @@ export default function KeeperApp() {
       }
       for (const a of agenda) {
         if (a.bucket !== 'today' && a.bucket !== 'overdue') continue
-        if (a.entry.due_time && a.entry.due_time > new Date().toTimeString().slice(0, 5)) continue
+        if (a.entry.due_time) continue
         if (sent[a.entry.id] === today) continue
         void notify('Keeper', a.label, a.entry.id)
         sent[a.entry.id] = today
@@ -329,6 +333,11 @@ export default function KeeperApp() {
                     notifications={perm}
                     onEnableNotifications={() => void Notification.requestPermission().then(setPerm)}
                   />
+                ) : null}
+                {module === 'today' ? (
+                  <div className="mt-5">
+                    <ReminderSettingsCard onToast={setToast} />
+                  </div>
                 ) : (
                   <>
                     <div className="mb-3 flex items-end justify-between gap-3">
@@ -366,6 +375,8 @@ export default function KeeperApp() {
       </div>
 
       <ScanSheet scan={scan} onClose={() => setScan(null)} onSave={saveScan} />
+
+      <AlarmBanner alerts={alarms.active} onResolve={(a, action) => void alarms.resolve(a, action).catch(handle)} />
 
       <AnimatePresence>
         {toast && (

@@ -79,9 +79,29 @@ class FakeTools:
 
     async def forecast(self, lat, lng, tz):
         return {
-            "2030-05-01": {"code": 61, "tmax": 18, "tmin": 12, "rain": 80},
-            "2030-05-02": {"code": 1, "tmax": 22, "tmin": 14, "rain": 5},
+            "2030-05-01": {"code": 61, "tmax": 18, "tmin": 12, "rain": 80, "uv": 3, "feels_max": 17},
+            "2030-05-02": {"code": 1, "tmax": 36, "tmin": 24, "rain": 5, "uv": 9, "feels_max": 38},
         }
+
+    async def air_quality(self, lat, lng):
+        return {"2030-05-02": 160.0}
+
+    async def route(self, stops):
+        return [{"duration_s": 1500, "distance_m": 9000} for _ in stops[1:]]
+
+    async def best_order(self, stops):
+        return [0, *range(len(stops) - 1, 0, -1)]  # keep the start, visit the rest in reverse
+
+    async def nearby(self, lat, lng, group, radius=900):
+        if group == "food":
+            return [
+                {"name": "Tasca do Chico", "group": "food", "category": "restaurant", "lat": lat + 0.001, "lng": lng,
+                 "distance_m": 120, "cuisine": "portuguese", "veg": False, "opening_hours": "Mo-Su 12:00-23:00"},
+                {"name": "Green Bowl", "group": "food", "category": "restaurant", "lat": lat, "lng": lng + 0.002,
+                 "distance_m": 300, "cuisine": "vegan", "veg": True, "opening_hours": "Mo-Fr 08:00-11:00"},
+            ]  # fmt: skip
+        return [{"name": "Miradouro da Graça", "group": "sights", "category": "viewpoint", "lat": lat, "lng": lng,
+                 "distance_m": 200, "cuisine": None, "veg": False, "opening_hours": "24/7"}]  # fmt: skip
 
 
 def make_zip() -> bytes:
@@ -285,15 +305,39 @@ def test_trip_plan_replan_vote_weather(app_client):
     c = app_client
     events = parse_sse(c.post("/api/trips/plan", json={"prompt": "2 days in Lisbon from May 1 2030, love food"}).text)
     steps = [d["step"] for e, d in events if e == "step"]
-    assert steps == ["understand", "geocode", "weather", "plan", "map"] and events[-1][0] == "done"
+    assert (
+        steps == ["understand", "geocode", "weather", "plan", "map", "meals", "wellbeing"] and events[-1][0] == "done"
+    )
     trip = events[-1][1]["trip"]
     act = trip["days"][0]["activities"][0]
     assert act["lat"] and trip["days"][0]["weather"]["rain"] == 80 and trip["days"][0]["date"] == "2030-05-01"
 
+    day2 = trip["days"][1]
+    assert day2["route"]["legs"] and day2["weather"]["aqi"] == 160.0
+    kinds = {i["type"] for i in day2["insights"]}
+    assert {"heat", "uv", "air", "hydration"} <= kinds  # 38°C feels-like, UV 9, AQI 160
+    assert any(
+        a.get("added") == "meal" and a["name"] == "Tasca do Chico" for d in trip["days"] for a in d["activities"]
+    )
+
+    first = trip["days"][0]["activities"][0]
+    near = c.get(
+        f"/api/trips/{trip['id']}/nearby", params={"activity_id": first["id"], "group": "food", "veg": True}
+    ).json()
+    assert [p["name"] for p in near["places"]] == ["Green Bowl"]
+    sights = c.get(f"/api/trips/{trip['id']}/nearby", params={"activity_id": first["id"], "group": "sights"}).json()
+    stop = sights["places"][0]
+    added = c.post(f"/api/trips/{trip['id']}/days/1/stops",
+                   json={"name": stop["name"], "lat": stop["lat"], "lng": stop["lng"], "time": "16:00"}).json()  # fmt: skip
+    assert any(a["name"] == "Miradouro da Graça" for a in added["days"][0]["activities"])
+    opt = c.post(f"/api/trips/{trip['id']}/days/1/optimise").json()
+    assert opt["trip"]["version"] > added["version"] and "travel_after" in opt
+    trip = opt["trip"]
+
     wx = c.post(f"/api/trips/{trip['id']}/weather-check").json()
     assert wx["alerts"][0]["day"] == 1 and "Castelo de São Jorge" in wx["alerts"][0]["outdoor"]
     out = c.post(f"/api/trips/{trip['id']}/replan", json={"event": "Heavy rain on day 1"}).json()
-    assert out["days_changed"] == [1] and out["trip"]["version"] == 2
+    assert out["days_changed"] == [1] and out["trip"]["version"] == trip["version"] + 1
     assert (
         out["trip"]["days"][0]["activities"][0]["name"] == "Gulbenkian Museum"
         and out["trip"]["days"][1]["changed"] is False

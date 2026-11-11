@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -22,6 +22,7 @@ class Settings(BaseSettings):
         env_file=(PROJECT_ROOT / ".env", BACKEND_DIR / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     # ── App ────────────────────────────────────────────────────────────────
@@ -43,6 +44,15 @@ class Settings(BaseSettings):
     # ── Storage (all local, file-based) ────────────────────────────────────
     documents_dir: Path = PROJECT_ROOT / "documents"
     data_dir: Path = BACKEND_DIR / "data"
+    # Shared Postgres (e.g. Neon via the Vercel integration). Required on serverless hosts, where data_dir is a
+    # per-instance /tmp that is wiped on cold starts. Unset → local SQLite files in data_dir.
+    database_url: SecretStr | None = Field(None, validation_alias=AliasChoices("DATABASE_URL", "POSTGRES_URL"))
+    # Shared secret for scheduled calls (reminders, daily brief): "Authorization: Bearer <CRON_SECRET>".
+    cron_secret: SecretStr | None = None
+    # Background loops (reminders, scheduled flows). Off on serverless hosts, which use the cron endpoint instead.
+    background_jobs: bool = True
+    # This backend's public URL, used for one-tap links in notifications sent by the background loop.
+    public_url: str = "http://localhost:8000"
     collection_name: str = "documents"
     auto_ingest: bool = True  # index documents at startup if anything changed
     watch_documents: bool = True  # re-index automatically when files in documents_dir change
@@ -112,6 +122,10 @@ class Settings(BaseSettings):
             # Browsers send Origin without a trailing slash, so "https://site.app/" would never match.
             return [o.strip().strip("\"'").rstrip("/") for o in v if isinstance(o, str) and o.strip()]
         return v
+
+    @property
+    def db_url(self) -> str | None:
+        return self.database_url.get_secret_value() if self.database_url else None
 
     @property
     def allowed_origins(self) -> list[str]:
