@@ -104,7 +104,10 @@ class Settings(BaseSettings):
     @classmethod
     def _split_csv(cls, v: object) -> object:
         if isinstance(v, str) and not v.strip().startswith("["):
-            return [o.strip() for o in v.split(",") if o.strip()]
+            v = v.split(",")
+        if isinstance(v, list):
+            # Browsers send Origin without a trailing slash, so "https://site.app/" would never match.
+            return [o.strip().strip("\"'").rstrip("/") for o in v if isinstance(o, str) and o.strip()]
         return v
 
     @property
