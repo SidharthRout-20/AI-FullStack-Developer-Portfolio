@@ -204,7 +204,7 @@ function DocumentsMenu({ documents, chunks }: { documents: DocumentInfo[]; chunk
               ))}
             </ul>
             <p className="mt-2 border-t border-white/[0.06] px-2 pt-2 text-[11px] leading-snug text-ink-400">
-              Stored locally in ChromaDB, embedded with bge-small (ONNX), searchable via vectors + BM25.
+              Stored locally in SQLite, embedded with bge-small (ONNX), searchable via vectors + BM25.
             </p>
           </motion.div>
         )}

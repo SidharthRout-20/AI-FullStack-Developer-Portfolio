@@ -116,7 +116,7 @@ every later demo credible. Then the features that are most visibly "not a chatbo
   exported to self-hosted **Langfuse** or Grafana Tempo (both free); structured JSON logs with request IDs.
 - **Auth:** OIDC sign-in (Auth0 free tier, Keycloak, or GitHub OAuth); role-based access (viewer / editor /
   admin) that gates the admin endpoints.
-- **Workspaces:** multiple isolated knowledge bases (one Chroma collection per workspace) with a switcher in the
+- **Workspaces:** multiple isolated knowledge bases (one vector index per workspace) with a switcher in the
   top bar. Persistent conversations via LangGraph checkpointers.
 - **Scale:** Redis-backed rate limiting and semantic answer cache; Postgres + pgvector option; a worker process
   for ingestion.

@@ -1,16 +1,14 @@
 """Vercel entry point: exposes the FastAPI app that lives in backend/app.
 
 Named `index.py` (not `app.py`) so it can't shadow the `app` package it imports.
-Serverless functions only have a writable /tmp and don't keep running between requests, so on Vercel
-the data dir and every library cache move to /tmp and the background document watcher is off
-(documents are indexed at startup).
+The serverless defaults (data and caches in /tmp, no background watcher) live in backend/app/__init__.py,
+so they apply whether Vercel starts this file or backend/app/main.py.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import sys
 import time
 from contextlib import AsyncExitStack
@@ -18,18 +16,6 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "backend"))
-
-if os.environ.get("VERCEL"):  # /tmp is the only writable directory on Vercel
-    os.environ.setdefault("DATA_DIR", "/tmp/portfolio-data")  # noqa: S108
-    os.environ.setdefault("WATCH_DOCUMENTS", "false")
-    os.environ.setdefault("SERVE_FRONTEND", "false")
-    os.environ.setdefault("ENVIRONMENT", "production")
-    # The home directory is read-only on Vercel. Hugging Face (used by fastembed to download the
-    # embedding model) writes its cache and xet logs under HF_HOME (~/.cache/huggingface by default);
-    # if that isn't writable the download fails, startup raises, and every request crashes.
-    os.environ.setdefault("HF_HOME", "/tmp/hf-home")  # noqa: S108
-    os.environ.setdefault("XDG_CACHE_HOME", "/tmp/cache")  # noqa: S108
-    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 
 logger = logging.getLogger("startup")
 RETRY_AFTER_S = 60.0

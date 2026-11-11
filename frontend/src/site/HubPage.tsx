@@ -261,9 +261,13 @@ export function HubPage() {
 }
 
 // ── Hero ───────────────────────────────────────────────────────────────────
+const LIVE_PRODUCTS = PRODUCTS.filter((p) => p.status === 'live').length
+/** Fills the {products} placeholder in site copy with the current number of live products. */
+const withCounts = (text: string) => text.replaceAll('{products}', String(LIVE_PRODUCTS))
+
 const STATS = [
-  { value: '5+', label: 'years in software' },
-  { value: `${PRODUCTS.filter((p) => p.status === 'live').length}`, label: 'live AI products' },
+  { value: `${SITE.years}+`, label: 'years in software' },
+  { value: `${LIVE_PRODUCTS}`, label: 'live AI products' },
   { value: '4', label: 'enterprise clients' },
 ]
 
@@ -355,7 +359,7 @@ function Hero() {
             transition={{ delay: 0.12, duration: 0.6 }}
             className="mt-5 max-w-xl text-[16px] leading-relaxed text-ink-300"
           >
-            <span className="text-ink-100">{SITE.headline}</span> {SITE.intro}
+            <span className="text-ink-100">{SITE.headline}</span> {withCounts(SITE.intro)}
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 16 }}
@@ -436,7 +440,7 @@ function ExpertiseCard({ x }: { x: Expertise }) {
         <Icon className="size-6" />
       </span>
       <h3 className="mt-5 text-lg font-semibold text-white">{x.title}</h3>
-      <p className="mt-2 text-[14px] leading-relaxed text-ink-300">{x.text}</p>
+      <p className="mt-2 text-[14px] leading-relaxed text-ink-300">{withCounts(x.text)}</p>
       <p className="mt-5 text-[11px] font-semibold tracking-[0.16em] text-ink-500 uppercase">Tech stack</p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {x.stack.map((s) => (
@@ -679,7 +683,7 @@ function ParallaxImage({ src, alt, fallback }: { src: string; alt: string; fallb
   )
 }
 
-const STACK = ['React 19', 'TypeScript', 'Tailwind v4', 'Motion', 'React Flow', 'Leaflet', 'Python', 'FastAPI', 'LangGraph', 'Claude', 'Groq', 'Whisper', 'FastEmbed', 'ChromaDB', 'SQLite', 'Docker', 'GitHub Actions']
+const STACK = ['React 19', 'TypeScript', 'Tailwind v4', 'Motion', 'React Flow', 'Leaflet', 'Python', 'FastAPI', 'LangGraph', 'Claude', 'Groq', 'Whisper', 'FastEmbed', 'SQLite', 'Docker', 'GitHub Actions']
 
 function Stack() {
   return (

@@ -50,7 +50,7 @@ export const PRODUCTS: Product[] = [
       { title: 'Library', text: 'AI document briefs: summary, highlights, topics, suggested questions.' },
       { title: 'Match Analyzer', text: 'Score a JD / RFP against documents with cited, per-requirement verdicts.' },
     ],
-    stack: ['React 19', 'TypeScript', 'Tailwind v4', 'React Flow', 'FastAPI', 'LangGraph', 'ChromaDB', 'Groq / Claude'],
+    stack: ['React 19', 'TypeScript', 'Tailwind v4', 'React Flow', 'FastAPI', 'LangGraph', 'SQLite vectors', 'Groq / Claude'],
   },
   {
     slug: 'keeper',

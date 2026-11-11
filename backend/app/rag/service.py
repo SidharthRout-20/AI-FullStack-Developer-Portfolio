@@ -1,7 +1,7 @@
 """RAGService — the composition root that wires storage, retrieval, LLM and graph.
 
 The API layer only talks to this class, which keeps HTTP concerns (FastAPI)
-separate from AI concerns (LangGraph/Chroma) and makes both easy to test.
+separate from AI concerns (LangGraph/vector store) and makes both easy to test.
 """
 
 from __future__ import annotations

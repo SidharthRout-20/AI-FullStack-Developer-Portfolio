@@ -5,15 +5,17 @@
 export const SITE = {
   owner: "Sidharth Rout",
   role: "AI Full-Stack Developer",
-  current: "Consultant at Deloitte",
-  location: "New Delhi, India",
+  current: "Senior Consultant at Deloitte",
+  location: "Bengaluru, India",
   /** Put a square photo at frontend/public/avatar.jpg and set '/avatar.jpg'. Empty → initials monogram. */
   avatar: "",
   headline: "I build AI products, from the model to the last pixel.",
+  /** Shown as the hero stat and in the intro: keep in step with the resume. */
+  years: 6,
   intro:
-    "5+ years shipping software for global clients: I started on COBOL, grew into a senior React UI/UX developer, and today " +
-    "build Generative-AI proofs of concept at Deloitte. This site is my product lab: seven working AI apps, built end " +
-    "to end with React 19 and Python.",
+    "6 years of software development for global clients: I started on COBOL, moved into React UI development, and " +
+    "today deliver Generative-AI proofs of concept at Deloitte as an LLM Engineer, with React frontends and Python " +
+    "(Flask) backends. This site is my product lab: {products} working AI apps, built end to end with React 19 and Python.",
   links: {
     github: "https://github.com/SidharthRout-20",
     linkedin: "https://www.linkedin.com/in/sidharth-rout-072696119/",
@@ -33,17 +35,16 @@ export const EXPERTISE: Expertise[] = [
     title: "Frontend & UI engineering",
     icon: "ui",
     text:
-      "Senior UI/UX developer for enterprise clients: apps built from wireframes, design systems in Material-UI, " +
-      "skeleton and lazy loading, responsive landing pages, CMS migrations.",
+      "UI developer for enterprise clients (HP, Telefónica, HSBC): landing pages with skeleton loading, lazy loading " +
+      "and mobile responsiveness, ContentStack CMS integrations, and legacy code brought up to modern standards.",
     stack: [
       "React",
       "Redux / RTK",
+      "JavaScript (ES6+)",
       "TypeScript",
-      "JavaScript",
       "HTML",
       "CSS",
       "Tailwind CSS",
-      "Material-UI",
       "Figma",
       "Adobe XD",
       "ContentStack",
@@ -53,26 +54,26 @@ export const EXPERTISE: Expertise[] = [
     title: "Generative AI & agents",
     icon: "ai",
     text:
-      "GenAI proofs of concept at Deloitte, and seven AI products on this site: RAG with citations, tool-using agents, " +
-      "structured outputs, speech and vision.",
+      "LLM Engineer on Deloitte client POCs (prompt design, API orchestration, LLM responses in React apps), and " +
+      "{products} AI products on this site: RAG with citations, tool-using agents, structured outputs, speech and vision.",
     stack: [
+      "LLMs",
       "RAG",
       "LangGraph",
-      "Agents & tools",
       "Prompt engineering",
+      "Agents & tools",
       "Claude",
       "Groq",
       "Whisper",
       "FastEmbed",
-      "ChromaDB",
     ],
   },
   {
     title: "APIs, data & delivery",
     icon: "api",
     text:
-      "Python services and API integrations alongside backend teams, delivered with Agile tooling. Started my career on " +
-      "COBOL mainframe systems for a US insurer.",
+      "Python (Flask) backends and REST API integrations for GenAI POCs, delivered with Agile tooling. Started my " +
+      "career on COBOL mainframe systems for USAA.",
     stack: [
       "Python",
       "Flask",
@@ -81,8 +82,9 @@ export const EXPERTISE: Expertise[] = [
       "MySQL",
       "MongoDB",
       "Docker",
-      "Git / GitLab",
+      "Git / GitHub / GitLab",
       "Postman",
+      "SauceLabs",
       "Jira",
       "COBOL",
     ],
@@ -102,29 +104,29 @@ export interface TimelineItem {
 export const TIMELINE: TimelineItem[] = [
   {
     period: "Dec 2023 – Present",
-    title: "Consultant",
-    org: "Deloitte",
+    title: "Senior Consultant",
+    org: "Deloitte · AI & Data",
     place: "Gurgaon, India",
     kind: "work",
     points: [
-      "Develop and integrate proofs of concept for new solutions built with Generative AI.",
-      "Deliver client solutions with cross-functional teams under tight deadlines.",
-      "Design UX wireframes in Figma.",
+      "Design and deliver Generative-AI POCs that integrate LLMs with React frontends and Python (Flask) backends, so enterprise clients can validate AI use cases quickly.",
+      "LLM Engineer on client POCs: prompt design, API orchestration and frontend integration of LLM responses.",
+      "Deliver solutions with cross-functional teams under tight deadlines; design UX wireframes in Figma.",
     ],
-    tags: ["Generative AI", "React", "Python", "Figma"],
+    tags: ["Generative AI", "LLMs", "React", "Flask", "Prompt engineering", "Figma"],
   },
   {
     period: "Apr 2022 – Sep 2023",
     title: "Senior Software Engineer",
-    org: "Wipro · clients HP and Telefonica",
+    org: "Wipro · UI Developer for HP and Telefónica",
     place: "Bengaluru, India",
     kind: "work",
     points: [
-      "Built a web application from scratch from client wireframes with Material-UI, owning the API integrations with the backend team.",
-      "Delivered a new landing page with skeleton loading, lazy loading and mobile responsiveness.",
-      "Led CMS integrations during a ContentStack migration and modernised legacy code bases.",
+      "Built a new landing page with skeleton loading, lazy loading and mobile responsiveness to client requirements.",
+      "Contributed to ContentStack CMS integrations during a CMS migration, and updated legacy code bases to modern standards.",
+      "Worked with project managers, architects and customers to resolve technical issues.",
     ],
-    tags: ["React", "Redux Toolkit", "Material-UI", "ContentStack", "Adobe XD"],
+    tags: ["React", "Redux Toolkit", "ContentStack", "Figma", "Adobe XD"],
   },
   {
     period: "May 2019 – Mar 2022",
@@ -133,10 +135,10 @@ export const TIMELINE: TimelineItem[] = [
     place: "Hyderabad, India",
     kind: "work",
     points: [
-      "Front-end developer for HSBC; built MERN-stack projects while moving into web development.",
-      "COBOL developer for USAA: delivered mainframe work, defined requirements with clients and mentored newer engineers.",
+      "Front-end developer for HSBC (May 2021 – Mar 2022), building MERN-stack projects while moving into web development.",
+      "COBOL developer for USAA (May 2019 – Nov 2020): defined requirements with clients and mentored newer engineers.",
     ],
-    tags: ["React", "Node", "MongoDB", "COBOL", "JCL"],
+    tags: ["React", "Node", "MongoDB", "COBOL", "JCL", "Core Java"],
   },
   {
     period: "2015 – 2019",
