@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import quote
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -38,6 +40,11 @@ class Settings(BaseSettings):
     # The deployed frontend (a separate Vercel project) is always allowed, on top of CORS_ORIGINS, so the live
     # site keeps working whatever CORS_ORIGINS is set to. Set FRONTEND_URL="" to turn this off.
     frontend_url: str = "https://ai-full-stack-developer-portfolio-p.vercel.app"
+    # Any Vercel domain of the frontend project (production alias, "-ruby" style aliases, preview deployments) and
+    # a frontend on any localhost port. Safe: CORS here never allows credentials. Set CORS_ORIGIN_REGEX="" to turn off.
+    cors_origin_regex: str = (
+        r"https://ai-full-stack-developer-portfolio-p(-[a-z0-9-]+)?\.vercel\.app|http://(localhost|127\.0\.0\.1)(:\d+)?"
+    )
 
     # Serve the built React app (frontend/dist) from FastAPI → single deployable unit.
     serve_frontend: bool = True
@@ -127,9 +134,14 @@ class Settings(BaseSettings):
 
     @property
     def db_url(self) -> str | None:
-        if self.database_url and self.database_url.get_secret_value().strip():
-            return self.database_url.get_secret_value().strip()
-        return discover_database_url(os.environ)
+        return self.db_source[1] if self.db_source else None
+
+    @property
+    def db_source(self) -> tuple[str, str] | None:
+        """(where the URL came from, URL), or None when no Postgres database is configured."""
+        if self.database_url and (url := _pg_url(self.database_url.get_secret_value())):
+            return "DATABASE_URL", url
+        return find_database_url(os.environ)
 
     @property
     def storage(self) -> str:
@@ -159,26 +171,56 @@ class Settings(BaseSettings):
         return self.environment == "production"
 
 
-_DB_VAR = re.compile(r"^(?:\w+_)?(?:DATABASE_URL|POSTGRES_URL)$")
+_PG_URL = re.compile(r"postgres(?:ql)?://[^\s'\"]+")
+_DB_HINT = re.compile(r"PG|POSTGRES|DATABASE|NEON|STORAGE|DB", re.I)
 
 
-def discover_database_url(env: dict[str, str] | os._Environ[str]) -> str | None:
-    """Find a Postgres URL however the hosting integration named it.
+def _pg_url(value: str | None) -> str | None:
+    """Pull a Postgres URL out of a value that may be quoted or pasted as a `psql '...'` command."""
+    m = _PG_URL.search(value or "")
+    return m.group(0) if m else None
 
-    The Vercel Neon integration lets you pick a prefix (STORAGE_URL, PORTFOLIO_DB_DATABASE_URL, …) and also sets
-    unpooled / non-SSL variants. Prefer a pooled URL; fall back to building one from PGHOST/PGUSER/… .
+
+def find_database_url(env: Mapping[str, str]) -> tuple[str, str] | None:
+    """(env var name, URL) of the Postgres database, however the hosting integration named it.
+
+    The Vercel Neon integration lets you pick a prefix (STORAGE_URL, PORTFOLIO_DB_DATABASE_URL, ...) and also sets
+    unpooled / non-SSL variants. Prefer DATABASE_URL, then pooled URLs; fall back to building one from PGHOST/... .
     """
-    candidates = sorted(
-        (k for k, v in env.items() if v and v.startswith(("postgres://", "postgresql://")) and _DB_VAR.match(k)
-         or (k.endswith(("_URL", "_DATABASE_URL")) and v and v.startswith(("postgres://", "postgresql://")))),
-        key=lambda k: ("UNPOOLED" in k or "NON_POOLING" in k or "NO_SSL" in k, k != "DATABASE_URL", k),
-    )  # fmt: skip
-    if candidates:
-        return env[candidates[0]]
-    host, user, password, db = (env.get(k) for k in ("PGHOST", "PGUSER", "PGPASSWORD", "PGDATABASE"))
-    if host and user and password and db:
-        return f"postgresql://{user}:{password}@{host}/{db}?sslmode=require"
+    found = {k: u for k, v in env.items() if (u := _pg_url(v))}
+
+    def rank(k: str) -> tuple[bool, bool, bool, str]:
+        up = k.upper()
+        return (
+            any(t in up for t in ("UNPOOLED", "NON_POOLING", "NO_SSL", "PRISMA")),
+            not up.endswith("URL"),
+            up != "DATABASE_URL",
+            k,
+        )
+
+    if found:
+        name = min(found, key=rank)
+        return name, found[name]
+    for prefix in ("PG", "POSTGRES_"):
+        host, user, password, db = (env.get(prefix + k) for k in ("HOST", "USER", "PASSWORD", "DATABASE"))
+        if host and user and password and db:
+            return f"{prefix}HOST/...", f"postgresql://{quote(user)}:{quote(password)}@{host}/{db}?sslmode=require"
     return None
+
+
+def discover_database_url(env: Mapping[str, str]) -> str | None:
+    hit = find_database_url(env)
+    return hit[1] if hit else None
+
+
+def database_hint(env: Mapping[str, str]) -> str:
+    """Why storage fell back to SQLite: lists database-looking variable NAMES (never values)."""
+    names = sorted(k for k in env if _DB_HINT.search(k) and not k.startswith(("VERCEL_", "HF_")))
+    return (
+        f"No Postgres connection string reached this deployment (VERCEL_ENV={env.get('VERCEL_ENV', 'local')}). "
+        f"Database-like variables present: {', '.join(names) or 'none'}. Connect the Neon store to THIS project "
+        "for this environment, or add DATABASE_URL, then redeploy."
+    )
 
 
 @lru_cache

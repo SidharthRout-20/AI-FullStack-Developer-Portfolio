@@ -144,3 +144,42 @@ def test_database_url_is_found_under_any_integration_name():
         "postgresql://u:p@h/d?sslmode=require"
     )
     assert discover_database_url({"HOME": "/root", "SOME_URL": "https://x"}) is None
+    # Values pasted with quotes or as a psql command, odd names, and POSTGRES_* parts all still work.
+    assert discover_database_url({"NEON_DB": f"psql '{url}'"}) == url
+    assert discover_database_url({"DATABASE_URL": f'"{url}"', "DATABASE_URL_UNPOOLED": "postgres://direct"}) == url
+    assert (
+        discover_database_url(
+            {"POSTGRES_HOST": "h", "POSTGRES_USER": "u", "POSTGRES_PASSWORD": "p@ss", "POSTGRES_DATABASE": "d"}
+        )
+        == "postgresql://u:p%40ss@h/d?sslmode=require"
+    )
+
+
+def test_health_reports_storage_source_without_leaking_values():
+    from app.config import Settings, database_hint
+
+    url = "postgresql://u:secret@h/db"
+    s = Settings(_env_file=None, database_url=f"psql '{url}'")
+    assert s.db_source == ("DATABASE_URL", url) and s.storage == "postgres"
+    hint = database_hint({"DATABASE_URL_X": "nope-secret", "PATH": "/bin", "VERCEL_ENV": "production"})
+    assert "DATABASE_URL_X" in hint and "nope-secret" not in hint and "production" in hint
+
+
+def test_cors_regex_allows_frontend_domains_and_local_ports_only():
+    import re
+
+    from app.config import Settings
+
+    rx = Settings(_env_file=None).cors_origin_regex
+    ok = [
+        "https://ai-full-stack-developer-portfolio-p-ruby.vercel.app",
+        "http://localhost:5176",
+        "http://127.0.0.1:3000",
+    ]
+    bad = [
+        "https://evil.vercel.app",
+        "https://ai-full-stack-developer-portfolio-p.vercel.app.evil.com",
+        "http://localhost.evil.com",
+    ]
+    assert all(re.fullmatch(rx, o) for o in ok)
+    assert not any(re.fullmatch(rx, o) for o in bad)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from collections.abc import AsyncIterator
 from typing import Annotated, Any
 
@@ -19,6 +20,7 @@ from app.api.schemas import (
     HealthResponse,
     IngestResponse,
 )
+from app.config import database_hint
 from app.core.security import limiter, rate_limit_value, require_admin
 from app.rag.llm import user_facing_error
 from app.rag.service import RAGService
@@ -54,6 +56,8 @@ async def health(rag: Rag) -> dict[str, Any]:
         "index_version": rag.index_version,
         "last_ingest": rag.last_ingest,
         "storage": rag.settings.storage,
+        "storage_source": (src := rag.settings.db_source) and src[0],
+        "storage_hint": None if src else database_hint(os.environ),
     }
 
 

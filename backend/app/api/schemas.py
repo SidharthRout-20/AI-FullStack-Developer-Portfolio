@@ -72,6 +72,8 @@ class HealthResponse(BaseModel):
     index_version: int = 1
     last_ingest: dict | None = None
     storage: Literal["postgres", "sqlite"] = "sqlite"
+    storage_source: str | None = None  # env var NAME the database URL came from
+    storage_hint: str | None = None
 
 
 class GraphNode(BaseModel):
