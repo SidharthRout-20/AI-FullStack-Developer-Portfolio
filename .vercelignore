@@ -8,3 +8,4 @@ backend/data/
 **/.pytest_cache/
 **/.ruff_cache/
 .github/
+backend/scripts/

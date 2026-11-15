@@ -16,6 +16,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.config import Settings
+from app.llm import for_task
 from app.rag.llm import ChatLLM
 from app.rag.retriever import HybridRetriever
 from app.rag.structured import complete_json
@@ -99,7 +100,7 @@ def score(items: list[dict[str, Any]]) -> int:
 async def run_match(
     text: str, retriever: HybridRetriever, get_llm: Callable[[], ChatLLM], settings: Settings
 ) -> AsyncIterator[dict[str, Any]]:
-    llm = get_llm()
+    llm = for_task(get_llm(), "documind.match")
     started = time.perf_counter()
 
     def stage(name: str, status: str, **detail: Any) -> dict[str, Any]:

@@ -270,11 +270,17 @@ class FlowService:
                     d.get("system")
                     or "You are a concise, helpful assistant inside an automation. Reply with the result only."
                 )
-                return (await ask_text(self.get_llm, system, clip(render(d["prompt"], values), 12000))).strip()
+                return (
+                    await ask_text(
+                        self.get_llm, system, clip(render(d["prompt"], values), 12000), task="flowforge.prompt"
+                    )
+                ).strip()
             case "extract":
                 fields = [f.strip() for f in str(d["fields"]).split(",") if f.strip()][:15]
                 prompt = f"Extract these fields as a flat JSON object with exactly these keys: {fields}. Use null when absent.\n\nTEXT:\n{clip(render(d['text'], values), 10000)}"
-                reply = await ask_text(self.get_llm, "You extract structured data. Reply with JSON only.", prompt)
+                reply = await ask_text(
+                    self.get_llm, "You extract structured data. Reply with JSON only.", prompt, task="flowforge.extract"
+                )
                 data = extract_json(reply)
                 return {f: data.get(f) for f in fields}
             case "http":

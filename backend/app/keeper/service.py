@@ -20,6 +20,7 @@ from app.keeper.models import AgendaItem, Entry, ScanResult
 from app.keeper.reminders import Alert, ReminderSettings
 from app.keeper.store import KeeperStore
 from app.keeper.vision import SCAN_PROMPT, VisionLLM, build_vision
+from app.llm import for_task
 from app.rag.llm import ChatLLM
 from app.rag.structured import extract_json
 
@@ -120,7 +121,8 @@ class KeeperService:
         )
         try:
             text = await asyncio.wait_for(
-                self._get_llm().complete(BRIEF_SYSTEM, [{"role": "user", "content": prompt}]), 25
+                for_task(self._get_llm(), "keeper.brief").complete(BRIEF_SYSTEM, [{"role": "user", "content": prompt}]),
+                25,
             )
             text = " ".join(text.split())
             if 20 < len(text) < 900:

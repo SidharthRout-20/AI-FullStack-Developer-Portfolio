@@ -320,7 +320,10 @@ class CodeService:
             for n, h in enumerate(hits, start=1)
         )
         answer = await ask_text(
-            self.get_llm, ASK_SYSTEM, f"REPOSITORY: {repo['owner']}/{repo['name']}\n\n{context}\n\nQUESTION: {question}"
+            self.get_llm,
+            ASK_SYSTEM,
+            f"REPOSITORY: {repo['owner']}/{repo['name']}\n\n{context}\n\nQUESTION: {question}",
+            task="codelens.ask",
         )
         return {"answer": answer.strip(), "sources": [{"n": n, **h} for n, h in enumerate(hits, start=1)]}
 
@@ -337,7 +340,7 @@ class CodeService:
             f"REPO: {repo['owner']}/{repo['name']}  LANGUAGES: {repo['languages']}\n\nREADME:\n{clip(repo.get('readme') or '(none)', 3500)}\n\n"
             f"FILES ({len(files)}):\n" + "\n".join(files[:250]) + "\n\nMOST CONNECTED FILES:\n" + "\n".join(central)
         )
-        tour = await ask_json(self.get_llm, TOUR_SYSTEM, prompt, Tour)
+        tour = await ask_json(self.get_llm, TOUR_SYSTEM, prompt, Tour, task="codelens.tour")
         steps = [s for s in tour.steps if s.path in set(files)] or tour.steps  # drop hallucinated paths
         result = {"overview": tour.overview, "steps": [s.model_dump() for s in steps]}
         self.db.patch("repos", repo["id"], {"tour": result})

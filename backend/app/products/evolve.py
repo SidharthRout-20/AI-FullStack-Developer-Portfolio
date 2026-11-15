@@ -207,7 +207,7 @@ class EvolveService:
         """Run one input through a prompt and validate it (no persistence)."""
         v = Validators.model_validate(task.get("validators") or {})
         started = time.perf_counter()
-        output = (await ask_text(self.get_llm, prompt, clip(user_input, 8000), limit_s=60)).strip()
+        output = (await ask_text(self.get_llm, prompt, clip(user_input, 8000), limit_s=60, task="evolve.run")).strip()
         checks = run_checks(output, v)
         judge = await self.judge(task, v, user_input, output)
         passed = all(c["passed"] for c in checks) and judge["score"] >= PASS_SCORE
@@ -225,7 +225,7 @@ class EvolveService:
             f"INPUT:\n{clip(user_input, 3000)}\n\nOUTPUT:\n{clip(output, 3000)}"
         )
         try:
-            j = await ask_json(self.get_llm, JUDGE_SYSTEM, prompt, Judgement, limit_s=60)
+            j = await ask_json(self.get_llm, JUDGE_SYSTEM, prompt, Judgement, limit_s=60, task="evolve.judge")
             return j.model_dump()
         except Exception as exc:  # noqa: BLE001 - a judge outage must not block runs
             logger.info("judge unavailable: %s", type(exc).__name__)
@@ -361,7 +361,7 @@ class EvolveService:
                 else ""
             )
         )
-        proposal = await ask_json(self.get_llm, REFLECT_SYSTEM, prompt, Proposal, limit_s=120)
+        proposal = await ask_json(self.get_llm, REFLECT_SYSTEM, prompt, Proposal, limit_s=120, task="evolve.reflect")
         if len(proposal.prompt.strip()) < 10 or proposal.prompt.strip() == current_prompt.strip():
             yield {"event": "error", "message": "The model proposed no change."}
             return

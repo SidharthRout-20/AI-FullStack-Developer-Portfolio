@@ -155,6 +155,20 @@ def test_database_url_is_found_under_any_integration_name():
     )
 
 
+def test_postgres_sql_uses_the_same_table_names_as_sqlite():
+    """Postgres mirrors SQLite: same table/index names (inside a schema named after the store), same columns."""
+    from app.core.db import Database
+
+    pg = Database("keeper", url="postgresql://u:p@h/db")
+    assert pg.sql("SELECT * FROM {entries} WHERE id = ? AND note LIKE '%x'") == (
+        "SELECT * FROM entries WHERE id = %s AND note LIKE '%%x'"
+    )
+    assert pg.sql("CREATE INDEX IF NOT EXISTS {ix_entries_kind} ON {entries}(kind)") == (
+        "CREATE INDEX IF NOT EXISTS ix_entries_kind ON entries(kind)"
+    )
+    assert pg.sql("lat {real}, data {blob}") == "lat DOUBLE PRECISION, data BYTEA"
+
+
 def test_health_reports_storage_source_without_leaking_values():
     from app.config import Settings, database_hint
 
@@ -183,3 +197,29 @@ def test_cors_regex_allows_frontend_domains_and_local_ports_only():
     ]
     assert all(re.fullmatch(rx, o) for o in ok)
     assert not any(re.fullmatch(rx, o) for o in bad)
+
+
+def test_postgres_health_check_reports_categories_without_details(monkeypatch):
+    from app.core import db
+
+    db._health.clear()
+    assert db.check_postgres("postgresql://u:secret@127.0.0.1:1/x")[0] is False  # nothing listens on port 1
+    ok, reason = db.check_postgres("postgresql://u:secret@127.0.0.1:1/x")
+    assert ok is False and "secret" not in reason and "127.0.0.1" not in reason
+
+    class Conn:
+        def execute(self, sql):
+            class R:
+                def fetchone(self):
+                    return (1,)
+
+            return R()
+
+    db._health.clear()
+    monkeypatch.setattr(db, "_pg_connection", lambda url: Conn())
+    assert db.check_postgres("postgresql://ok") == (True, None)
+
+
+def test_health_reports_no_database_check_on_sqlite(client):
+    body = client.get("/api/health").json()
+    assert body["storage"] == "sqlite" and body["storage_ok"] is None and body["storage_error"] is None

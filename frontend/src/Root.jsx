@@ -19,7 +19,8 @@ const APPS = [
   { prefix: '/codelens', title: 'CodeLens · Codebase explorer', label: 'CodeLens', App: lazy(() => import('./products/codelens/CodeLensApp')) },
   { prefix: '/flowforge', title: 'FlowForge · AI automation builder', label: 'FlowForge', App: lazy(() => import('./products/flowforge/FlowForgeApp')) },
   { prefix: '/evolve', title: 'Evolve · Self-improving prompts', label: 'Evolve', App: lazy(() => import('./products/evolve/EvolveApp')) },
-  { prefix: '/tripweaver', title: 'TripWeaver · Live trip planner', label: 'TripWeaver', App: lazy(() => import('./products/tripweaver/TripWeaverApp')) },
+  { prefix: '/efi', title: 'EFI · Engineering Failure Investigator', label: 'EFI', App: lazy(() => import('./products/efi/EFIApp')) },
+  { prefix: '/tripweaver', title: 'TripWeaver · Travel ecosystem', label: 'TripWeaver', App: lazy(() => import('./products/tripweaver/TripWeaverApp')) },
 ]
 
 function useTitle(title) {
@@ -47,7 +48,8 @@ function Routes() {
 
   const slug = path.match(/^\/products\/([\w-]+)\/?$/)?.[1]
   const product = slug ? productBySlug(slug) : undefined
-  if (product?.route) return <Redirect to={product.route} />
+  // Labs products open straight into their app; portfolio products have a product page (status, roadmap, app link).
+  if (product?.visibility === 'labs' && product.app) return <Redirect to={product.app.route} />
 
   return (
     <MotionConfig reducedMotion="user">
@@ -64,7 +66,7 @@ function Hub() {
 
 function Preview({ slug }) {
   const product = productBySlug(slug)
-  useTitle(`${product.name} · ${SITE.owner}`)
+  useTitle(`${product.fullName ?? product.name} · ${SITE.owner}`)
   return <ProductPage product={product} />
 }
 

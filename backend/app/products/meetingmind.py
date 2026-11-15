@@ -122,15 +122,19 @@ class MeetingService:
             raise LLMNotConfiguredError(
                 "Transcription uses Groq Whisper: set GROQ_API_KEY, or paste a transcript instead."
             )
-        from groq import AsyncGroq
+        from app.llm import LLMRequest, get_router
 
-        client = AsyncGroq(api_key=key, timeout=180)
-        res = await client.audio.transcriptions.create(
-            file=(filename, io.BytesIO(audio).read()),
-            model=self.settings.whisper_model,
-            response_format="verbose_json",
-            temperature=0.0,
+        # Routed to a free-tier Whisper model (audio endpoint); WHISPER_MODEL is the preferred one.
+        routed = await get_router(self.settings).transcribe(
+            LLMRequest(
+                task="meetingmind.transcribe",
+                audio=(filename, io.BytesIO(audio).read()),
+                prefer_model=self.settings.whisper_model,
+                timeout_s=180,
+                response_params={"response_format": "verbose_json", "temperature": 0.0},
+            )
         )
+        res = routed.raw
         raw = getattr(res, "segments", None) or []
         segs = [
             {"start": float(_get(s, "start")), "end": float(_get(s, "end")), "text": str(_get(s, "text")).strip()}
@@ -143,7 +147,9 @@ class MeetingService:
         if not segments:
             raise HTTPException(422, "The recording/transcript is empty.")
         transcript = "\n".join(f"[{_fmt(s['start'])}] {s['text']}" for s in segments)
-        analysis = await ask_json(self.get_llm, ANALYSE_SYSTEM, clip(transcript, 24000), Analysis, limit_s=120)
+        analysis = await ask_json(
+            self.get_llm, ANALYSE_SYSTEM, clip(transcript, 24000), Analysis, limit_s=120, task="meetingmind.analyse"
+        )
         wins = windows(segments)
         vectors = await asyncio.to_thread(self.embedder.embed_documents, [w["text"] for w in wins])
         for w, v in zip(wins, vectors, strict=True):
@@ -180,7 +186,9 @@ class MeetingService:
             for i, j in enumerate(top)
         ]  # fmt: skip
         context = "\n\n".join(f"[{s['n']}] ({s['meeting_title']} @ {_fmt(s['start'])}) {s['text']}" for s in sources)
-        answer = await ask_text(self.get_llm, ASK_SYSTEM, f"EXCERPTS:\n{context}\n\nQUESTION: {question}")
+        answer = await ask_text(
+            self.get_llm, ASK_SYSTEM, f"EXCERPTS:\n{context}\n\nQUESTION: {question}", task="meetingmind.ask"
+        )
         return {"answer": answer.strip(), "sources": sources}
 
 

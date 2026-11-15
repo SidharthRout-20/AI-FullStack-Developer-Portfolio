@@ -24,6 +24,7 @@ from app.keeper import schedule
 from app.keeper.models import KINDS, Command, Entry
 from app.keeper.parser import rule_parse
 from app.keeper.store import KeeperStore
+from app.llm import for_task
 from app.rag.llm import ChatLLM
 from app.rag.structured import complete_json
 
@@ -114,7 +115,8 @@ class KeeperAgent:
                 today=now.date().isoformat(), weekday=now.strftime("%A"), time=now.strftime("%H:%M")
             )
             llm_cmd = await asyncio.wait_for(
-                complete_json(self._get_llm(), system, state["text"], Command), self._timeout
+                complete_json(for_task(self._get_llm(), "keeper.command"), system, state["text"], Command),
+                self._timeout,
             )
             if _plausible(llm_cmd):
                 command, routed_by = llm_cmd, "llm"

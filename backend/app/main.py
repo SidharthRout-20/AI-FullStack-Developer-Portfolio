@@ -19,16 +19,19 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.api.cron import router as cron_router
+from app.api.efi import router as efi_router
 from app.api.keeper import actions_router
 from app.api.keeper import router as keeper_router
+from app.api.llm import router as llm_router
 from app.api.products import router as products_router
 from app.api.routes import router
 from app.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.core.security import SecurityHeadersMiddleware, limiter
 from app.core.tls import use_system_certificates
+from app.efi.service import EFIService
 from app.keeper.service import KeeperService
-from app.products import careerpilot, codelens, contact, evolve, flowforge, meetingmind, tripweaver
+from app.products import careerpilot, codelens, contact, evolve, flowforge, meetingmind, trip_api
 from app.products.suite import Suite
 from app.rag.service import RAGService
 from app.rag.watcher import DocumentWatcher
@@ -40,6 +43,7 @@ def create_app(
     settings: Settings | None = None,
     service_factory: Callable[[Settings], RAGService] = RAGService,
     keeper_factory: Callable[[Settings, RAGService], KeeperService] | None = None,
+    efi_factory: Callable[[Settings], EFIService] = EFIService,
 ) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings.log_level)
@@ -69,6 +73,7 @@ def create_app(
         jobs = settings.background_jobs
         reminder_task = asyncio.create_task(keeper.scheduler_loop(settings.public_url)) if jobs else None
         app.state.suite = Suite(settings, rag, keeper)
+        app.state.efi = efi_factory(settings)
         scheduler = asyncio.create_task(app.state.suite.flows.scheduler()) if jobs else None
         logger.info("Ready - %d chunks indexed, LLM provider=%s", rag.store.count(), settings.llm_provider)
         yield
@@ -95,7 +100,15 @@ def create_app(
         allow_origins=settings.allowed_origins,
         allow_origin_regex=settings.cors_origin_regex or None,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Content-Type", "X-Admin-Key", "X-Keeper-Key", "X-TZ-Offset"],
+        allow_headers=[
+            "Content-Type",
+            "X-Admin-Key",
+            "X-Keeper-Key",
+            "X-TZ-Offset",
+            "X-EFI-Owner",
+            "X-Trip-Owner",
+            "X-Trip-Share",
+        ],
         allow_credentials=False,
         max_age=600,
     )
@@ -114,7 +127,9 @@ def create_app(
     app.include_router(keeper_router)
     app.include_router(actions_router)
     app.include_router(cron_router)
-    for product in (careerpilot, meetingmind, codelens, flowforge, tripweaver, evolve, contact):
+    app.include_router(efi_router)
+    app.include_router(llm_router)
+    for product in (careerpilot, meetingmind, codelens, flowforge, trip_api, evolve, contact):
         app.include_router(product.router)
     app.include_router(flowforge.hooks)
 

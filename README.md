@@ -1,6 +1,6 @@
 # AI Full-Stack Developer Portfolio
 
-**Eight production-style AI products in one React + FastAPI monorepo, deployed on free-tier infrastructure.**
+**A five-product AI portfolio in one React + FastAPI monorepo, built one product at a time on free-tier infrastructure.**
 
 [Live site](https://ai-full-stack-developer-portfolio-p.vercel.app) ·
 [API health](https://ai-full-stack-developer-portfolio-b.vercel.app/api/health) ·
@@ -8,24 +8,38 @@
 
 ![CI](https://github.com/SidharthRout-20/AI-FullStack-Developer-Portfolio/actions/workflows/ci.yml/badge.svg)
 
-This is not a gallery of screenshots. Every tile on the site is a working product with its own API, persistence, tests
-and failure handling. They share one backend: an LLM layer that can switch providers, a hybrid-retrieval RAG engine,
-LangGraph agents and a storage layer that runs on SQLite locally and on Postgres in production.
+The portfolio has five approved products, each with a real implementation status, plus Labs: earlier, still-working
+apps whose code is reused as shared capabilities. Everything shares one backend: an LLM layer that can switch
+providers, a hybrid-retrieval engine, LangGraph agents and a storage layer that runs on SQLite locally and on Postgres
+in production.
+
+The single source of truth for product identity, status and visibility is
+[frontend/src/site/products.js](frontend/src/site/products.js); every count on the site is derived from it. The backend
+has no product records, it only serves the apps.
 
 ---
 
-## Products
+## Portfolio (approved products)
 
-| Product | What it does | Interesting engineering |
+| # | Product | Status | What exists today |
+| --- | --- | --- | --- |
+| 1 | **EFI** (Engineering Failure Investigator): why did this build, test or deploy fail? | In development | The full workflow (see [EFI](#efi-engineering-failure-investigator)), tested with a mocked model. Not yet live-verified with Groq; history is per browser (no accounts); the deployed backend needs Postgres for it to persist |
+| 2 | **Keeper** (Purchase & Warranty Recovery) | Planned | Not built. The earlier Keeper memory assistant (natural-language capture, photo scanning, ntfy / Telegram reminders) runs at `/keeper` as a prototype |
+| 3 | **DocuMind Respond** (security and vendor questionnaires) | Gated | Not built; gated on two committed design partners. The DocuMind RAG Studio it builds on (LangGraph RAG with citations, briefs, Match Analyzer) runs at `/documind` |
+| 4 | **Follow-through** (commitment execution) | Planned | Not built. MeetingMind (transcripts → decisions, action items, Kanban, archive Q&A) runs at `/meetingmind` as a prototype |
+| 5 | **TripWeaver** (complete travel ecosystem) | In development | Implemented end to end at `/tripweaver` (see [TripWeaver](#tripweaver-travel-ecosystem)) and covered by tests, browser-checked locally. Not live: production has no Postgres yet, identity is per browser, and ordering/booking/ratings/transit need commercial providers |
+
+Statuses follow one rule: **Live** only when the principal workflow works end to end, persists, is access-controlled
+where needed and is tested. Approval is not completion.
+
+## Labs
+
+| App | What it does | Interesting engineering |
 | --- | --- | --- |
-| **DocuMind** | Agentic RAG over your documents, with every step visible | LangGraph pipeline (guard → rewrite → retrieve → grade → generate), hybrid dense + BM25 retrieval fused with RRF, streamed tokens and citations over SSE, live pipeline visualisation |
-| **Keeper** | A personal assistant that remembers the small stuff | Natural-language intent routing (LLM with rule-based fallback), vision OCR for warranty cards and receipts, timed reminders pushed to your phone (ntfy / Telegram) with one-tap Done / Snooze, spoken alarms in the browser |
-| **TripWeaver** | A trip planner that re-plans while you travel | Tool-using planner (weather, UV, air quality, places, routing), traffic-aware stop ordering via OSRM, meal slotting around opening hours, wellbeing insights, real-time group voting |
-| **CareerPilot** | Job-hunt copilot | Resume-vs-JD matching with per-requirement cited verdicts, tailored documents, voice mock interviews with follow-ups |
-| **MeetingMind** | Meetings in, decisions and action items out | Whisper transcription, schema-validated extraction of decisions, risks and owners, a Kanban board, RAG over past meetings |
-| **FlowForge** | Drag-and-drop AI automations | React Flow canvas, typed node I/O validated before save, webhook and cron triggers, runs animated live on the canvas |
-| **Evolve** | Prompts that learn from their own mistakes | Deterministic checks plus an LLM judge, failure "lessons", reflection that proposes a new prompt, promotion only after re-testing against recent inputs, versioning and rollback |
-| **CodeLens** | Understand any codebase in minutes | AST and symbol-aware chunking, answers cited to files and line ranges, dependency graph, a generated guided tour |
+| **CareerPilot** (archived, replaced by EFI) | Job-hunt copilot | Requirement-by-requirement match verdicts, tailored documents, voice mock interviews with follow-ups. Its match score uses the documents indexed in DocuMind, not the saved resume |
+| **FlowForge** | Drag-and-drop AI automations | React Flow canvas, flow validation before save (one trigger, acyclic, reachable, required fields, references), webhook and cron triggers, runs animated live |
+| **Evolve** | Prompts that learn from their own mistakes | Deterministic checks plus an LLM judge, failure "lessons", reflection that proposes a new prompt, promotion only after re-testing, versioning and rollback |
+| **CodeLens** | Understand a public codebase | AST and symbol-aware chunking, answers cited to files and line ranges, import graph, generated guided tour |
 
 ---
 
@@ -77,7 +91,8 @@ chunks with their fused scores, and the route taken.
 ## Engineering decisions
 
 **One storage abstraction, two engines.** `app/core/db.py` writes portable SQL once. Locally each product gets its own
-SQLite file. When a `DATABASE_URL` is present (Neon on Vercel), the same code runs on Postgres with namespaced tables and
+SQLite file. When a `DATABASE_URL` is present (Neon on Vercel), the same code runs on Postgres with an identical layout
+(each SQLite file is a Postgres schema with the same tables, columns and indexes: `keeper.entries`, `evolve.docs`) and
 a PgBouncer-safe psycopg 3 connection (no server-side prepared statements). Serverless instances share no disk, so this
 is what makes data survive across requests. `GET /api/health` reports which engine is live and, if it fell back, which
 variable names it saw (never their values).
@@ -87,9 +102,10 @@ redirected there when `VERCEL` is set. Background schedulers are switched off on
 authenticated `/api/cron/tick` endpoint, which an external free cron calls every minute. Docker and local runs keep
 in-process schedulers. Startup failures return a 503 with a sanitised cause instead of an opaque 500.
 
-**Provider-agnostic LLM layer.** Groq (free tier, default), Anthropic Claude and local Ollama sit behind one interface,
-selected by `LLM_PROVIDER`. Structured outputs are validated with Pydantic. Every agent has a deterministic fallback, so
-a quota error degrades the feature instead of breaking it.
+**Provider-agnostic LLM layer with a Groq router.** Groq (free tier, default), Anthropic Claude and local Ollama sit
+behind one interface, selected by `LLM_PROVIDER`. With Groq, every call goes through the
+[central router](#central-groq-llm-router), which picks a free-tier model per task. Structured outputs are validated with
+Pydantic. Every agent has a deterministic fallback, so a quota error degrades the feature instead of breaking it.
 
 **Hybrid retrieval without a vector database.** FastEmbed (`bge-small-en-v1.5`, ONNX, CPU-only) produces the embeddings.
 Vectors live in SQLite or Postgres and are searched with NumPy, then fused with BM25 using Reciprocal Rank Fusion
@@ -106,6 +122,159 @@ small channel interface, so SMS can be added without touching the reminder logic
 - Requests: per-IP rate limits (slowapi), a strict CORS allow-list with credentials disabled, security headers (CSP,
   nosniff, framing, HSTS in production), and an optional access key for personal data (Keeper).
 - Links: one-tap reminder actions use HMAC-signed, expiring tokens.
+
+---
+
+## EFI: Engineering Failure Investigator
+
+CodeLens explains how code works; EFI explains why a specific run failed, which evidence supports that, and how to
+check a fix. It lives in [backend/app/efi/](backend/app/efi/), [backend/app/api/efi.py](backend/app/api/efi.py) and
+[frontend/src/products/efi/](frontend/src/products/efi/).
+
+**Supported artifacts** (text only, sent as JSON; no archives, nothing is executed or extracted to disk):
+build / CI / deploy logs (GitHub Actions, GitLab, Jenkins, npm, pytest, Maven, Gradle, Docker), stack traces
+(Python, JS/TS, Java/Kotlin, Go) and compiler `file:line` errors, unified git diffs (`.diff`, `.patch`, pasted
+`git diff` output), JUnit XML, dependency manifests and lockfiles, config files, and free-text notes.
+
+**Pipeline**
+1. *Intake:* extension allow-list, size caps, binary and control-character checks, JUnit XML with DOCTYPE/ENTITY rejected.
+2. *Redaction* ([redact.py](backend/app/efi/redact.py)): API keys and tokens (AWS, GitHub, GitLab, Slack, Google,
+   Stripe, Groq, OpenAI, Anthropic, npm), JWTs, PEM private keys, URL passwords, `Authorization` headers and
+   `password=` / `API_KEY:` style values are replaced **before anything is stored or sent to the model**. If a
+   credential still matches after redaction, the artifact is rejected.
+3. *Deterministic parsing* ([parsers.py](backend/app/efi/parsers.py)) into evidence items `EV-001…` with artifact,
+   line, kind and status. The same input always produces the same IDs.
+4. *Correlation* ([evidence.py](backend/app/efi/evidence.py)): only from facts in the artifacts (frame inside a
+   changed hunk, frame in a changed file, failing test defined in a changed file, changed dependency or config file
+   named in a failure). Plus a timeline (timestamps or log order) and the first failure.
+5. *Context selection:* failures first, then correlated items, then BM25 relevance (reusing the DocuMind/CodeLens
+   retrieval code), within `EFI_MAX_CONTEXT_CHARS`.
+6. *Groq reasoning* ([reasoning.py](backend/app/efi/reasoning.py)): **only when the user clicks Analyse**. One call to
+   `openai/gpt-oss-120b` through the central Groq router (task `efi.investigate`: only models meeting the advanced
+   reasoning floor are eligible; one extra call only to repair invalid JSON), calls serialised per process, bounded
+   router retries on 429/5xx, and an overall timeout. Artifact
+   text is declared untrusted in the prompt. There is **no fallback to another provider**: if Groq's free-tier limit
+   is hit, the API returns 429 with a "retry after the quota resets" message.
+7. *Verification:* unknown evidence IDs removed; hypotheses without valid supporting evidence rejected; file paths not
+   present in the artifacts removed or flagged; reproduction commands marked "seen in artifacts" only if they appear
+   verbatim; confidence capped (notes only → low; "high" needs a correlation or two observed items).
+8. *Report:* summary (labelled model-generated), symptoms, timeline, up to 5 ranked hypotheses with supporting and
+   contradicting evidence, affected files, reproduction, suggested remediation, a validation checklist built from the
+   artifacts (re-run the failing tests and commands), limitations, and "mark the actual root cause" feedback. With no
+   failure signal at all, the report says "insufficient evidence" and no model call is made.
+
+**Identity and isolation.** The portfolio has no user accounts. EFI follows the existing header-key convention: the
+browser gets an unguessable token from `POST /api/efi/owner` and sends it as `X-EFI-Owner`. The server stores only
+`sha256(token)` and every query filters on it (`WHERE owner = ? AND id = ?`), so another browser gets a 404. History
+is tied to that browser; clearing site data loses access to it.
+
+**Retention.** Raw (redacted) artifacts expire after `EFI_RETENTION_DAYS` (14). They are deleted by the existing
+`/api/cron/tick` and on access (at most every 10 minutes per instance). On Vercel, deletion therefore happens when the
+cron runs or the API is used; it is not a guaranteed background job. Reports (with short evidence snippets) stay until
+the user deletes the investigation. Investigation content is never used for training.
+
+**API** (all except `/owner` and `/limits` need `X-EFI-Owner`)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/efi/owner` | New owner token for this browser |
+| GET | `/api/efi/limits` | Size limits, retention, model |
+| POST | `/api/efi/investigations` | Create: validate, redact, parse, correlate (no model call) |
+| GET | `/api/efi/investigations` | History |
+| GET / DELETE | `/api/efi/investigations/{id}` | Open / delete (with its artifacts) |
+| POST | `/api/efi/investigations/{id}/analyze` | Run the bounded Groq analysis |
+| POST | `/api/efi/investigations/{id}/feedback` | Record the confirmed root cause |
+| GET | `/api/efi/investigations/{id}/artifacts/{A1}?line=&radius=` | Redacted lines around evidence, while retained |
+
+**Database** (additive, through `app/core/db.py`): schema `efi` on Postgres (or `efi.sqlite3` locally) with tables
+`investigations` (owner, title, status, JSON report, `version` for optimistic concurrency), `artifacts` (redacted text
+with `expires_at`) and `usage_log` (model, calls, token counts, duration, status; no prompt contents). They are
+created automatically at startup; no existing table is changed.
+
+**Configuration** (all optional; defaults shown): `EFI_MODEL` (empty → `GROQ_MODEL`, `openai/gpt-oss-120b`),
+`EFI_MAX_REQUEST_BYTES=2500000`, `EFI_MAX_ARTIFACT_BYTES=1000000`, `EFI_MAX_ARTIFACTS=12`, `EFI_MAX_EVIDENCE=300`,
+`EFI_MAX_CONTEXT_CHARS=16000`, `EFI_MAX_OUTPUT_TOKENS=3072`, `EFI_MAX_MODEL_CALLS=2`, `EFI_MAX_RETRIES=2`,
+`EFI_REASONING_EFFORT=low`, `EFI_LLM_TIMEOUT_S=90`, `EFI_RETENTION_DAYS=14`, `EFI_DAILY_ANALYSES_PER_OWNER=20`,
+`EFI_DAILY_ANALYSES_GLOBAL=200`. It reuses `GROQ_API_KEY` and `DATABASE_URL`.
+
+**Known limitations:** no repository ZIP or remote-URL ingestion; no CI integrations (artifacts are uploaded by hand);
+a per-browser token instead of accounts; the redactor is pattern-based (unusual secret formats may survive, so review
+what you upload); scanned or binary logs aren't supported; root causes are hypotheses until the user confirms them;
+Groq free-tier limits apply and are not guaranteed.
+
+---
+
+## Central Groq LLM router
+
+Every model call in the app goes through one router ([backend/app/llm](backend/app/llm)). Application code declares a
+*task* (`"tripweaver.plan"`, `"keeper.photo"`, `"efi.investigate"`…), never a model ID. The router picks the most
+suitable **free-tier Groq** model for that request, deterministically, without spending a model call on the decision.
+
+1. **Classify** ([classify.py](backend/app/llm/classify.py)): complexity (simple → standard → complex → advanced) from the
+   task profile plus measurable signals (context size, multi-step wording, tool count), and, independently, modality
+   (text / image / audio), structured-output needs (JSON, schema, strict), tool calling and quota priority
+   (1 EFI, 2 TripWeaver, 3 other products and Labs, 4 background jobs).
+2. **Registry + discovery** ([catalog.py](backend/app/llm/catalog.py)): capabilities are written from Groq's
+   documentation (verified 2026-11-14); unverified capabilities are `None` and never relied on. `GET /openai/v1/models`
+   (cached 6 h) says what this key can see right now; listed-but-unknown models are recorded and never selected,
+   registry models the API no longer lists are treated as removed. Only models in Groq's free-plan limit table are
+   eligible; "contact sales" models never are.
+3. **Hard filters, then scores** ([router.py](backend/app/llm/router.py)): endpoint, modality, verified capabilities,
+   free-tier eligibility, availability, context fit, quota and a reasoning floor per complexity are filters; among what
+   remains, the smallest adequate model wins (production over preview, speed, remaining quota). A text-only model can
+   never win an image request, a safety model is never a general model, Whisper is never a chat model.
+4. **Execute with bounded fallback:** one sequential attempt at a time; a short `Retry-After` is waited once, longer
+   ones fall back; 5xx/timeouts get one backoff retry; model-not-found marks the model unavailable; context overflow
+   only falls back to larger contexts. The complexity floor is never relaxed, so an EFI investigation is never
+   silently downgraded. When nothing eligible is left: a controlled error ("nothing was charged, no paid provider was
+   used, retry in N s"). There is no code path to a paid provider.
+5. **Quota & transparency** ([quota.py](backend/app/llm/quota.py)): `x-ratelimit-*` headers are tracked per model
+   (requests/day, tokens/minute, resets); lower priorities may not spend the last 2/5/15 % of a model's daily
+   requests. Each decision records task, complexity, modality, candidates and rejections with reasons, the selected
+   model, fallbacks, tokens (actual or estimated), latency and rate-limit state, never prompts or outputs. Admins
+   (with `ADMIN_API_KEY`) can read `GET /api/llm/router`, dry-run `POST /api/llm/router/preview`, and refresh
+   discovery with `POST /api/llm/router/discover`.
+
+Typical routing today: short extraction/classification and routine answers → `openai/gpt-oss-20b`; planning, complex
+synthesis and EFI → `openai/gpt-oss-120b` (still the safe default for undeclared tasks); images (Keeper photos,
+receipts) → `qwen/qwen3.8-27b` (preview, the only verified vision model); audio → `whisper-large-v3-turbo`
+(`whisper-large-v3` for translation). These are outcomes of the registry and filters, not hard-coded choices.
+
+---
+
+## TripWeaver: travel ecosystem
+
+TripWeaver organises everything around the itinerary
+([tripweaver.py](backend/app/products/tripweaver.py), [trip_ecosystem.py](backend/app/products/trip_ecosystem.py),
+[trip_api.py](backend/app/products/trip_api.py), pure rules in [trip_logic.py](backend/app/products/trip_logic.py)):
+
+- **Trips:** AI planner (several cities) or a manual trip with up to 5 destinations and 14 days, dates, party, budget,
+  preferences; upcoming / active / past / archived; share link for collaborators.
+- **Itinerary:** morning / afternoon / evening, travel times, edit / move / pin / remove, re-plan only selected days,
+  schedule checks, and labels that show their evidence (Must visit, Time sensitive, Weather dependent, Reservation
+  recommended, Near your route, Traveller favourite). "Local favourite" and "Hidden gem" exist only as the traveller's
+  own tags: free map data has no ratings or popularity.
+- **Discovery:** food, sights, experiences, shopping & souvenirs, nature, indoor, family, nightlife, transport and
+  services from OpenStreetMap around a destination, a stop or (with permission) the traveller's location; saved
+  places; add to a day; AI-suggested local specialities (labelled) matched to real shops.
+- **Operations:** per-destination weather with current conditions, hourly rain windows and fetch time; airports with
+  transfer times; bookings saved by the traveller (never made by TripWeaver); budget with estimates kept apart from
+  actual spend, dated reference exchange rates, group settle-up and receipt reading (a draft to confirm); documents
+  with small attachments and checklists, including a packing list built from the forecast.
+- **Companion:** answers from the real trip context and nearby places; its suggestions are validated against real data
+  and applied only on confirmation. Orders and bookings are always hand-offs to the venue's own site, with a notice that
+  nothing was booked.
+
+**Identity and access:** like EFI, a per-browser owner token (`X-Trip-Owner`, stored hashed). Share links grant a member
+role (view, vote, shared expenses); documents, bookings and the companion stay owner-only. Trips created before
+ownership existed are kept, viewable by link, and can be copied to edit.
+
+**Storage:** the existing document store, so no new tables or migrations: trips plus child documents (places,
+bookings, expenses, documents) in SQLite locally or the shared Postgres schema in production.
+
+**Providers (all free, no keys; non-commercial fair use):** Open-Meteo, Overpass / Nominatim / Photon, the OSRM demo
+server, OpenStreetMap tiles and Frankfurter (reference rates, commercial use allowed). Ordering, table booking,
+ticketing, tours, ratings and public-transport timetables need commercial providers and are not integrated.
 
 ---
 
@@ -174,8 +343,8 @@ Add `--profile local-llm` to run fully offline with Ollama.
 ### Quality gates
 
 ```bash
-cd backend  && ruff check . && ruff format --check . && pytest   # 115 tests
-cd frontend && npm run lint && npm test && npm run build        # 19 tests
+cd backend  && ruff check . && ruff format --check . && pytest   # 199 tests
+cd frontend && npm run lint && npm test && npm run build        # 45 tests
 ```
 
 CI runs the same gates on every push, then builds the Docker image.
@@ -202,11 +371,22 @@ Backend environment variables:
 | `KEEPER_ACCESS_KEY` | recommended | Locks Keeper's personal data behind a key |
 | `ANTHROPIC_API_KEY`, `LLM_PROVIDER` | no | Switch the LLM to Claude |
 
-After deploying, `GET /api/health` should report `"storage": "postgres"`.
+After deploying, `GET /api/health` should report `"storage": "postgres"`. If it says `"sqlite"` with
+`Database-like variables present: none`, the Neon store is connected to a different Vercel project than the one serving
+that URL: open the backend project (the one whose Domains list contains the API URL), connect the store under
+Storage for Production, then redeploy.
+
+To move existing local data into Neon (same tables; safe to re-run, existing rows are kept unless `--overwrite`):
+
+```bash
+cd backend
+python scripts/sqlite_to_postgres.py --dry-run
+python scripts/sqlite_to_postgres.py --url "postgresql://...neon.tech/neondb?sslmode=require"
+```
 
 ---
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md). Next up for TripWeaver: reservation and food-ordering deep links, group cost splitting
-and a shared trip wallet.
+See [ROADMAP.md](ROADMAP.md). Next for TripWeaver: real accounts, then provider integrations for ordering, booking and
+public transport, once their terms and costs are understood.

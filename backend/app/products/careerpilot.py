@@ -162,7 +162,7 @@ class CareerService:
             f"TARGET ROLE: {job.role or 'n/a'} at {job.company or 'n/a'}\n\nJOB DESCRIPTION:\n{clip(job.jd, 8000)}\n\n"
             f"CANDIDATE RESUME:\n{clip(resume, 9000)}"
         )
-        return await ask_json(self.get_llm, TAILOR_SYSTEM, prompt, Tailored)
+        return await ask_json(self.get_llm, TAILOR_SYSTEM, prompt, Tailored, task="careerpilot.tailor")
 
     async def start_interview(self, body: InterviewIn) -> dict[str, Any]:
         resume = self.resume()["text"]
@@ -170,7 +170,7 @@ class CareerService:
             f"JOB DESCRIPTION:\n{clip(body.jd, 6000)}\n\nRESUME:\n{clip(resume, 6000)}\n\n"
             f"KNOWN GAPS: {', '.join(body.gaps) or 'unknown'}"
         )
-        qs = await ask_json(self.get_llm, QUESTIONS_SYSTEM, prompt, QuestionSet)
+        qs = await ask_json(self.get_llm, QUESTIONS_SYSTEM, prompt, QuestionSet, task="careerpilot.questions")
         questions = [q.model_copy(update={"id": i}) for i, q in enumerate(qs.questions[:6], start=1)]
         return self.db.put(
             "interviews",
@@ -194,7 +194,7 @@ class CareerService:
             f"ROLE: {session.get('role') or 'n/a'}\nJOB (excerpt):\n{session['jd'][:2500]}\n\n"
             f"QUESTION ({question['kind']}): {question['text']}\n\nCANDIDATE ANSWER:\n{body.answer}"
         )
-        result = await ask_json(self.get_llm, ASSESS_SYSTEM, prompt, Assessment)
+        result = await ask_json(self.get_llm, ASSESS_SYSTEM, prompt, Assessment, task="careerpilot.assess")
         questions = list(session["questions"])
         follow: dict[str, Any] | None = None
         # Adaptive: weak answers get one follow-up (never a follow-up to a follow-up).

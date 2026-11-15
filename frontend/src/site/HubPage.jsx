@@ -21,7 +21,8 @@ import { Link } from '../router'
 import { ThemeToggle } from '../theme/ThemeToggle'
 import { PaletteButton } from './CommandPalette'
 import { EXPERTISE, SITE, TIMELINE } from './config'
-import { PRODUCTS } from './products'
+import { fillCounts, LABS, PORTFOLIO, productHref } from './products'
+import { StatusBadge } from './StatusBadge'
 import {
   BackToTop,
   CountUp,
@@ -261,13 +262,12 @@ export function HubPage() {
 }
 
 // ── Hero ───────────────────────────────────────────────────────────────────
-const LIVE_PRODUCTS = PRODUCTS.filter((p) => p.status === 'live').length
-/** Fills the {products} placeholder in site copy with the current number of live products. */
-const withCounts = (text) => text.replaceAll('{products}', String(LIVE_PRODUCTS))
+/** Site copy placeholders ({products}, {labs}, {live}) are filled from the product registry. */
+const withCounts = fillCounts
 
 const STATS = [
   { value: `${SITE.years}+`, label: 'years in software' },
-  { value: `${LIVE_PRODUCTS}`, label: 'live AI products' },
+  { value: `${PORTFOLIO.length}`, label: 'portfolio products' },
   { value: '4', label: 'enterprise clients' },
 ]
 
@@ -526,7 +526,7 @@ function TimelineNode({ icon }) {
   )
 }
 
-const PERSONAL = new Set(['keeper', 'careerpilot', 'tripweaver'])
+const PERSONAL = new Set(['keeper', 'tripweaver'])
 
 function useBackendOnline() {
   const [online, setOnline] = useState(null)
@@ -544,7 +544,7 @@ function ProjectsSection() {
   const [filter, setFilter] = useState('all')
   const online = useBackendOnline()
   const shown = useMemo(
-    () => PRODUCTS.filter((p) => filter === 'all' || (filter === 'personal') === PERSONAL.has(p.slug)),
+    () => PORTFOLIO.filter((p) => filter === 'all' || (filter === 'personal') === PERSONAL.has(p.slug)),
     [filter],
   )
   return (
@@ -553,8 +553,8 @@ function ProjectsSection() {
         <div className="flex flex-wrap items-end justify-between gap-x-4">
           <SectionTitle
             kicker="Projects"
-            title="Eight AI products, all live"
-            text="Each one is a complete application (React frontend, Python backend, real AI pipeline), running on free tiers. Open any of them and try it."
+            title={`${PORTFOLIO.length} products, built one at a time`}
+            text="The approved portfolio, in priority order. Each card shows its real status: EFI and TripWeaver are in active development; the others are approved and scheduled, some with an earlier prototype you can already open."
           />
           <Reveal className="mb-10">
             <div role="tablist" aria-label="Filter projects" className="inline-flex rounded-full border border-white/[0.07] bg-ink-900/50 p-1">
@@ -593,6 +593,7 @@ function ProjectsSection() {
             ))}
           </AnimatePresence>
         </motion.ul>
+        <LabsSection />
         <Stack />
       </div>
     </section>
@@ -601,15 +602,15 @@ function ProjectsSection() {
 
 function ProjectCard({ p, online }) {
   const Icon = p.icon
-  const to = p.route ?? `/products/${p.slug}`
+  const to = productHref(p)
   return (
     <article className="spotlight group relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/[0.07] bg-ink-900/60 transition-colors duration-300 hover:border-white/15 hover:shadow-2xl hover:shadow-black/20">
-      <Link to={to} className="relative block aspect-[16/10] overflow-hidden border-b border-white/[0.06] bg-ink-800" aria-label={`Open ${p.name}`}>
-        <ParallaxImage src={`/projects/${p.slug}.webp`} alt={`${p.name} screenshot`} fallback={<ShotFallback p={p} />} />
+      <Link to={to} className="relative block aspect-[16/10] overflow-hidden border-b border-white/[0.06] bg-ink-800" aria-label={`${p.name} product page`}>
+        <ParallaxImage src={`/projects/${p.image ?? p.slug}.webp`} alt={`${p.name} screenshot`} fallback={<ShotFallback p={p} />} />
         <span className={`absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r ${p.accent}`} />
-        <span className="glass absolute top-3 left-3 flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-ink-100">
-          <span className={`size-1.5 rounded-full ${online === false ? 'bg-rose-400' : 'bg-emerald-400'}`} />
-          {online === false ? 'Backend offline' : 'Live'}
+        <span className="absolute top-3 left-3 flex items-center gap-1.5">
+          <StatusBadge status={p.status} className="glass" />
+          {p.app && online === false && <span className="glass rounded-md px-2 py-0.5 text-[11px] text-rose-200">Backend offline</span>}
         </span>
       </Link>
       <div className="flex flex-1 flex-col p-5">
@@ -628,14 +629,49 @@ function ProjectCard({ p, online }) {
             <Chip key={t}>{t}</Chip>
           ))}
         </div>
-        <div className="mt-auto flex items-center gap-4 pt-5">
+        <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 pt-5">
           <Link to={to} className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-white">
-            Open app <ArrowUpRight className="size-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            View product <ArrowUpRight className="size-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </Link>
-          <span className="truncate text-[11.5px] text-ink-500">{p.stack.slice(0, 3).join(' · ')}</span>
+          {p.app && (
+            <Link to={p.app.route} className="text-[12.5px] text-ink-400 underline-offset-2 hover:text-white hover:underline">
+              {p.app.kind === 'product' ? 'Open app' : 'Open prototype'}
+            </Link>
+          )}
         </div>
       </div>
     </article>
+  )
+}
+
+/** Labs: experiments and reusable capabilities. Still usable, never counted as portfolio products. */
+function LabsSection() {
+  return (
+    <div className="mt-16">
+      <p className="text-[12px] font-semibold tracking-[0.18em] text-cyan-300 uppercase">Labs</p>
+      <p className="mt-2 max-w-2xl text-[14px] text-ink-300">
+        Earlier experiments, kept working and reused as capabilities by the portfolio products. They are not part of the approved portfolio.
+      </p>
+      <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {LABS.map((p) => {
+          const Icon = p.icon
+          return (
+            <li key={p.slug}>
+              <Link to={productHref(p)} className="glass flex h-full flex-col rounded-2xl p-4 transition hover:border-white/20">
+                <span className="flex items-center gap-2">
+                  <span className={`grid size-7 place-items-center rounded-lg bg-gradient-to-br ${p.accent} text-on-accent`}>
+                    <Icon className="size-3.5" />
+                  </span>
+                  <span className="text-[14px] font-semibold text-white">{p.name}</span>
+                  <StatusBadge status={p.status} className="ml-auto" />
+                </span>
+                <span className="mt-2 text-[12.5px] text-ink-300">{p.tagline}</span>
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 

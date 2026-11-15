@@ -18,6 +18,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from app.config import Settings
+from app.llm import for_task
 from app.rag.llm import ChatLLM
 from app.rag.structured import complete_json
 from app.rag.vectorstore import VectorStore
@@ -112,7 +113,10 @@ class BriefService:
             text, pages, chunks = await asyncio.to_thread(self._document_text, source)
             started = time.perf_counter()
             brief = await asyncio.wait_for(
-                complete_json(self._get_llm(), SYSTEM, PROMPT.format(name=source, text=text), Brief), 90
+                complete_json(
+                    for_task(self._get_llm(), "documind.brief"), SYSTEM, PROMPT.format(name=source, text=text), Brief
+                ),
+                90,
             )
             payload = {
                 "source": source,

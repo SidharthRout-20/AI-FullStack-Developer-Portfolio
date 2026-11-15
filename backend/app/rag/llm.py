@@ -134,18 +134,11 @@ def build_llm(settings: Settings) -> ChatLLM:
                 "GROQ_API_KEY is not set. Get a free key at https://console.groq.com/keys "
                 "or set LLM_PROVIDER=anthropic / ollama."
             )
-        from langchain_groq import ChatGroq
+        # Every Groq call goes through the central router (app/llm). Call sites re-bind this to their declared
+        # task with `app.llm.for_task`; anything undeclared keeps the safe default model (settings.groq_model).
+        from app.llm import routed_llm
 
-        return LangChainLLM(
-            ChatGroq(
-                model=settings.groq_model,
-                api_key=settings.groq_api_key,
-                temperature=settings.llm_temperature,
-                max_tokens=settings.llm_max_tokens,
-                timeout=settings.llm_timeout_s,
-                max_retries=2,
-            )
-        )
+        return routed_llm(settings, "app.unspecified")
 
     if settings.llm_provider == "ollama":
         from langchain_ollama import ChatOllama
@@ -187,6 +180,10 @@ def _is_certificate_error(exc: BaseException) -> bool:
 def user_facing_error(exc: Exception) -> str | None:
     """Map provider errors to safe, actionable messages (never leak internals)."""
     if isinstance(exc, LLMNotConfiguredError | LLMRefusalError):
+        return str(exc)
+    from app.llm.router import RouterError
+
+    if isinstance(exc, RouterError):  # already safe, user-facing text (quota, no compatible model, …)
         return str(exc)
     if _is_certificate_error(exc):
         return (

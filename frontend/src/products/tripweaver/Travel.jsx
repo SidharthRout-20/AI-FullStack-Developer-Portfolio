@@ -17,7 +17,7 @@ import {
   Wind,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { errorText, get, post } from '../shared/http'
+import { errorText } from '../shared/http'
 import { inputClass, Spinner } from '../shared/ui'
 
 const INSIGHT_ICON = {
@@ -74,7 +74,7 @@ export function LegRow({ leg }) {
 
 /** Attractions and food around one stop, with filters and one-tap "add to this day". */
 export function NearbyPanel({
-  tripId, day, activityId, defaultTime, onAdded,
+  api, day, activityId, activityName, defaultTime, onAdded,
 }) {  // prettier-ignore
   const [group, setGroup] = useState('food')
   const [veg, setVeg] = useState(false)
@@ -91,7 +91,7 @@ export function NearbyPanel({
     const t = window.setTimeout(() => {
       setPlaces(null)
       setError(null)
-      get(`/api/trips/${tripId}/nearby?${params}`)
+      api.nearby(Object.fromEntries(params))
         .then((r) => alive && setPlaces(r.places))
         .catch((e) => alive && setError(errorText(e)))
     }, cuisine ? 350 : 0)
@@ -99,15 +99,17 @@ export function NearbyPanel({
       alive = false
       window.clearTimeout(t)
     }
-  }, [tripId, activityId, group, veg, openThen, cuisine])
+  }, [api, activityId, group, veg, openThen, cuisine])
 
   const add = async (p) => {
     setAdding(p.name)
     try {
-      const trip = await post(`/api/trips/${tripId}/days/${day}/stops`, {
+      const trip = await api.addStop(day, {
         name: p.name, lat: p.lat, lng: p.lng, kind: p.group === 'food' ? 'food' : 'outdoor', time: defaultTime,
-        duration_min: p.group === 'food' ? 60 : 45,
+        duration_min: p.group === 'food' ? 60 : 45, added: 'nearby', distance_m: p.distance_m, near: activityName,
         note: [p.category, p.cuisine, `${p.distance_m} m from your stop`].filter(Boolean).join(' · '),
+        ...(p.opening_hours ? { opening_hours: p.opening_hours.slice(0, 200) } : {}),
+        ...(p.website ? { website: p.website.slice(0, 300) } : {}),
       })  // prettier-ignore
       onAdded(trip)
     } catch (e) {

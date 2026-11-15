@@ -28,6 +28,21 @@ async function failure(res) {
   return new ApiError(res.status === 429 ? 'Too many requests, please wait a moment.' : `Request failed (${res.status})`, res.status)
 }
 
+/** Why a product couldn't start its session. 404/405 mean the backend predates this product (an older deployment). */
+export function sessionError(product, status, base) {
+  if (status === 404 || status === 405) {
+    let host = base
+    try {
+      host = new URL(base).host
+    } catch {
+      /* relative base: keep as is */
+    }
+    return `The backend (${host}) doesn't have ${product} yet: it's running an older deployment. Deploy the latest backend, then try again.`
+  }
+  if (status === 503) return `The backend is starting or unavailable (${status}). Please try again in a minute.`
+  return `${product}: couldn't start a session (${status}).`
+}
+
 export async function http(method, path, body, headers = {}) {
   const isRaw = body instanceof Blob
   const res = await fetch(`${BASE}${path}`, {

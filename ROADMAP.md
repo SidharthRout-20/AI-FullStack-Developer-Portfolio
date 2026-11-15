@@ -141,7 +141,7 @@ every later demo credible. Then the features that are most visibly "not a chatbo
 * **MeetingMind:** speaker diarisation (pyannote) and calendar import.
 * **CodeLens:** private repos via a GitHub App; incremental re-index on push.
 * **FlowForge:** loops/map nodes; versioned flows with diff view; per-flow secrets.
-* **TripWeaver:** routing times between stops (OSRM); WebSocket presence ("3 people viewing").
+* **TripWeaver:** see the travel-ecosystem roadmap below.
 
 ## Keeper: next steps
 
@@ -160,3 +160,60 @@ every later demo credible. Then the features that are most visibly "not a chatbo
 4. **Show engineering:** the evals page and CI gate, plus the latency waterfall and TTFT.
 5. **Show breadth:** the Job-Fit Analyzer report and the live ingestion graph.
 6. **Close with production thinking:** security model, observability, and how it scales.
+
+---
+
+## TripWeaver: travel ecosystem
+
+**Status: In development.** Implemented end to end, covered by automated tests (`tests/test_tripweaver_ecosystem.py`,
+`test_suite.py`, `logic.test.js`) and checked in a browser locally. Not live yet: the deployed backend has no Postgres
+(trips would not persist there), identity is per browser (no accounts), and the provider-dependent parts below need
+commercial integrations.
+
+**Positioning.** *TripWeaver: your complete travel ecosystem.* The **itinerary is the organising object**: food,
+shopping, experiences, weather, routes, bookings and expenses attach to a trip, a day, a stop, the traveller's location
+(with permission), local time and budget. Recommendations come only from real provider data; nothing is ordered,
+booked or paid by TripWeaver.
+
+### Modules
+
+| Module | Status | What exists (code) | Still missing |
+| --- | --- | --- | --- |
+| A. Trip planning & management | Available | AI planner with several cities (`TripService.plan`, `TripRequest.legs`); manual trips (`create_manual`), add destinations, settings, archive, phases; owner token + share-link members (`trip_api.access`) | Real accounts and invitations |
+| B. Itinerary engine | Available | Day parts, routes, optimise, edit/move/pin/delete, re-plan selected days keeping pins, `validate_day`, evidence-backed `stop_labels` | — |
+| C. Local discovery | Available | 10 OSM categories (`trip_logic.SELECTORS`, `Tools.discover`), anchors (destination, stop, location), filters, saved places, add to day | Ratings, prices, comparisons (no free data) |
+| D. Food discovery & ordering | Partial | Food discovery, meal slotting, venue menu/booking/phone hand-offs (`handoff_links`) | Ordering, delivery, table booking: commercial provider needed |
+| E. Shopping & souvenirs | Partial | OSM shops, crafts, markets; AI specialities matched to shops (`match_specialities`) | Stock, prices |
+| F. Experiences & activities | Partial | OSM venues (museums, theatres, zoos, parks, nature) with venue-site hand-offs | Tours, events, tickets: provider needed |
+| G. Weather & travel intelligence | Available | Per-destination daily, current and hourly forecast (`forecast_detail`), driest window, rain spells, derived alerts, indoor alternatives, fetch time | Official severe-weather warnings |
+| H. Maps, navigation & transport | Partial | Map with itinerary and discovery pins, OSRM driving times, walking estimates, stations, airports with transfer times (`passenger_airports`) | Public-transport timetables, routed cycling |
+| I. Booking & reservation management | Available | Booking records linked to days/stops, costs into the budget, status, cancellation terms, hand-offs | Direct booking APIs |
+| J. Budget & expenses | Available | `budget_summary` (actual vs estimate, categories, days), Frankfurter rates or your own, `settle_up`, receipt drafts via the vision route | — |
+| K. Travel companion | Available | `companion` with real context and candidates, `validate_suggestions`, confirm-only actions | Proactive disruption alerts |
+| L. Documents & preparedness | Available | Owner-only documents with ≤1 MB files (existing DB blobs), checklists, `packing_list` | — |
+| M. Post-trip | Available | `trip_summary`, archive, history, AI next-trip ideas | — |
+
+### Provider dependencies and limits (checked 2026-11-14; verify before any commercial use)
+
+| Need | Provider | Cost | Terms and limits |
+| --- | --- | --- | --- |
+| Weather, air quality, geocoding | Open-Meteo | Free | Non-commercial only; < 10,000 calls/day, 5,000/hour, 600/minute; CC BY 4.0 attribution |
+| Places | Overpass API (+ Nominatim / Photon fallback and geocoding) | Free | Overpass: < 10,000 queries/day, commercial use should self-host; Nominatim: max 1 request/second, results must be cached, no autocomplete |
+| Routing | OSRM demo server | Free | Reasonable non-commercial use, max 1 request/second, no uptime guarantee |
+| Map tiles | tile.openstreetmap.org | Free | Attribution required; heavy use may be blocked |
+| Currency | Frankfurter | Free | No key, no quotas (rate-limited against abuse); blended reference rates, commercial use allowed |
+| Ordering, bookings, tickets, tours, transit | Not integrated | — | Partner/affiliate programmes or city GTFS feeds; deferred |
+
+The commercial-use restrictions on Open-Meteo, Overpass and the OSRM demo server are the main blocker for any paid
+launch. Results are cached in memory (and exchange rates in the database) to keep request counts low.
+
+### Staged roadmap
+
+1. **Core travel foundation:** done, except real accounts.
+2. **Contextual discovery:** done.
+3. **Travel operations:** done, except public-transport timetables.
+4. **Travel commerce:** provider hand-offs only; real integrations need partners with understood terms. No own payments.
+5. **Intelligent travel companion:** context-aware, confirm-only companion done; proactive disruption alerts next.
+
+TripWeaver becomes *Live* only after Postgres is connected to the production backend, the deployed app is verified
+end to end, and the remaining blockers above are accepted or resolved.

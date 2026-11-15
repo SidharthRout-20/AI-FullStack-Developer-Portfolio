@@ -37,6 +37,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import StreamWriter
 
 from app.config import Settings
+from app.llm import for_task
 from app.rag import prompts
 from app.rag.guardrails import check_input
 from app.rag.llm import ChatLLM, ChatTurn
@@ -164,7 +165,9 @@ def build_graph(
             history=prompts.format_history(history[-settings.max_history_messages :]), question=state["question"]
         )
         try:
-            reply = await get_llm().complete(None, [{"role": "user", "content": prompt}], short=True)
+            reply = await for_task(get_llm(), "documind.rewrite").complete(
+                None, [{"role": "user", "content": prompt}], short=True
+            )
         except Exception as exc:
             # Rewriting is an optimisation, not a requirement: degrade gracefully to the raw
             # question so retrieval (and the no-context fallback) still work if the LLM is down.
@@ -233,7 +236,9 @@ def build_graph(
         context = prompts.format_context(state["documents"])
         turns.append({"role": "user", "content": f"{context}\n\nQuestion: {state['question']}"})
 
-        answer, stats = await _stream_answer(get_llm(), prompts.SYSTEM_PROMPT, turns, writer)
+        answer, stats = await _stream_answer(
+            for_task(get_llm(), "documind.answer"), prompts.SYSTEM_PROMPT, turns, writer
+        )
         return {"answer": answer, "_detail": stats}
 
     async def general(state: RAGState, writer: StreamWriter) -> dict[str, Any]:
@@ -244,7 +249,9 @@ def build_graph(
         ]
         turns.append({"role": "user", "content": state["question"]})
         try:
-            answer, stats = await _stream_answer(get_llm(), prompts.GENERAL_PROMPT, turns, writer)
+            answer, stats = await _stream_answer(
+                for_task(get_llm(), "documind.general"), prompts.GENERAL_PROMPT, turns, writer
+            )
         except Exception as exc:
             # No LLM available (or it failed): stay useful with a static reply instead of an error.
             logger.warning("General answer unavailable, using static reply: %s", type(exc).__name__)

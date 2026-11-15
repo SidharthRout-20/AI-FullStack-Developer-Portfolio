@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, model_validator
 
+from app.llm import for_task
 from app.rag.llm import ChatLLM, user_facing_error
 from app.rag.structured import StructuredOutputError, complete_json
 
@@ -18,13 +19,22 @@ logger = logging.getLogger(__name__)
 GetLLM = Callable[[], ChatLLM]
 
 
-async def ask_json[T: BaseModel](get_llm: GetLLM, system: str, prompt: str, schema: type[T], limit_s: float = 90) -> T:
+def llm_for(get_llm: GetLLM, task: str | None) -> ChatLLM:
+    """The LLM for one declared task ("product.feature"): with Groq it is routed by the central LLM router."""
+    llm = get_llm()
+    return for_task(llm, task) if task else llm
+
+
+async def ask_json[T: BaseModel](
+    get_llm: GetLLM, system: str, prompt: str, schema: type[T], limit_s: float = 90, *, task: str | None = None
+) -> T:
     """One structured LLM call: JSON → Pydantic, with one repair retry and an overall timeout."""
-    return await asyncio.wait_for(complete_json(get_llm(), system, prompt, schema), limit_s)
+    return await asyncio.wait_for(complete_json(llm_for(get_llm, task), system, prompt, schema), limit_s)
 
 
-async def ask_text(get_llm: GetLLM, system: str, prompt: str, limit_s: float = 90) -> str:
-    return await asyncio.wait_for(get_llm().complete(system, [{"role": "user", "content": prompt}]), limit_s)
+async def ask_text(get_llm: GetLLM, system: str, prompt: str, limit_s: float = 90, *, task: str | None = None) -> str:
+    llm = llm_for(get_llm, task)
+    return await asyncio.wait_for(llm.complete(system, [{"role": "user", "content": prompt}]), limit_s)
 
 
 def llm_failure(exc: Exception) -> str:

@@ -50,4 +50,9 @@ async def tick(
     except Exception:  # noqa: BLE001
         logger.exception("Scheduled flows failed")
         out["flows_run"] = "error"
+    try:
+        out["efi_artifacts_purged"] = request.app.state.efi.store.purge_expired()
+    except Exception:  # noqa: BLE001
+        logger.exception("EFI artifact purge failed")
+        out["efi_artifacts_purged"] = "error"
     return out

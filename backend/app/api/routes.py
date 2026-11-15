@@ -21,6 +21,7 @@ from app.api.schemas import (
     IngestResponse,
 )
 from app.config import database_hint
+from app.core.db import check_postgres
 from app.core.security import limiter, rate_limit_value, require_admin
 from app.rag.llm import user_facing_error
 from app.rag.service import RAGService
@@ -58,7 +59,16 @@ async def health(rag: Rag) -> dict[str, Any]:
         "storage": rag.settings.storage,
         "storage_source": (src := rag.settings.db_source) and src[0],
         "storage_hint": None if src else database_hint(os.environ),
+        **(await _storage_check(rag.settings.db_url)),
     }
+
+
+async def _storage_check(url: str | None) -> dict[str, Any]:
+    """With Postgres configured, prove the database answers (not just that a URL is present)."""
+    if not url:
+        return {"storage_ok": None, "storage_error": None}
+    ok, reason = await asyncio.to_thread(check_postgres, url)
+    return {"storage_ok": ok, "storage_error": reason}
 
 
 @router.get("/graph", response_model=GraphResponse)

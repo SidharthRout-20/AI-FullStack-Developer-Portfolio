@@ -74,6 +74,8 @@ class HealthResponse(BaseModel):
     storage: Literal["postgres", "sqlite"] = "sqlite"
     storage_source: str | None = None  # env var NAME the database URL came from
     storage_hint: str | None = None
+    storage_ok: bool | None = None  # Postgres answered SELECT 1 (None: not using Postgres)
+    storage_error: str | None = None  # category only, never connection details
 
 
 class GraphNode(BaseModel):

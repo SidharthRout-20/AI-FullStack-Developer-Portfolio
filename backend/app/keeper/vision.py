@@ -21,28 +21,30 @@ class VisionLLM(Protocol):
 
 
 class GroqVision:
-    def __init__(self, settings: Settings) -> None:
-        from groq import AsyncGroq
+    """Photos are read by whichever free-tier Groq model the central router verifies as vision-capable
+    (today qwen/qwen3.8-27b, a preview model). A text-only model can never be selected for an image."""
+
+    def __init__(self, settings: Settings, task: str = "keeper.photo") -> None:
+        from app.llm import get_router
 
         if settings.groq_api_key is None or not settings.groq_api_key.get_secret_value():
             raise LLMNotConfiguredError("Reading photos needs GROQ_API_KEY (free at https://console.groq.com/keys).")
-        self._client = AsyncGroq(api_key=settings.groq_api_key.get_secret_value(), timeout=settings.llm_timeout_s)
-        self._model = settings.groq_vision_model
+        self._router = get_router(settings)
+        self._task = task
 
     async def read(self, image: bytes, mime: str, prompt: str) -> str:
-        url = f"data:{mime};base64,{base64.b64encode(image).decode()}"
-        res = await self._client.chat.completions.create(
-            model=self._model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": url}}],
-                }
-            ],
-            temperature=0.1,
-            max_completion_tokens=1024,
+        from app.llm import LLMRequest
+
+        res = await self._router.execute_request(
+            LLMRequest(
+                task=self._task,
+                messages=[{"role": "user", "content": prompt}],
+                images=[(mime, image)],
+                max_output_tokens=1024,
+                temperature=0.1,
+            )
         )
-        return res.choices[0].message.content or ""
+        return res.text
 
 
 class ClaudeVision:

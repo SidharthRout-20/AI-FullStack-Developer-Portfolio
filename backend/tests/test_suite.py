@@ -303,6 +303,7 @@ def test_flow_run_branches_and_webhook(app_client):
 # ── TripWeaver ───────────────────────────────────────────────────────────
 def test_trip_plan_replan_vote_weather(app_client):
     c = app_client
+    c.headers["X-Trip-Owner"] = c.post("/api/trips/owner").json()["token"]
     events = parse_sse(c.post("/api/trips/plan", json={"prompt": "2 days in Lisbon from May 1 2030, love food"}).text)
     steps = [d["step"] for e, d in events if e == "step"]
     assert (
@@ -350,6 +351,39 @@ def test_trip_plan_replan_vote_weather(app_client):
         c.post(f"/api/trips/{trip['id']}/votes", json={"activity_id": "nope", "voter": "Sam", "value": 1}).status_code
         == 404
     )
+
+
+def test_trip_records_destination_days_places_and_forecast_time(app_client):
+    """What TripWeaver stores today: destination, dated day-wise itinerary, located places, forecast fetch time."""
+    c = app_client
+    c.headers["X-Trip-Owner"] = c.post("/api/trips/owner").json()["token"]
+    events = parse_sse(c.post("/api/trips/plan", json={"prompt": "2 days in Lisbon from May 1 2030, love food"}).text)
+    trip = events[-1][1]["trip"]
+    assert trip["city"]["name"] == "Lisbon" and trip["request"]["days"] == 2
+    assert [d["day"] for d in trip["days"]] == [1, 2] and [d["date"] for d in trip["days"]] == [
+        "2030-05-01",
+        "2030-05-02",
+    ]
+    assert all(a.get("lat") is not None and a.get("time") for d in trip["days"] for a in d["activities"])
+    planned_at = trip["weather_updated_at"]
+    assert planned_at and planned_at.endswith("+00:00")  # forecast time is recorded, never implied to be live
+    assert trip["id"] in [t["id"] for t in c.get("/api/trips").json()]  # trip history
+    wx = c.post(f"/api/trips/{trip['id']}/weather-check").json()
+    assert wx["trip"]["weather_updated_at"] >= planned_at
+
+
+def test_trip_without_forecast_records_no_forecast_time(app_client):
+    class NoWeather(FakeTools):
+        async def forecast(self, lat, lng, tz):
+            raise RuntimeError("weather provider down")
+
+    c = app_client
+    c.app.state.suite.trips.tools = NoWeather()
+    c.headers["X-Trip-Owner"] = c.post("/api/trips/owner").json()["token"]
+    events = parse_sse(c.post("/api/trips/plan", json={"prompt": "2 days in Lisbon from May 1 2030, love food"}).text)
+    trip = events[-1][1]["trip"]
+    assert trip["weather_updated_at"] is None
+    assert not any("rain" in (d["weather"] or {}) for d in trip["days"])  # air quality may exist; no forecast
 
 
 # ── Portfolio contact form ───────────────────────────────────────────────

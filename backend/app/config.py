@@ -96,6 +96,18 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.1  # Groq/Ollama only (Claude Opus 5.5 doesn't take sampling params)
     llm_max_tokens: int = 4096  # Groq/Ollama only (reasoning models spend part of this thinking)
     llm_timeout_s: float = 60.0
+    # ── Central Groq LLM router (app/llm). groq_model above stays the safe default for undeclared tasks. ──
+    llm_router_allow_preview: bool = True  # preview models (qwen vision, safeguard) may be selected for their role
+    llm_router_discovery_ttl_s: int = Field(21_600, ge=60)  # re-check GET /openai/v1/models every 6 h
+    llm_router_max_attempts: int = Field(4, ge=1, le=8)  # model calls per request, fallbacks included
+    llm_router_max_retries: int = Field(1, ge=0, le=3)  # same-model retries on 5xx / connection errors
+    llm_router_backoff_s: float = Field(0.5, ge=0, le=5)  # exponential: 0.5 s, 1 s, 2 s … (capped at 8 s)
+    llm_router_max_wait_s: float = Field(3.0, ge=0, le=20)  # wait in-request for a short Retry-After, else fall back
+    # Share of a model's remaining daily requests kept free for higher priorities (1 = EFI, 2 = TripWeaver,
+    # 3 = other products and Labs, 4 = background jobs).
+    llm_router_reserve_p2: float = Field(0.02, ge=0, le=0.5)
+    llm_router_reserve_p3: float = Field(0.05, ge=0, le=0.5)
+    llm_router_reserve_p4: float = Field(0.15, ge=0, le=0.8)
 
     # ── Keeper (personal assistant) ────────────────────────────────────────
     # Vision model for reading photos (labels, warranty cards, receipts).
@@ -110,6 +122,23 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr | None = None
     telegram_chat_id: str | None = None
     keeper_brief_hour: int = Field(8, ge=0, le=23)
+
+    # ── EFI (Engineering Failure Investigator) ─────────────────────────────
+    # Always runs on Groq (free tier); there is deliberately no fallback to another (paid) provider.
+    efi_model: str | None = None  # None → groq_model (openai/gpt-oss-120b)
+    efi_max_request_bytes: int = Field(2_500_000, ge=10_000, le=4_000_000)  # stays under Vercel's body limit
+    efi_max_artifact_bytes: int = Field(1_000_000, ge=1_000, le=4_000_000)
+    efi_max_artifacts: int = Field(12, ge=1, le=50)
+    efi_max_evidence: int = Field(300, ge=20, le=2000)
+    efi_max_context_chars: int = Field(16_000, ge=2_000, le=200_000)  # evidence sent per model call (~4k tokens)
+    efi_max_output_tokens: int = Field(3072, ge=256, le=16_000)  # includes gpt-oss reasoning tokens
+    efi_max_model_calls: int = Field(2, ge=1, le=5)  # per analysis: 1 call + 1 repair retry for invalid JSON
+    efi_max_retries: int = Field(2, ge=0, le=5)  # SDK retries with exponential backoff (429 / 5xx)
+    efi_reasoning_effort: Literal["low", "medium", "high"] = "low"
+    efi_llm_timeout_s: float = Field(90.0, ge=10, le=280)  # whole analysis, retries included
+    efi_retention_days: int = Field(14, ge=1, le=365)  # raw (redacted) artifacts; reports stay until deleted
+    efi_daily_analyses_per_owner: int = Field(20, ge=0, le=10_000)
+    efi_daily_analyses_global: int = Field(200, ge=0, le=100_000)
 
     # ── Security ───────────────────────────────────────────────────────────
     rate_limit: str = "20/minute"

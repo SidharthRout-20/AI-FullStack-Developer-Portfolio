@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { navigate } from '../router'
 import { setThemeMode } from '../theme/theme'
-import { PRODUCTS } from './products'
+import { PRODUCTS, productHref, STATUSES } from './products'
 
 const OPEN_EVENT = 'app:palette'
 export const openPalette = () => window.dispatchEvent(new Event(OPEN_EVENT))
@@ -13,10 +13,10 @@ function buildActions() {
     ...PRODUCTS.map((p) => ({
       id: `p-${p.slug}`,
       label: p.name,
-      hint: p.status === 'live' ? 'Open app' : 'Preview · in development',
-      group: 'Products',
+      hint: p.visibility === 'labs' ? 'Labs · open app' : `${STATUSES[p.status].label} · product page`,
+      group: p.visibility === 'labs' ? 'Labs' : 'Products',
       icon: p.icon,
-      run: () => navigate(p.route ?? `/products/${p.slug}`),
+      run: () => navigate(productHref(p)),
     })),
     { id: 'hub', label: 'All products', hint: 'Portfolio home', group: 'Navigate', icon: LayoutGrid, run: () => navigate('/') },
     { id: 't-light', label: 'Light theme', hint: 'Theme', group: 'Theme', icon: Sun, run: () => setThemeMode('light') },

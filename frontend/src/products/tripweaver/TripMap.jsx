@@ -5,25 +5,28 @@ import { useTheme } from '../../theme/theme'
 
 import { DAY_COLORS } from './colors'
 
-/** Leaflet map: numbered markers per day, a route line per day, theme-matched CARTO basemap. */
+/** Leaflet map: numbered markers per day, a route line per day, plus discovery pins (real places, not yet planned). */
 export function TripMap({
   center,
   days,
   activeDay,
   focus,
   onSelect,
+  extra = [],
 }) {
   const el = useRef(null)
   const map = useRef(null)
   const tiles = useRef(null)
   const layer = useRef(null)
   const markers = useRef(new Map())
+  const extraLayer = useRef(null)
   const { theme } = useTheme()
 
   useEffect(() => {
     if (!el.current || map.current) return
     map.current = L.map(el.current, { zoomControl: true, attributionControl: true }).setView(center, 13)
     layer.current = L.layerGroup().addTo(map.current)
+    extraLayer.current = L.layerGroup().addTo(map.current)
     return () => {
       map.current?.remove()
       map.current = null
@@ -70,8 +73,28 @@ export function TripMap({
       })
       if (pts.length > 1) L.polyline(pts, { color, weight: 3, opacity: dim ? 0.2 : 0.8, dashArray: '6 6' }).addTo(g)
     }
-    if (bounds.length) m.fitBounds(L.latLngBounds(bounds), { padding: [40, 40], maxZoom: 15 })
+    if (bounds.length) m.fitBounds(L.latLngBounds(bounds), { padding: [40, 40], maxZoom: 15, animate: false }) // an animated zoom would swallow a later fit (Leaflet ignores fits mid-animation)
   }, [days, activeDay, onSelect])
+
+  useEffect(() => {
+    const g = extraLayer.current
+    if (!g) return
+    g.clearLayers()
+    const pts = extra.filter((p) => p.lat != null && p.lng != null).map((p) => [p.lat, p.lng])
+    if (pts.length && map.current) map.current.fitBounds(L.latLngBounds(pts), { padding: [40, 40], maxZoom: 16, animate: false })
+    for (const p of extra) {
+      if (p.lat == null || p.lng == null) continue
+      const icon = L.divIcon({
+        className: '',
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+        html: '<div style="width:14px;height:14px;border-radius:999px;background:#fff;border:3px solid #10b981;box-shadow:0 2px 8px rgb(0 0 0/.35)"></div>',
+      })
+      L.marker([p.lat, p.lng], { icon, title: p.name })
+        .addTo(g)
+        .bindTooltip(`${p.name.replace(/</g, '&lt;')}${p.category ? ` · ${String(p.category).replace(/</g, '&lt;')}` : ''}`, { direction: 'top', offset: [0, -8] })
+    }
+  }, [extra])
 
   useEffect(() => {
     if (!focus) return
