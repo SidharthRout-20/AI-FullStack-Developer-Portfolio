@@ -2,7 +2,7 @@ import { BookOpen, Columns2, Database, FileText, History, LayoutGrid, MessageSqu
 import { AnimatePresence, motion } from 'motion/react'
 import { ThemeToggle } from '../../theme/ThemeToggle'
 import { useEffect, useRef, useState } from 'react'
-import { Link } from '../../router'
+import { Link } from '@appcore/web/router'
 
 const VIEWS = [
   { id: 'split', label: 'Workspace', icon: Columns2, key: '1', desktopOnly: true },

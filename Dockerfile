@@ -6,10 +6,13 @@
 
 # ── Stage 1: build the React frontend ───────────────────────────────────────
 FROM node:24-alpine AS frontend
-WORKDIR /build
+WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
+# Shared web core and Safarnama (embedded at /safarnama) are built from source, at the same relative paths.
+COPY packages/web-core/src /build/packages/web-core/src
+COPY products/safarnama/web/src /build/products/safarnama/web/src
 RUN npm run build
 
 # ── Stage 2: Python runtime ─────────────────────────────────────────────────
@@ -20,7 +23,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     ENVIRONMENT=production \
-    PORT=7860
+    PORT=7860 \
+    PYTHONPATH=/app/packages/py-core/src:/app/products/safarnama/api/src
 
 # Run as an unprivileged user (uid 1000 is also what HF Spaces expects).
 RUN useradd --create-home --uid 1000 appuser
@@ -30,8 +34,10 @@ COPY backend/requirements.txt backend/requirements.txt
 RUN pip install -r backend/requirements.txt
 
 COPY --chown=appuser:appuser backend/app backend/app
+COPY --chown=appuser:appuser packages/py-core/src packages/py-core/src
+COPY --chown=appuser:appuser products/safarnama/api/src products/safarnama/api/src
 COPY --chown=appuser:appuser documents documents
-COPY --from=frontend --chown=appuser:appuser /build/dist frontend/dist
+COPY --from=frontend --chown=appuser:appuser /build/frontend/dist frontend/dist
 RUN mkdir -p backend/data && chown -R appuser:appuser backend/data
 
 USER appuser

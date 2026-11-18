@@ -18,9 +18,9 @@ from app.rag.briefs import BriefService
 from app.rag.embeddings import Embedder
 from app.rag.graph import build_graph, describe_graph
 from app.rag.ingestion import IngestReport, ingest
-from app.rag.llm import ChatLLM, LLMNotConfiguredError, build_llm
 from app.rag.retriever import HybridRetriever
 from app.rag.vectorstore import VectorStore
+from appcore.llm.chat import ChatLLM, LLMNotConfiguredError, build_llm
 
 logger = logging.getLogger(__name__)
 

@@ -27,11 +27,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.config import _pg_url, get_settings  # noqa: E402
-from app.core import docstore  # noqa: E402
-from app.core.db import Database  # noqa: E402
+from app.config import get_settings  # noqa: E402
 from app.keeper import store as keeper_store  # noqa: E402
 from app.rag import vectorstore  # noqa: E402
+from appcore import docstore  # noqa: E402
+from appcore.db import Database  # noqa: E402
+from appcore.settings import pg_url as _pg_url  # noqa: E402
 
 # Which schema (CREATE TABLE statements) each store uses; every other *.sqlite3 file is a product DocStore.
 SCHEMAS: dict[str, Sequence[str]] = {"keeper": keeper_store._SCHEMA, "vectors": vectorstore._SCHEMA}

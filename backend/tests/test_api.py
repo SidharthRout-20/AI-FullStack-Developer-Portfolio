@@ -117,10 +117,10 @@ def test_admin_disabled_without_key(client):
 
 
 def test_admin_requires_valid_key(settings, service_factory, monkeypatch):
-    from app.core import security
+    from appcore import security
 
     keyed = settings.model_copy(update={"admin_api_key": SecretStr("s3cret")})
-    monkeypatch.setattr(security, "get_settings", lambda: keyed)
+    monkeypatch.setattr(security, "_get_settings", lambda: keyed)
     with TestClient(create_app(keyed, service_factory=service_factory)) as c:
         assert c.post("/api/admin/reindex", headers={"X-Admin-Key": "wrong"}).status_code == 401
         ok = c.post("/api/admin/reindex", headers={"X-Admin-Key": "s3cret"})
@@ -147,8 +147,8 @@ def test_spa_serving_and_path_traversal(settings, service_factory, tmp_path):
 
 def test_rewrite_degrades_gracefully_when_llm_unavailable(settings):
     """Follow-up + broken LLM: off-topic questions still get a (static) general reply, not an error."""
-    from app.rag.llm import LLMNotConfiguredError
     from app.rag.service import RAGService
+    from appcore.llm.chat import LLMNotConfiguredError
     from tests.conftest import FakeEmbedder
 
     def broken_llm(_s):

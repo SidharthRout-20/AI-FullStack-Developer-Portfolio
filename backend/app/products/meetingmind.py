@@ -19,11 +19,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import Settings
-from app.core.ai import Lenient, ask_json, ask_text, clip, llm_failure
-from app.core.docstore import DocStore
-from app.core.security import limiter, rate_limit_value
-from app.rag.guardrails import normalize
-from app.rag.llm import LLMNotConfiguredError
+from appcore.ai import Lenient, ask_json, ask_text, clip, llm_failure
+from appcore.docstore import DocStore
+from appcore.guardrails import normalize
+from appcore.llm.chat import LLMNotConfiguredError
+from appcore.security import limiter, rate_limit_value
 
 logger = logging.getLogger(__name__)
 MAX_AUDIO_MB = 24  # Groq's per-file limit is 25 MB
@@ -122,7 +122,7 @@ class MeetingService:
             raise LLMNotConfiguredError(
                 "Transcription uses Groq Whisper: set GROQ_API_KEY, or paste a transcript instead."
             )
-        from app.llm import LLMRequest, get_router
+        from appcore.llm import LLMRequest, get_router
 
         # Routed to a free-tier Whisper model (audio endpoint); WHISPER_MODEL is the preferred one.
         routed = await get_router(self.settings).transcribe(

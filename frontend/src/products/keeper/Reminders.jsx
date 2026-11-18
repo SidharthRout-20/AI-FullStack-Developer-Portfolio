@@ -9,7 +9,7 @@ import { AlarmClock, BellRing, Check, Clock, Moon, Send, Smartphone, Volume2, Vo
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { keeperApi } from './api'
-import { notify, speak } from './device'
+import { notify, speak } from '@appcore/web/device'
 
 const SHOWN_KEY = 'keeper-alerts-shown'
 const SPEAK_KEY = 'keeper-speak'

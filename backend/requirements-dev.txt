@@ -2,3 +2,6 @@
 pytest==9.2.0
 httpx==0.28.1
 ruff==0.17.4
+# The monorepo packages the backend builds on, installed in place (Vercel puts them on the path in index.py instead)
+-e ../packages/py-core
+-e ../products/safarnama/api

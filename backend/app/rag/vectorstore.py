@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from app.config import Settings
-from app.core.db import open_db
+from appcore.db import open_db
 
 
 @dataclass(frozen=True)

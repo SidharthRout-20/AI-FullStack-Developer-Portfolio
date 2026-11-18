@@ -1,0 +1,7 @@
+/* Safarnama's own site: Tailwind, the shared design system (packages/web-core), then Safarnama's theme (App.jsx). */
+@import 'tailwindcss';
+@import '../../../../../packages/web-core/src/styles/core.css';
+@import '../../../../../packages/web-core/src/styles/theme-light.css';
+
+@source '..';
+@source '../../../../../packages/web-core/src';

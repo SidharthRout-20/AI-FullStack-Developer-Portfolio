@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from app.rag.guardrails import check_input, normalize
 from app.rag.ingestion import ingest
 from app.rag.loaders import discover_files
 from app.rag.retriever import reciprocal_rank_fusion, tokenize
 from app.rag.vectorstore import VectorStore
+from appcore.guardrails import check_input, normalize
 from tests.conftest import FakeEmbedder
 
 
@@ -134,7 +134,7 @@ def test_allowed_origins_always_include_deployed_frontend() -> None:
 
 
 def test_database_url_is_found_under_any_integration_name():
-    from app.config import discover_database_url
+    from appcore.settings import discover_database_url
 
     url = "postgresql://u:p@ep-x-pooler.neon.tech/db?sslmode=require"
     assert discover_database_url({"PORTFOLIO_DB_DATABASE_URL": url}) == url
@@ -157,7 +157,7 @@ def test_database_url_is_found_under_any_integration_name():
 
 def test_postgres_sql_uses_the_same_table_names_as_sqlite():
     """Postgres mirrors SQLite: same table/index names (inside a schema named after the store), same columns."""
-    from app.core.db import Database
+    from appcore.db import Database
 
     pg = Database("keeper", url="postgresql://u:p@h/db")
     assert pg.sql("SELECT * FROM {entries} WHERE id = ? AND note LIKE '%x'") == (
@@ -170,7 +170,8 @@ def test_postgres_sql_uses_the_same_table_names_as_sqlite():
 
 
 def test_health_reports_storage_source_without_leaking_values():
-    from app.config import Settings, database_hint
+    from app.config import Settings
+    from appcore.settings import database_hint
 
     url = "postgresql://u:secret@h/db"
     s = Settings(_env_file=None, database_url=f"psql '{url}'")
@@ -200,7 +201,7 @@ def test_cors_regex_allows_frontend_domains_and_local_ports_only():
 
 
 def test_postgres_health_check_reports_categories_without_details(monkeypatch):
-    from app.core import db
+    from appcore import db
 
     db._health.clear()
     assert db.check_postgres("postgresql://u:secret@127.0.0.1:1/x")[0] is False  # nothing listens on port 1

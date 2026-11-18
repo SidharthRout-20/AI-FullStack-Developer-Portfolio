@@ -1,0 +1,13 @@
+# Safarnama API (standalone deployment). The shared core comes from this monorepo: packages/py-core.
+# Versions match backend/requirements.txt.
+fastapi==0.162.2
+uvicorn[standard]==0.54.0
+pydantic-settings==2.16.2
+slowapi==0.1.10
+httpx==0.28.1
+anthropic==2.6.0
+langchain-core==1.7.6
+langchain-groq==1.1.3
+langchain-ollama==1.1.0
+psycopg[binary]==3.3.2
+truststore==0.10.5

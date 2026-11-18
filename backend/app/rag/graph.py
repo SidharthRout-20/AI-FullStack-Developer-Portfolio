@@ -37,11 +37,11 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import StreamWriter
 
 from app.config import Settings
-from app.llm import for_task
 from app.rag import prompts
-from app.rag.guardrails import check_input
-from app.rag.llm import ChatLLM, ChatTurn
 from app.rag.retriever import HybridRetriever, ScoredChunk
+from appcore.guardrails import check_input
+from appcore.llm import for_task
+from appcore.llm.chat import ChatLLM, ChatTurn
 
 logger = logging.getLogger(__name__)
 

@@ -23,11 +23,11 @@ has no product records, it only serves the apps.
 
 | # | Product | Status | What exists today |
 | --- | --- | --- | --- |
-| 1 | **EFI** (Engineering Failure Investigator): why did this build, test or deploy fail? | In development | The full workflow (see [EFI](#efi-engineering-failure-investigator)), tested with a mocked model. Not yet live-verified with Groq; history is per browser (no accounts); the deployed backend needs Postgres for it to persist |
-| 2 | **Keeper** (Purchase & Warranty Recovery) | Planned | Not built. The earlier Keeper memory assistant (natural-language capture, photo scanning, ntfy / Telegram reminders) runs at `/keeper` as a prototype |
-| 3 | **DocuMind Respond** (security and vendor questionnaires) | Gated | Not built; gated on two committed design partners. The DocuMind RAG Studio it builds on (LangGraph RAG with citations, briefs, Match Analyzer) runs at `/documind` |
-| 4 | **Follow-through** (commitment execution) | Planned | Not built. MeetingMind (transcripts → decisions, action items, Kanban, archive Q&A) runs at `/meetingmind` as a prototype |
-| 5 | **TripWeaver** (complete travel ecosystem) | In development | Implemented end to end at `/tripweaver` (see [TripWeaver](#tripweaver-travel-ecosystem)) and covered by tests, browser-checked locally. Not live: production has no Postgres yet, identity is per browser, and ordering/booking/ratings/transit need commercial providers |
+| 1 | **Safarnama** (travel: plan, book, keep) | In development | Implemented end to end at `/safarnama` (see [Safarnama](products/safarnama/README.md)) and covered by tests, browser-checked locally. Not live: production has no Postgres yet, identity is per browser, and ordering/booking/ratings/transit need commercial providers |
+| 2 | **Jasoos** (formerly EFI, Engineering Failure Investigator): why did this build, test or deploy fail? | In development | The full workflow (see [EFI](#efi-engineering-failure-investigator)), tested with a mocked model. Not yet live-verified with Groq; history is per browser (no accounts); the deployed backend needs Postgres for it to persist |
+| 3 | **Tijori** (formerly Keeper: purchase & warranty recovery) | Planned | Not built. The earlier Keeper memory assistant (natural-language capture, photo scanning, ntfy / Telegram reminders) runs at `/keeper` as a prototype |
+| 4 | **Pramaan** (formerly DocuMind Respond: security and vendor questionnaires) | Gated | Not built; gated on two committed design partners. The DocuMind RAG Studio it builds on (LangGraph RAG with citations, briefs, Match Analyzer) runs at `/documind` |
+| 5 | **Vaada** (formerly Follow-through: commitment execution) | Planned | Not built. MeetingMind (transcripts → decisions, action items, Kanban, archive Q&A) runs at `/meetingmind` as a prototype |
 
 Statuses follow one rule: **Live** only when the principal workflow works end to end, persists, is access-controlled
 where needed and is tested. Approval is not completion.
@@ -90,7 +90,7 @@ chunks with their fused scores, and the route taken.
 
 ## Engineering decisions
 
-**One storage abstraction, two engines.** `app/core/db.py` writes portable SQL once. Locally each product gets its own
+**One storage abstraction, two engines.** `appcore/db.py` ([packages/py-core](packages/py-core)) writes portable SQL once. Locally each product gets its own
 SQLite file. When a `DATABASE_URL` is present (Neon on Vercel), the same code runs on Postgres with an identical layout
 (each SQLite file is a Postgres schema with the same tables, columns and indexes: `keeper.entries`, `evolve.docs`) and
 a PgBouncer-safe psycopg 3 connection (no server-side prepared statements). Serverless instances share no disk, so this
@@ -186,7 +186,7 @@ the user deletes the investigation. Investigation content is never used for trai
 | POST | `/api/efi/investigations/{id}/feedback` | Record the confirmed root cause |
 | GET | `/api/efi/investigations/{id}/artifacts/{A1}?line=&radius=` | Redacted lines around evidence, while retained |
 
-**Database** (additive, through `app/core/db.py`): schema `efi` on Postgres (or `efi.sqlite3` locally) with tables
+**Database** (additive, through `appcore/db.py` ([packages/py-core](packages/py-core))): schema `efi` on Postgres (or `efi.sqlite3` locally) with tables
 `investigations` (owner, title, status, JSON report, `version` for optimistic concurrency), `artifacts` (redacted text
 with `expires_at`) and `usage_log` (model, calls, token counts, duration, status; no prompt contents). They are
 created automatically at startup; no existing table is changed.
@@ -206,20 +206,20 @@ Groq free-tier limits apply and are not guaranteed.
 
 ## Central Groq LLM router
 
-Every model call in the app goes through one router ([backend/app/llm](backend/app/llm)). Application code declares a
+Every model call in the app goes through one router ([backend/app/llm](packages/py-core/src/appcore/llm)). Application code declares a
 *task* (`"tripweaver.plan"`, `"keeper.photo"`, `"efi.investigate"`…), never a model ID. The router picks the most
 suitable **free-tier Groq** model for that request, deterministically, without spending a model call on the decision.
 
-1. **Classify** ([classify.py](backend/app/llm/classify.py)): complexity (simple → standard → complex → advanced) from the
+1. **Classify** ([classify.py](packages/py-core/src/appcore/llm/classify.py)): complexity (simple → standard → complex → advanced) from the
    task profile plus measurable signals (context size, multi-step wording, tool count), and, independently, modality
    (text / image / audio), structured-output needs (JSON, schema, strict), tool calling and quota priority
    (1 EFI, 2 TripWeaver, 3 other products and Labs, 4 background jobs).
-2. **Registry + discovery** ([catalog.py](backend/app/llm/catalog.py)): capabilities are written from Groq's
+2. **Registry + discovery** ([catalog.py](packages/py-core/src/appcore/llm/catalog.py)): capabilities are written from Groq's
    documentation (verified 2026-11-14); unverified capabilities are `None` and never relied on. `GET /openai/v1/models`
    (cached 6 h) says what this key can see right now; listed-but-unknown models are recorded and never selected,
    registry models the API no longer lists are treated as removed. Only models in Groq's free-plan limit table are
    eligible; "contact sales" models never are.
-3. **Hard filters, then scores** ([router.py](backend/app/llm/router.py)): endpoint, modality, verified capabilities,
+3. **Hard filters, then scores** ([router.py](packages/py-core/src/appcore/llm/router.py)): endpoint, modality, verified capabilities,
    free-tier eligibility, availability, context fit, quota and a reasoning floor per complexity are filters; among what
    remains, the smallest adequate model wins (production over preview, speed, remaining quota). A text-only model can
    never win an image request, a safety model is never a general model, Whisper is never a chat model.
@@ -228,7 +228,7 @@ suitable **free-tier Groq** model for that request, deterministically, without s
    only falls back to larger contexts. The complexity floor is never relaxed, so an EFI investigation is never
    silently downgraded. When nothing eligible is left: a controlled error ("nothing was charged, no paid provider was
    used, retry in N s"). There is no code path to a paid provider.
-5. **Quota & transparency** ([quota.py](backend/app/llm/quota.py)): `x-ratelimit-*` headers are tracked per model
+5. **Quota & transparency** ([quota.py](packages/py-core/src/appcore/llm/quota.py)): `x-ratelimit-*` headers are tracked per model
    (requests/day, tokens/minute, resets); lower priorities may not spend the last 2/5/15 % of a model's daily
    requests. Each decision records task, complexity, modality, candidates and rejections with reasons, the selected
    model, fallbacks, tokens (actual or estimated), latency and rate-limit state, never prompts or outputs. Admins
@@ -242,39 +242,12 @@ receipts) → `qwen/qwen3.8-27b` (preview, the only verified vision model); audi
 
 ---
 
-## TripWeaver: travel ecosystem
+## Safarnama (formerly TripWeaver): travel
 
-TripWeaver organises everything around the itinerary
-([tripweaver.py](backend/app/products/tripweaver.py), [trip_ecosystem.py](backend/app/products/trip_ecosystem.py),
-[trip_api.py](backend/app/products/trip_api.py), pure rules in [trip_logic.py](backend/app/products/trip_logic.py)):
-
-- **Trips:** AI planner (several cities) or a manual trip with up to 5 destinations and 14 days, dates, party, budget,
-  preferences; upcoming / active / past / archived; share link for collaborators.
-- **Itinerary:** morning / afternoon / evening, travel times, edit / move / pin / remove, re-plan only selected days,
-  schedule checks, and labels that show their evidence (Must visit, Time sensitive, Weather dependent, Reservation
-  recommended, Near your route, Traveller favourite). "Local favourite" and "Hidden gem" exist only as the traveller's
-  own tags: free map data has no ratings or popularity.
-- **Discovery:** food, sights, experiences, shopping & souvenirs, nature, indoor, family, nightlife, transport and
-  services from OpenStreetMap around a destination, a stop or (with permission) the traveller's location; saved
-  places; add to a day; AI-suggested local specialities (labelled) matched to real shops.
-- **Operations:** per-destination weather with current conditions, hourly rain windows and fetch time; airports with
-  transfer times; bookings saved by the traveller (never made by TripWeaver); budget with estimates kept apart from
-  actual spend, dated reference exchange rates, group settle-up and receipt reading (a draft to confirm); documents
-  with small attachments and checklists, including a packing list built from the forecast.
-- **Companion:** answers from the real trip context and nearby places; its suggestions are validated against real data
-  and applied only on confirmation. Orders and bookings are always hand-offs to the venue's own site, with a notice that
-  nothing was booked.
-
-**Identity and access:** like EFI, a per-browser owner token (`X-Trip-Owner`, stored hashed). Share links grant a member
-role (view, vote, shared expenses); documents, bookings and the companion stay owner-only. Trips created before
-ownership existed are kept, viewable by link, and can be copied to edit.
-
-**Storage:** the existing document store, so no new tables or migrations: trips plus child documents (places,
-bookings, expenses, documents) in SQLite locally or the shared Postgres schema in production.
-
-**Providers (all free, no keys; non-commercial fair use):** Open-Meteo, Overpass / Nominatim / Photon, the OSRM demo
-server, OpenStreetMap tiles and Frankfurter (reference rates, commercial use allowed). Ordering, table booking,
-ticketing, tours, ratings and public-transport timetables need commercial providers and are not integrated.
+Safarnama is being separated into its own product: **[products/safarnama](products/safarnama/README.md)** holds its
+API (`api/`, Python package `safarnama`) and web app (`web/`), with their own tests, settings and README. The portfolio
+backend mounts its API at `/api/trips` and the portfolio frontend embeds the app at `/safarnama`, so both deployments
+keep serving it while Safarnama gets its own.
 
 ---
 
@@ -293,27 +266,33 @@ ticketing, tours, ratings and public-transport timetables need commercial provid
 
 ## Repository layout
 
+A monorepo: the portfolio, the shared core it is built on, and products that are moving out into their own apps.
+
 ```
 .
-├── backend/
+├── backend/              # portfolio API (FastAPI): RAG, Keeper, EFI, Labs; mounts Safarnama's API
 │   ├── app/
-│   │   ├── api/          # HTTP routers: core RAG, products, keeper, cron
-│   │   ├── core/         # db abstraction, doc store, security, logging, TLS
-│   │   ├── rag/          # ingestion, embeddings, hybrid retriever, LangGraph pipeline, guardrails
+│   │   ├── api/          # HTTP routers: core RAG, products, keeper, cron, LLM router admin
+│   │   ├── rag/          # ingestion, embeddings, hybrid retriever, LangGraph pipeline
 │   │   ├── keeper/       # agent, parser, reminders, notify (ntfy/Telegram), vision
-│   │   └── products/     # careerpilot, codelens, evolve, flowforge, meetingmind, tripweaver, travel
-│   └── tests/            # pytest suite (unit + API + agent flows with fake LLMs)
-├── frontend/
-│   └── src/
-│       ├── site/         # landing page, product pages, command palette
-│       ├── products/     # one folder per product app
-│       ├── components/   # chat, pipeline studio, shell
-│       └── lib/          # API client, SSE parser, layout helpers
+│   │   ├── efi/          # Engineering Failure Investigator
+│   │   ├── products/     # careerpilot, codelens, evolve, flowforge, meetingmind, contact
+│   │   └── llm_tasks.py  # the portfolio's LLM tasks, registered with the shared router
+│   └── tests/
+├── frontend/             # portfolio web app (React): hub, product pages, product apps; embeds Safarnama
+├── packages/
+│   ├── py-core/          # appcore: storage (SQLite / Postgres), doc store, LLM router + clients, security, settings
+│   └── web-core/         # @appcore/web: UI primitives, router, HTTP / SSE, light-dark mode, design system
+├── products/
+│   └── safarnama/        # travel product: api/ (FastAPI, package `safarnama`) and web/ (React), own tests and docs
 ├── documents/            # files DocuMind indexes on startup
-├── index.py              # Vercel entry point (guarded ASGI wrapper)
+├── index.py              # Vercel entry point for the portfolio API (puts packages/ and products/ on the path)
 ├── Dockerfile            # single-container build: SPA + API
 └── docker-compose.yml    # optional local Ollama profile
 ```
+
+Each package and product has its own README. Shared code lives only in `packages/`; products depend on it, never on
+each other or on the portfolio.
 
 ---
 

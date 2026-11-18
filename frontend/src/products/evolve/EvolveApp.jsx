@@ -20,7 +20,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { del, errorText, get, post, streamPost } from '../shared/http'
-import { Button, Card, Empty, ErrorNote, Field, inputClass, Pill, ProductShell, Spinner, Steps, Tabs } from '../shared/ui'
+import { Button, Card, Empty, ErrorNote, Field, inputClass, Pill, ProductShell, Spinner, Steps, Tabs } from '@appcore/web/ui'
 import { diffLines } from './diff'
 
 const ACCENT = 'from-teal-500 via-emerald-500 to-lime-400'

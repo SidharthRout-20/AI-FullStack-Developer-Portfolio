@@ -6,6 +6,8 @@ venv
 **/.ruff_cache
 backend/data
 frontend/dist
+**/dist
+products/*/api/data
 **/.env
 **/.env.*
 !**/.env.example

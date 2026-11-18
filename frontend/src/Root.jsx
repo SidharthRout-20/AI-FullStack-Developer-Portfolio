@@ -2,12 +2,14 @@ import { MotionConfig } from 'motion/react'
 import { lazy, Suspense, useEffect } from 'react'
 import { Backdrop } from './components/shell/Backdrop'
 import { CommandPalette } from './site/CommandPalette'
-import { Link, usePath } from './router'
+import { Link, usePath } from '@appcore/web/router'
+import { ShellProvider } from '@appcore/web/ui'
 import { SITE } from './site/config'
 import { HubPage } from './site/HubPage'
 import { ProductPage } from './site/ProductPage'
 import { productBySlug } from './site/products'
 import { SkinWelcome } from './theme/SkinWelcome'
+import { ThemeToggle } from './theme/ThemeToggle'
 
 // Each product app is its own code-split chunk: the hub never downloads DocuMind's code.
 const DocuMindApp = lazy(() => import('./App'))
@@ -21,7 +23,8 @@ const APPS = [
   { prefix: '/flowforge', title: 'FlowForge · AI automation builder', label: 'FlowForge', App: lazy(() => import('./products/flowforge/FlowForgeApp')) },
   { prefix: '/evolve', title: 'Evolve · Self-improving prompts', label: 'Evolve', App: lazy(() => import('./products/evolve/EvolveApp')) },
   { prefix: '/jasoos', title: 'Jasoos · Build-failure detective', label: 'Jasoos', App: lazy(() => import('./products/efi/EFIApp')) },
-  { prefix: '/safarnama', title: 'Safarnama · Travel companion', label: 'Safarnama', App: lazy(() => import('./products/tripweaver/TripWeaverApp')) },
+  // Safarnama lives in products/safarnama/web (its own app); the portfolio embeds it at /safarnama.
+  { prefix: '/safarnama', title: 'Safarnama · Travel companion', label: 'Safarnama', App: lazy(() => import('@safarnama/web/App')), props: { basePath: '/safarnama' } },
 ]
 /** Apps that were renamed: old links (including shared trip links) keep working and land on the new address. */
 const RENAMED = { '/efi': '/jasoos', '/tripweaver': '/safarnama' }
@@ -32,13 +35,16 @@ function useTitle(title) {
   }, [title])
 }
 
+// Every product page gets the portfolio's backdrop, its skin-aware theme toggle and a link back to the hub.
+const HOME = { to: '/', label: 'All products', short: 'Products' }
+
 export function Root() {
   return (
-    <>
+    <ShellProvider backdrop={Backdrop} controls={ThemeToggle} home={HOME}>
       <Routes />
       <CommandPalette />
       <SkinWelcome />
-    </>
+    </ShellProvider>
   )
 }
 
@@ -91,7 +97,7 @@ function DocuMindRoute() {
   )
 }
 
-function ProductRoute({ title, label, App }) {
+function ProductRoute({ title, label, App, props }) {
   useTitle(title)
   return (
     <Suspense
@@ -101,7 +107,7 @@ function ProductRoute({ title, label, App }) {
         </div>
       }
     >
-      <App />
+      <App {...props} />
     </Suspense>
   )
 }

@@ -135,10 +135,10 @@ def ingest(settings: Settings, store: VectorStore, embedder: Embedder) -> Ingest
 
 if __name__ == "__main__":  # pragma: no cover - CLI entry point
     from app.config import get_settings
-    from app.core.logging import configure_logging
+    from appcore.logs import configure_logging
 
     configure_logging("INFO")
-    from app.core.tls import use_system_certificates
+    from appcore.tls import use_system_certificates
 
     use_system_certificates()
     s = get_settings()

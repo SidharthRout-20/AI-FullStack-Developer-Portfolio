@@ -12,9 +12,9 @@ import httpx
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.docstore import DocStore
-from app.core.security import limiter, require_admin
-from app.rag.guardrails import normalize
+from appcore.docstore import DocStore
+from appcore.guardrails import normalize
+from appcore.security import limiter, require_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/contact", tags=["portfolio"])

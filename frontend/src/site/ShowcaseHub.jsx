@@ -10,7 +10,7 @@ import { BrainCircuit, ChevronLeft, ChevronRight, Download, Mail, Menu, PanelsTo
 import { AnimatePresence, motion, useInView, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useMediaQuery } from '../hooks/useMediaQuery'
-import { Link } from '../router'
+import { Link } from '@appcore/web/router'
 import { SKIN_NAMES } from '../theme/skin'
 import { originOf, setSkin } from '../theme/theme'
 import { ThemeToggle } from '../theme/ThemeToggle'

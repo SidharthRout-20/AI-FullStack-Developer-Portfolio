@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from app.rag.matcher import score
 from app.rag.service import RAGService
-from app.rag.structured import StructuredOutputError, complete_json, extract_json
+from appcore.llm.structured import StructuredOutputError, complete_json, extract_json
 from tests.conftest import FakeEmbedder
 from tests.test_api import parse_sse
 

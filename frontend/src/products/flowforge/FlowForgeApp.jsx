@@ -32,7 +32,7 @@ import {
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { apiUrl } from '../../lib/apiBase'
 import { ApiError, del, errorText, get, post, put, streamPost } from '../shared/http'
-import { Button, Card, ErrorNote, Field, inputClass, Pill, ProductShell, Spinner } from '../shared/ui'
+import { Button, Card, ErrorNote, Field, inputClass, Pill, ProductShell, Spinner } from '@appcore/web/ui'
 
 const ACCENT = 'from-violet-500 via-purple-500 to-fuchsia-500'
 

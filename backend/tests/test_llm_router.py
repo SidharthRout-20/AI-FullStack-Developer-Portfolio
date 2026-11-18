@@ -7,10 +7,10 @@ import asyncio
 import pytest
 
 from app.efi import reasoning
-from app.llm import Complexity, LLMRequest, LLMRouter, NoCompatibleModelError, RoutedLLM, classify_request
-from app.llm.catalog import REGISTRY
-from app.llm.quota import parse_duration
-from app.llm.transport import ChatResult, ProviderError, StreamHandle
+from appcore.llm import Complexity, LLMRequest, LLMRouter, NoCompatibleModelError, RoutedLLM, classify_request
+from appcore.llm.catalog import REGISTRY
+from appcore.llm.quota import parse_duration
+from appcore.llm.transport import ChatResult, ProviderError, StreamHandle
 
 LISTED = [
     {"id": m, "owned_by": "x", "active": True}
@@ -272,7 +272,7 @@ def test_context_overflow_falls_back_only_to_larger_context(settings):
 
 
 def test_auth_error_is_not_retried_on_other_models(settings):
-    from app.llm import RouterError
+    from appcore.llm import RouterError
 
     r, t, _ = make(settings, script={"openai/gpt-oss-20b": [ProviderError("auth", status=401)]})
     with pytest.raises(RouterError, match="API key"):
@@ -335,7 +335,7 @@ def test_routed_chat_llm_adapter(settings):
 def test_build_llm_uses_the_router_for_groq(settings):
     from pydantic import SecretStr
 
-    from app.rag.llm import build_llm
+    from appcore.llm.chat import build_llm
 
     llm = build_llm(settings.model_copy(update={"groq_api_key": SecretStr("gsk_" + "x" * 30)}))
     assert isinstance(llm, RoutedLLM) and llm.task == "app.unspecified"

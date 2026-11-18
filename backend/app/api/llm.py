@@ -15,8 +15,8 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.security import require_admin
-from app.llm import TASKS, LLMRequest, get_router
+from appcore.llm import TASKS, LLMRequest, get_router
+from appcore.security import require_admin
 
 router = APIRouter(prefix="/api/llm", tags=["llm-router"], dependencies=[Depends(require_admin)])
 

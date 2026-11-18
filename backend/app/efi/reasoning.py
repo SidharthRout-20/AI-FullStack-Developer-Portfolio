@@ -21,12 +21,12 @@ from typing import Any, Literal
 from pydantic import Field, ValidationError, field_validator
 
 from app.config import Settings
-from app.core.ai import Lenient
 from app.efi.evidence import FAILURE_KINDS, render
 from app.efi.parsers import CODE_EXT, CONFIG_EXT, norm_path, same_file
-from app.llm import LLMRequest, LLMRouter, NoCompatibleModelError, RouterError, get_router
-from app.rag.llm import LLMNotConfiguredError
-from app.rag.structured import extract_json
+from appcore.ai import Lenient
+from appcore.llm import LLMRequest, LLMRouter, NoCompatibleModelError, RouterError, get_router
+from appcore.llm.chat import LLMNotConfiguredError
+from appcore.llm.structured import extract_json
 
 logger = logging.getLogger(__name__)
 

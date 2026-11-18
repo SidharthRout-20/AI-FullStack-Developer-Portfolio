@@ -1,7 +1,7 @@
 import { ArrowUp, Camera, LoaderCircle, MapPin, Mic, Square, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
-import { compressImage, listen, voiceSupported } from './device'
+import { compressImage, listen, voiceSupported } from '@appcore/web/device'
 
 /**
  * One box for everything: type, dictate, or snap a photo.

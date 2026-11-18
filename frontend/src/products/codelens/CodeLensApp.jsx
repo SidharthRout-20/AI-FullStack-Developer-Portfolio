@@ -3,7 +3,7 @@ import { Code2, ExternalLink, FolderGit2, GitFork, Map as MapIcon, MessageSquare
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { del, errorText, get, post, streamPost } from '../shared/http'
-import { Answer, Button, Card, Empty, ErrorNote, inputClass, ProductShell, Spinner, Steps, Tabs } from '../shared/ui'
+import { Answer, Button, Card, Empty, ErrorNote, inputClass, ProductShell, Spinner, Steps, Tabs } from '@appcore/web/ui'
 
 const ACCENT = 'from-amber-500 via-orange-500 to-rose-500'
 

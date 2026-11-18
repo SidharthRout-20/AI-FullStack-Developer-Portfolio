@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "appcore"
+version = "1.0.0"
+description = "Shared platform for the portfolio's products: SQLite/Postgres storage, document store, central Groq LLM router, structured output, guardrails, HTTP security and settings."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162",
+    "pydantic-settings>=2.16",
+    "slowapi>=0.1.10",
+    "httpx>=0.28",
+    "anthropic>=2.6",
+    "langchain-core>=1.7",
+    "langchain-groq>=1.1",
+    "langchain-ollama>=1.1",
+    "psycopg[binary]>=3.3",
+    "truststore>=0.10",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

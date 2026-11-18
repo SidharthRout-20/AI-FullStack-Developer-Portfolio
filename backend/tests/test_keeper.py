@@ -18,8 +18,8 @@ from app.keeper.parser import parse_date, parse_times, rule_parse
 from app.keeper.service import KeeperService
 from app.keeper.store import KeeperStore, image_type
 from app.main import create_app
-from app.rag.llm import LangChainLLM
 from app.rag.service import RAGService
+from appcore.llm.chat import LangChainLLM
 from tests.conftest import FakeEmbedder
 
 TODAY = dt.date(2026, 11, 10)  # a Tuesday

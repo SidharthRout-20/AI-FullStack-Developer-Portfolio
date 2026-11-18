@@ -17,7 +17,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { del, errorText, get, http, patch, post } from '../shared/http'
-import { Answer, Button, Card, Empty, ErrorNote, Field, inputClass, Pill, ProductShell, Spinner, Tabs } from '../shared/ui'
+import { Answer, Button, Card, Empty, ErrorNote, Field, inputClass, Pill, ProductShell, Spinner, Tabs } from '@appcore/web/ui'
 
 const ACCENT = 'from-emerald-500 via-teal-400 to-cyan-400'
 

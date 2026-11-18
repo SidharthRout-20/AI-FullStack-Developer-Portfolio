@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { forecastFreshness } from '../products/tripweaver/freshness'
+import { forecastFreshness } from '@safarnama/web/freshness'
 import { fillCounts, LABS, LIVE_COUNT, MODULE_STATUSES, PORTFOLIO, PRODUCTS, productBySlug, productHref, STATUSES } from './products'
 
 const ids = (list) => list.map((p) => p.id)

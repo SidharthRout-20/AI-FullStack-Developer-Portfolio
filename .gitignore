@@ -57,3 +57,12 @@ INTERVIEW_PREP.md
 PRODUCT_PORTFOLIO_DISCOVERY.md
 PRODUCT_PORTFOLIO_DISCOVERY_V2.md
 
+
+# ==========================================
+# Monorepo: shared packages and products
+# ==========================================
+/packages/*/node_modules/
+/products/*/web/node_modules/
+/products/*/web/dist/
+/products/*/api/data/
+/products/*/api/.venv/

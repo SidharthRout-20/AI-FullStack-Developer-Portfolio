@@ -2,7 +2,7 @@ import { ArrowLeft, Cpu, Eye, KeyRound, LayoutGrid, Route as RouteIcon, ShieldCh
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Backdrop } from '../../components/shell/Backdrop'
-import { Link } from '../../router'
+import { Link } from '@appcore/web/router'
 import { ThemeToggle } from '../../theme/ThemeToggle'
 import {
   keeperApi,
@@ -10,7 +10,7 @@ import {
   setAccessKey,
 } from './api'
 import { Capture } from './Capture'
-import { currentPosition, notify, registerServiceWorker } from './device'
+import { currentPosition, notify, registerServiceWorker } from '@appcore/web/device'
 import { EntryCard } from './EntryCard'
 import { AlarmBanner, ReminderSettingsCard, useAlarms } from './Reminders'
 import { localISO, MODULES, moduleOf } from './modules'

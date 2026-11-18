@@ -9,7 +9,7 @@ import pytest
 from pydantic import SecretStr
 
 from app.config import Settings
-from app.rag.llm import FALLBACK_BETA, ClaudeLLM, LLMNotConfiguredError, LLMRefusalError, user_facing_error
+from appcore.llm.chat import FALLBACK_BETA, ClaudeLLM, LLMNotConfiguredError, LLMRefusalError, user_facing_error
 
 
 def _message(text: str, stop_reason: str = "end_turn"):

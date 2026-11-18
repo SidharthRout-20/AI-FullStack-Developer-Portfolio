@@ -1,0 +1,35 @@
+{
+  "name": "@appcore/web",
+  "private": true,
+  "version": "1.0.0",
+  "description": "The shared web core: UI primitives, router, HTTP and SSE helpers, device helpers, light/dark mode and the design system.",
+  "type": "module",
+  "exports": {
+    "./ui": "./src/ui.jsx",
+    "./ModeToggle": "./src/ModeToggle.jsx",
+    "./router": "./src/router.jsx",
+    "./http": "./src/http.js",
+    "./sse": "./src/sse.js",
+    "./device": "./src/device.js",
+    "./theme": "./src/theme.js",
+    "./styles/core.css": "./src/styles/core.css",
+    "./styles/theme-light.css": "./src/styles/theme-light.css"
+  },
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "peerDependencies": {
+    "lucide-react": "^1.70.0",
+    "motion": "^14.10.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0"
+  }
+}

@@ -23,3 +23,6 @@ if os.environ.get("VERCEL"):
         "ENVIRONMENT": "production",
     }.items():
         os.environ.setdefault(_key, _value)
+
+# Register the portfolio's LLM tasks with appcore's router (after the environment defaults above).
+from app import llm_tasks as _llm_tasks  # noqa: E402, F401

@@ -17,7 +17,7 @@ import {
 import { AnimatePresence, motion, useInView, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
-import { Link } from '../router'
+import { Link } from '@appcore/web/router'
 import { greeting, timeIn } from '../theme/skin'
 import { originOf, setSkin, useSkin } from '../theme/theme'
 import { ThemeToggle } from '../theme/ThemeToggle'
