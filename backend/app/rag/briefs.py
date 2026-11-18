@@ -18,10 +18,10 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from app.config import Settings
-from app.llm import for_task
-from app.rag.llm import ChatLLM
-from app.rag.structured import complete_json
 from app.rag.vectorstore import VectorStore
+from appcore.llm import for_task
+from appcore.llm.chat import ChatLLM
+from appcore.llm.structured import complete_json
 
 logger = logging.getLogger(__name__)
 

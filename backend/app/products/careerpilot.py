@@ -11,11 +11,11 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.ai import Lenient, ask_json, clip, llm_failure
-from app.core.docstore import DocStore
-from app.core.security import limiter, rate_limit_value
-from app.rag.guardrails import normalize
 from app.rag.loaders import discover_files, load_file
+from appcore.ai import Lenient, ask_json, clip, llm_failure
+from appcore.docstore import DocStore
+from appcore.guardrails import normalize
+from appcore.security import limiter, rate_limit_value
 
 Stage = Literal["saved", "applied", "interview", "offer", "rejected"]
 

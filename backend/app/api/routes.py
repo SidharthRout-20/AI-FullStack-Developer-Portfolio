@@ -20,11 +20,11 @@ from app.api.schemas import (
     HealthResponse,
     IngestResponse,
 )
-from app.config import database_hint
-from app.core.db import check_postgres
-from app.core.security import limiter, rate_limit_value, require_admin
-from app.rag.llm import user_facing_error
 from app.rag.service import RAGService
+from appcore.db import check_postgres
+from appcore.llm.chat import user_facing_error
+from appcore.security import limiter, rate_limit_value, require_admin
+from appcore.settings import database_hint
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")

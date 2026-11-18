@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.rag.guardrails import normalize
+from appcore.guardrails import normalize
 
 
 class _Strict(BaseModel):

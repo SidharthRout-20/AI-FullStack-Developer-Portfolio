@@ -1,7 +1,7 @@
 import { AppWindow, ArrowRight, Clock3, CornerDownLeft, LayoutGrid, Moon, Search, Sparkles, Sun } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { navigate } from '../router'
+import { navigate } from '@appcore/web/router'
 import { setSkin, setThemeMode } from '../theme/theme'
 import { PRODUCTS, productHref, STATUSES } from './products'
 

@@ -19,9 +19,9 @@ from langchain_core.messages import AIMessage
 
 from app.config import Settings
 from app.main import create_app
-from app.rag.llm import LangChainLLM
 from app.rag.retriever import tokenize
 from app.rag.service import RAGService
+from appcore.llm.chat import LangChainLLM
 
 DIM = 256
 FAKE_ANSWER = "The candidate knows Python and FastAPI [1]."

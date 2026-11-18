@@ -30,10 +30,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from rank_bm25 import BM25Okapi
 
-from app.core.ai import Lenient, ask_json, ask_text, clip, llm_failure, sse
-from app.core.docstore import DocStore, new_id
-from app.core.security import limiter, rate_limit_value
 from app.rag.retriever import reciprocal_rank_fusion, tokenize
+from appcore.ai import Lenient, ask_json, ask_text, clip, llm_failure, sse
+from appcore.docstore import DocStore, new_id
+from appcore.security import limiter, rate_limit_value
 
 logger = logging.getLogger(__name__)
 

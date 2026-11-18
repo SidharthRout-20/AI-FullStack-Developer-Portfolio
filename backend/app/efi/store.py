@@ -1,4 +1,4 @@
-"""EFI persistence on the existing database layer (app.core.db): `efi.*` tables in Neon Postgres, or a local
+"""EFI persistence on the existing database layer (appcore.db): `efi.*` tables in Neon Postgres, or a local
 `efi.sqlite3` file. Additive only: three new tables, nothing existing is touched.
 
 Every read and write takes the server-derived `owner` and filters on it in SQL (`WHERE owner = ? AND id = ?`), so a
@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from app.core.db import open_db
+from appcore.db import open_db
 
 logger = logging.getLogger(__name__)
 

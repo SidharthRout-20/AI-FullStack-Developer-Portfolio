@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "safarnama"
+version = "1.0.0"
+description = "Safarnaama's API: plan, book and keep every journey in one place."
+requires-python = ">=3.12"
+dependencies = [
+    "appcore",  # packages/py-core in this monorepo
+    "fastapi>=0.162",
+    "httpx>=0.28",
+    "uvicorn[standard]>=0.54",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

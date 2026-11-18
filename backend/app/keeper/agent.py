@@ -24,9 +24,9 @@ from app.keeper import schedule
 from app.keeper.models import KINDS, Command, Entry
 from app.keeper.parser import rule_parse
 from app.keeper.store import KeeperStore
-from app.llm import for_task
-from app.rag.llm import ChatLLM
-from app.rag.structured import complete_json
+from appcore.llm import for_task
+from appcore.llm.chat import ChatLLM
+from appcore.llm.structured import complete_json
 
 logger = logging.getLogger(__name__)
 

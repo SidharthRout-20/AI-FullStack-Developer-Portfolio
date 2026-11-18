@@ -11,7 +11,7 @@ import logging
 from typing import Protocol
 
 from app.config import Settings
-from app.rag.llm import LLMNotConfiguredError
+from appcore.llm.chat import LLMNotConfiguredError
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class GroqVision:
     (today qwen/qwen3.8-27b, a preview model). A text-only model can never be selected for an image."""
 
     def __init__(self, settings: Settings, task: str = "keeper.photo") -> None:
-        from app.llm import get_router
+        from appcore.llm import get_router
 
         if settings.groq_api_key is None or not settings.groq_api_key.get_secret_value():
             raise LLMNotConfiguredError("Reading photos needs GROQ_API_KEY (free at https://console.groq.com/keys).")
@@ -33,7 +33,7 @@ class GroqVision:
         self._task = task
 
     async def read(self, image: bytes, mime: str, prompt: str) -> str:
-        from app.llm import LLMRequest
+        from appcore.llm import LLMRequest
 
         res = await self._router.execute_request(
             LLMRequest(

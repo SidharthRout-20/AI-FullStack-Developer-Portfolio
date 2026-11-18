@@ -18,7 +18,7 @@ from app.efi import parsers, reasoning
 from app.efi.redact import redact
 from app.efi.service import EFIService
 from app.main import create_app
-from app.rag.llm import LLMNotConfiguredError
+from appcore.llm.chat import LLMNotConfiguredError
 
 GROQ_SECRET = "gsk_" + "a1B2c3D4e5F6g7H8i9J0kLmNoPqRsT"
 LOG = f"""2026-11-10T10:00:00.0000000Z ##[group]Run pip install -r requirements.txt

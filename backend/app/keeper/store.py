@@ -10,8 +10,8 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
-from app.core.db import open_db
 from app.keeper.models import Entry, EntryIn
+from appcore.db import open_db
 
 _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS {entries} (

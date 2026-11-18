@@ -15,7 +15,10 @@ from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / "backend"))
+_ROOT = Path(__file__).resolve().parent
+# The portfolio backend plus the monorepo packages it builds on (shared core, Safarnama), importable as-is.
+for _path in ("backend", "packages/py-core/src", "products/safarnama/api/src"):
+    sys.path.insert(0, str(_ROOT / _path))
 
 logger = logging.getLogger("startup")
 RETRY_AFTER_S = 60.0

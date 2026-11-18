@@ -21,11 +21,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.ai import GetLLM, Lenient, ask_json, ask_text, clip, llm_failure, sse
-from app.core.docstore import DocStore
-from app.core.security import limiter, rate_limit_value
-from app.rag.guardrails import normalize
-from app.rag.structured import extract_json
+from appcore.ai import GetLLM, Lenient, ask_json, ask_text, clip, llm_failure, sse
+from appcore.docstore import DocStore
+from appcore.guardrails import normalize
+from appcore.llm.structured import extract_json
+from appcore.security import limiter, rate_limit_value
 
 logger = logging.getLogger(__name__)
 

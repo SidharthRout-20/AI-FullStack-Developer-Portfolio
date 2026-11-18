@@ -1,0 +1,115 @@
+/*
+ * Safarnaama's product theme. It sits on top of the site skins (Studio / Off the clock, light / dark) and only adds an
+ * identity: a warm "golden hour" accent (saffron → coral), a travelogue serif for display type, and a faint contour-
+ * map texture with a sunrise glow behind the app. Everything else (surfaces, text, spacing) stays the core theme's.
+ * Scoped to [data-product='safarnama'], set by ProductShell.
+ */
+
+[data-product='safarnama'] {
+  --pa-1: #f59e0b;
+  --pa-2: #f97316;
+  --pa-3: #f43f5e;
+  --pa-solid: #c2410c; /* solid accent with white text (4.9:1) */
+  --pa-ink: #fdba74; /* accent text on dark surfaces */
+  --pa-soft: rgb(249 115 22 / 0.12);
+  --pa-line: rgb(251 146 60 / 0.45);
+  --pa-glow: rgb(249 115 22 / 0.16);
+}
+:root[data-theme='light'] [data-product='safarnama'] {
+  --pa-ink: #9a3412;
+  --pa-soft: rgb(234 88 12 / 0.09);
+  --pa-line: rgb(234 88 12 / 0.4);
+  --pa-glow: rgb(251 146 60 / 0.22);
+}
+
+/* Behind the app: a sunrise glow at the top and contour lines, like an old survey map */
+.pa-fx {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 26rem at 50% -8rem, var(--pa-glow), transparent 70%),
+    radial-gradient(30rem 20rem at 100% 30%, rgb(244 63 94 / 0.06), transparent 70%);
+}
+.pa-fx::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='480' viewBox='0 0 480 480'%3E%3Cg fill='none' stroke='%23000' stroke-width='1.2'%3E%3Cpath d='M-20 120c60-40 120-40 180 0s120 40 180 0 120-40 180 0'/%3E%3Cpath d='M-20 160c60-36 120-36 180 0s120 36 180 0 120-36 180 0'/%3E%3Cpath d='M-20 200c60-30 120-30 180 0s120 30 180 0 120-30 180 0'/%3E%3Cpath d='M-20 330c50 30 110 34 170 6s130-30 190 0 110 26 160 4'/%3E%3Cpath d='M-20 370c50 26 110 30 170 4s130-26 190 0 110 22 160 2'/%3E%3Cellipse cx='360' cy='260' rx='70' ry='38'/%3E%3Cellipse cx='360' cy='260' rx='42' ry='22'/%3E%3Cellipse cx='360' cy='260' rx='16' ry='8'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 480px 480px;
+  /* the lines are drawn in black: shown faintly in light mode, inverted to white in dark mode */
+  mask-image: linear-gradient(to bottom, #000, transparent 75%);
+  -webkit-mask-image: linear-gradient(to bottom, #000, transparent 75%);
+}
+:root[data-theme='dark'] [data-product='safarnama'] .pa-fx::after {
+  filter: invert(1);
+  opacity: 0.05;
+}
+:root[data-theme='light'] [data-product='safarnama'] .pa-fx::after {
+  opacity: 0.06;
+}
+/* The app content sits above the texture */
+[data-product='safarnama'] > .pa-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* Display type: a travelogue serif for big headings */
+.pa-display {
+  font-family: 'Fraunces Variable', 'Iowan Old Style', Georgia, serif;
+  font-optical-sizing: auto;
+  font-variation-settings: 'SOFT' 50, 'WONK' 0;
+  letter-spacing: -0.02em;
+}
+.pa-gradient-text {
+  background: linear-gradient(90deg, var(--pa-1), var(--pa-2), var(--pa-3));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.pa-gradient {
+  background-image: linear-gradient(90deg, var(--pa-1), var(--pa-2), var(--pa-3));
+}
+.pa-ink {
+  color: var(--pa-ink);
+}
+/* Selected chips and options */
+.pa-on {
+  border-color: var(--pa-line) !important;
+  background: var(--pa-soft) !important;
+  color: var(--pa-ink) !important;
+}
+.pa-hover:hover {
+  border-color: var(--pa-line);
+}
+
+/* In the Studio skin the primary action is one solid colour: Safarnaama's saffron instead of the site blue */
+:root[data-skin='showcase'] [data-product='safarnama'] .btn-primary {
+  background-color: var(--pa-solid) !important;
+}
+:root[data-skin='showcase'] [data-product='safarnama'] .btn-primary:hover:not(:disabled) {
+  background-color: color-mix(in oklab, var(--pa-solid) 88%, #fff) !important;
+}
+
+/* A slow, endless strip of destination photos */
+@keyframes pa-drift {
+  to {
+    transform: translateX(-50%);
+  }
+}
+.pa-drift {
+  animation: pa-drift 60s linear infinite;
+}
+.pa-drift:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pa-drift {
+    animation: none;
+  }
+}
+
+/* The map: a dark basemap made from the standard OpenStreetMap tiles */
+.map-tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.6); }
+.leaflet-container { background: var(--color-ink-900); font-family: inherit; }

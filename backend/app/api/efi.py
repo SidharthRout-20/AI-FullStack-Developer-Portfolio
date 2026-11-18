@@ -17,12 +17,12 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from app.core.security import limiter
 from app.efi.parsers import ArtifactError
 from app.efi.reasoning import EFIModelError, EFIQuotaError
 from app.efi.service import BusyError, EFIService, LimitError, NotFoundError
 from app.efi.store import ConflictError
-from app.rag.llm import LLMNotConfiguredError
+from appcore.llm.chat import LLMNotConfiguredError
+from appcore.security import limiter
 
 router = APIRouter(prefix="/api/efi", tags=["efi"])
 _TOKEN = re.compile(r"^[A-Za-z0-9_-]{32,128}$")

@@ -1,5 +1,5 @@
 import { API_BASE as BASE } from './apiBase'
-import { createSSEParser } from './sse'
+import { createSSEParser } from '@appcore/web/sse'
 
 async function getJSON(path, signal) {
   const res = await fetch(`${BASE}${path}`, { signal, headers: { Accept: 'application/json' } })

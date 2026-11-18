@@ -21,7 +21,7 @@ from app.efi import parsers, reasoning
 from app.efi.parsers import ArtifactError
 from app.efi.redact import RedactionError, redact
 from app.efi.store import EFIStore, iso, now
-from app.rag.llm import LLMNotConfiguredError
+from appcore.llm.chat import LLMNotConfiguredError
 
 logger = logging.getLogger(__name__)
 

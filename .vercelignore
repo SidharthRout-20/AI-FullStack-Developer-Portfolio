@@ -9,3 +9,9 @@ backend/data/
 **/.ruff_cache/
 .github/
 backend/scripts/
+# Monorepo packages: their sources are needed (frontend build, backend imports), their tests and installs are not.
+packages/*/node_modules/
+products/*/web/node_modules/
+products/*/web/dist/
+products/*/api/tests/
+products/*/api/data/

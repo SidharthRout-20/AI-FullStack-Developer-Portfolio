@@ -4,7 +4,19 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "checkJs": false
+    "checkJs": false,
+    "baseUrl": ".",
+    "paths": {
+      "@appcore/web/*": [
+        "../packages/web-core/src/*"
+      ],
+      "@safarnama/web/*": [
+        "../products/safarnama/web/src/*"
+      ]
+    }
   },
-  "include": ["src", "vite.config.js"]
+  "include": [
+    "src",
+    "vite.config.js"
+  ]
 }

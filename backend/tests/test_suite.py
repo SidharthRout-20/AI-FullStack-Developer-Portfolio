@@ -35,19 +35,6 @@ ANALYSIS = {"title": "Sprint planning", "summary": "We planned the sprint.", "de
             "topics": ["release"], "sentiment": "positive"}  # fmt: skip
 TOUR = {"overview": "A tiny demo app.", "steps": [{"title": "Entry", "path": "app/main.py", "explanation": "Start here."},
         {"title": "Utils", "path": "app/utils.py", "explanation": "Helpers."}, {"title": "UI", "path": "web/index.ts", "explanation": "Front."}]}  # fmt: skip
-TRIP_REQ = {
-    "destination": "Lisbon",
-    "country": "Portugal",
-    "start_date": "2030-05-01",
-    "days": 2,
-    "interests": ["food"],
-    "pace": "balanced",
-}
-PLAN = {"title": "Lisbon long weekend", "summary": "Hills and pastries.", "tips": ["Wear good shoes"],
-        "days": [{"day": 1, "theme": "Old town", "activities": [{"time": "09:00", "name": "Castelo de São Jorge", "place_query": "Castelo de São Jorge Lisbon", "kind": "outdoor", "duration_min": 120}]},
-                 {"day": 2, "theme": "Belém", "activities": [{"time": "10:00", "name": "Jerónimos Monastery", "place_query": "Jerónimos Monastery", "kind": "indoor"}]}]}  # fmt: skip
-REPLAN = {"explanation": "Swapped the castle for a museum because of rain.",
-          "changed_days": [{"day": 1, "theme": "Museums", "activities": [{"time": "10:00", "name": "Gulbenkian Museum", "place_query": "Gulbenkian Lisbon", "kind": "indoor"}]}]}  # fmt: skip
 
 
 class ScriptedLLM:
@@ -55,8 +42,7 @@ class ScriptedLLM:
 
     RULES = [
         ("resume writer", TAILOR), ("senior interviewer", QUESTIONS), ("interview coach", ASSESS),
-        ("analyse meeting", ANALYSIS), ("onboarding tours", TOUR), ("Extract a trip request", TRIP_REQ),
-        ("travel planner", PLAN), ("revise an existing itinerary", REPLAN),
+        ("analyse meeting", ANALYSIS), ("onboarding tours", TOUR),
         ("extract structured data", {"topic": "bill", "urgency": "high", "due_date": "15th", "amount": "1840"}),
     ]  # fmt: skip
 
@@ -68,40 +54,6 @@ class ScriptedLLM:
 
     async def stream(self, system, messages):
         yield await self.complete(system, messages)
-
-
-class FakeTools:
-    async def geocode_city(self, name, country):
-        return {"name": "Lisbon", "country": "Portugal", "lat": 38.72, "lng": -9.14, "timezone": "Europe/Lisbon"}
-
-    async def geocode_place(self, query, near):
-        return {"lat": near[0] + 0.01, "lng": near[1] + 0.01, "label": query}
-
-    async def forecast(self, lat, lng, tz):
-        return {
-            "2030-05-01": {"code": 61, "tmax": 18, "tmin": 12, "rain": 80, "uv": 3, "feels_max": 17},
-            "2030-05-02": {"code": 1, "tmax": 36, "tmin": 24, "rain": 5, "uv": 9, "feels_max": 38},
-        }
-
-    async def air_quality(self, lat, lng):
-        return {"2030-05-02": 160.0}
-
-    async def route(self, stops):
-        return [{"duration_s": 1500, "distance_m": 9000} for _ in stops[1:]]
-
-    async def best_order(self, stops):
-        return [0, *range(len(stops) - 1, 0, -1)]  # keep the start, visit the rest in reverse
-
-    async def nearby(self, lat, lng, group, radius=900):
-        if group == "food":
-            return [
-                {"name": "Tasca do Chico", "group": "food", "category": "restaurant", "lat": lat + 0.001, "lng": lng,
-                 "distance_m": 120, "cuisine": "portuguese", "veg": False, "opening_hours": "Mo-Su 12:00-23:00"},
-                {"name": "Green Bowl", "group": "food", "category": "restaurant", "lat": lat, "lng": lng + 0.002,
-                 "distance_m": 300, "cuisine": "vegan", "veg": True, "opening_hours": "Mo-Fr 08:00-11:00"},
-            ]  # fmt: skip
-        return [{"name": "Miradouro da Graça", "group": "sights", "category": "viewpoint", "lat": lat, "lng": lng,
-                 "distance_m": 200, "cuisine": None, "veg": False, "opening_hours": "24/7"}]  # fmt: skip
 
 
 def make_zip() -> bytes:
@@ -134,7 +86,6 @@ def app_client(settings):
     )
     with TestClient(app) as c:
         suite = app.state.suite
-        suite.trips.tools = FakeTools()
 
         async def fetch(owner, repo, ref):
             return make_zip()
@@ -211,7 +162,7 @@ def test_meeting_analysis_board_and_archive(app_client):
 
 
 def test_lenient_llm_schemas_trim_instead_of_failing():
-    from app.products.tripweaver import Plan
+    from safarnama.service import Plan
 
     plan = Plan.model_validate(
         {"title": "t" * 300, "summary": "s", "days": [{"day": 1, "activities": [{"name": f"a{i}"} for i in range(12)]}]}
@@ -300,90 +251,10 @@ def test_flow_run_branches_and_webhook(app_client):
     assert c.post("/api/flows", json=bad).status_code == 422
 
 
-# ── TripWeaver ───────────────────────────────────────────────────────────
-def test_trip_plan_replan_vote_weather(app_client):
-    c = app_client
-    c.headers["X-Trip-Owner"] = c.post("/api/trips/owner").json()["token"]
-    events = parse_sse(c.post("/api/trips/plan", json={"prompt": "2 days in Lisbon from May 1 2030, love food"}).text)
-    steps = [d["step"] for e, d in events if e == "step"]
-    assert (
-        steps == ["understand", "geocode", "weather", "plan", "map", "meals", "wellbeing"] and events[-1][0] == "done"
-    )
-    trip = events[-1][1]["trip"]
-    act = trip["days"][0]["activities"][0]
-    assert act["lat"] and trip["days"][0]["weather"]["rain"] == 80 and trip["days"][0]["date"] == "2030-05-01"
-
-    day2 = trip["days"][1]
-    assert day2["route"]["legs"] and day2["weather"]["aqi"] == 160.0
-    kinds = {i["type"] for i in day2["insights"]}
-    assert {"heat", "uv", "air", "hydration"} <= kinds  # 38°C feels-like, UV 9, AQI 160
-    assert any(
-        a.get("added") == "meal" and a["name"] == "Tasca do Chico" for d in trip["days"] for a in d["activities"]
-    )
-
-    first = trip["days"][0]["activities"][0]
-    near = c.get(
-        f"/api/trips/{trip['id']}/nearby", params={"activity_id": first["id"], "group": "food", "veg": True}
-    ).json()
-    assert [p["name"] for p in near["places"]] == ["Green Bowl"]
-    sights = c.get(f"/api/trips/{trip['id']}/nearby", params={"activity_id": first["id"], "group": "sights"}).json()
-    stop = sights["places"][0]
-    added = c.post(f"/api/trips/{trip['id']}/days/1/stops",
-                   json={"name": stop["name"], "lat": stop["lat"], "lng": stop["lng"], "time": "16:00"}).json()  # fmt: skip
-    assert any(a["name"] == "Miradouro da Graça" for a in added["days"][0]["activities"])
-    opt = c.post(f"/api/trips/{trip['id']}/days/1/optimise").json()
-    assert opt["trip"]["version"] > added["version"] and "travel_after" in opt
-    trip = opt["trip"]
-
-    wx = c.post(f"/api/trips/{trip['id']}/weather-check").json()
-    assert wx["alerts"][0]["day"] == 1 and "Castelo de São Jorge" in wx["alerts"][0]["outdoor"]
-    out = c.post(f"/api/trips/{trip['id']}/replan", json={"event": "Heavy rain on day 1"}).json()
-    assert out["days_changed"] == [1] and out["trip"]["version"] == trip["version"] + 1
-    assert (
-        out["trip"]["days"][0]["activities"][0]["name"] == "Gulbenkian Museum"
-        and out["trip"]["days"][1]["changed"] is False
-    )
-
-    new_act = out["trip"]["days"][1]["activities"][0]["id"]
-    voted = c.post(f"/api/trips/{trip['id']}/votes", json={"activity_id": new_act, "voter": "Sam", "value": 1}).json()
-    assert voted["days"][1]["activities"][0]["votes"] == {"Sam": 1}
-    assert (
-        c.post(f"/api/trips/{trip['id']}/votes", json={"activity_id": "nope", "voter": "Sam", "value": 1}).status_code
-        == 404
-    )
-
-
-def test_trip_records_destination_days_places_and_forecast_time(app_client):
-    """What TripWeaver stores today: destination, dated day-wise itinerary, located places, forecast fetch time."""
-    c = app_client
-    c.headers["X-Trip-Owner"] = c.post("/api/trips/owner").json()["token"]
-    events = parse_sse(c.post("/api/trips/plan", json={"prompt": "2 days in Lisbon from May 1 2030, love food"}).text)
-    trip = events[-1][1]["trip"]
-    assert trip["city"]["name"] == "Lisbon" and trip["request"]["days"] == 2
-    assert [d["day"] for d in trip["days"]] == [1, 2] and [d["date"] for d in trip["days"]] == [
-        "2030-05-01",
-        "2030-05-02",
-    ]
-    assert all(a.get("lat") is not None and a.get("time") for d in trip["days"] for a in d["activities"])
-    planned_at = trip["weather_updated_at"]
-    assert planned_at and planned_at.endswith("+00:00")  # forecast time is recorded, never implied to be live
-    assert trip["id"] in [t["id"] for t in c.get("/api/trips").json()]  # trip history
-    wx = c.post(f"/api/trips/{trip['id']}/weather-check").json()
-    assert wx["trip"]["weather_updated_at"] >= planned_at
-
-
-def test_trip_without_forecast_records_no_forecast_time(app_client):
-    class NoWeather(FakeTools):
-        async def forecast(self, lat, lng, tz):
-            raise RuntimeError("weather provider down")
-
-    c = app_client
-    c.app.state.suite.trips.tools = NoWeather()
-    c.headers["X-Trip-Owner"] = c.post("/api/trips/owner").json()["token"]
-    events = parse_sse(c.post("/api/trips/plan", json={"prompt": "2 days in Lisbon from May 1 2030, love food"}).text)
-    trip = events[-1][1]["trip"]
-    assert trip["weather_updated_at"] is None
-    assert not any("rain" in (d["weather"] or {}) for d in trip["days"])  # air quality may exist; no forecast
+# ── Safarnama (its own tests live in products/safarnama/api/tests) ──────
+def test_safarnama_api_is_mounted(app_client):
+    token = app_client.post("/api/trips/owner")
+    assert token.status_code == 201 and token.json()["token"]
 
 
 # ── Portfolio contact form ───────────────────────────────────────────────

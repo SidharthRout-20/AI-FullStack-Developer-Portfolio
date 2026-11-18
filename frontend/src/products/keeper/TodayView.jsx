@@ -1,7 +1,7 @@
 import { AlarmClock, BellRing, CircleAlert, LoaderCircle, RefreshCw, Send, Sparkles, Volume2, VolumeX } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
-import { speak, stopSpeaking } from './device'
+import { speak, stopSpeaking } from '@appcore/web/device'
 import { moduleOf } from './modules'
 
 const BUCKETS = [

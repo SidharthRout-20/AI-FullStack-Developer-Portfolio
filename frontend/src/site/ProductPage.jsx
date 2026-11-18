@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowUpRight, CheckCircle2, CircleDashed } from 'lucide-react'
 import { motion } from 'motion/react'
-import { Link } from '../router'
+import { Link } from '@appcore/web/router'
 import { SiteHeader } from './HubPage'
 import { MODULE_STATUSES, STATUSES } from './products'
 import { StatusBadge, TONE } from './StatusBadge'

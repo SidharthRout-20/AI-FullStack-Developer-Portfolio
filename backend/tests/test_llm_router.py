@@ -7,10 +7,10 @@ import asyncio
 import pytest
 
 from app.efi import reasoning
-from app.llm import Complexity, LLMRequest, LLMRouter, NoCompatibleModelError, RoutedLLM, classify_request
-from app.llm.catalog import REGISTRY
-from app.llm.quota import parse_duration
-from app.llm.transport import ChatResult, ProviderError, StreamHandle
+from appcore.llm import Complexity, LLMRequest, LLMRouter, NoCompatibleModelError, RoutedLLM, classify_request
+from appcore.llm.catalog import REGISTRY
+from appcore.llm.quota import parse_duration
+from appcore.llm.transport import ChatResult, ProviderError, StreamHandle
 
 LISTED = [
     {"id": m, "owned_by": "x", "active": True}
@@ -262,6 +262,25 @@ def test_model_not_found_and_malformed_fall_back(settings):
     assert r.catalog.available("openai/gpt-oss-20b")[0] is False
     r2, _, _ = make(settings, script={"openai/gpt-oss-120b": [ProviderError("malformed")]})
     assert run(r2.execute_request(req("tripweaver.plan"))).model == "qwen/qwen3.8-27b"
+    # Groq JSON mode rejected a cut-off reply but sent what was generated: hand it back for salvage.
+    cut = ProviderError("malformed", partial='{"title": "T", "days": [{"day": 1')
+    r3, _, _ = make(settings, script={"openai/gpt-oss-120b": [cut]})
+    res = run(r3.execute_request(req("tripweaver.plan")))
+    assert (res.model, res.text, res.finish_reason) == ("openai/gpt-oss-120b", cut.partial, "malformed")
+
+
+def test_groq_json_validate_failed_keeps_the_failed_generation():
+    import httpx
+    from groq import BadRequestError
+
+    from appcore.llm.transport import classify_error
+
+    body = {
+        "error": {"code": "json_validate_failed", "message": "Failed to generate JSON", "failed_generation": '{"a": [1'}
+    }
+    exc = BadRequestError("bad", response=httpx.Response(400, request=httpx.Request("POST", "https://x")), body=body)
+    err = classify_error(exc)
+    assert err.kind == "malformed" and err.partial == '{"a": [1'
 
 
 def test_context_overflow_falls_back_only_to_larger_context(settings):
@@ -272,7 +291,7 @@ def test_context_overflow_falls_back_only_to_larger_context(settings):
 
 
 def test_auth_error_is_not_retried_on_other_models(settings):
-    from app.llm import RouterError
+    from appcore.llm import RouterError
 
     r, t, _ = make(settings, script={"openai/gpt-oss-20b": [ProviderError("auth", status=401)]})
     with pytest.raises(RouterError, match="API key"):
@@ -335,7 +354,7 @@ def test_routed_chat_llm_adapter(settings):
 def test_build_llm_uses_the_router_for_groq(settings):
     from pydantic import SecretStr
 
-    from app.rag.llm import build_llm
+    from appcore.llm.chat import build_llm
 
     llm = build_llm(settings.model_copy(update={"groq_api_key": SecretStr("gsk_" + "x" * 30)}))
     assert isinstance(llm, RoutedLLM) and llm.task == "app.unspecified"
@@ -372,3 +391,15 @@ def test_router_diagnostics_require_admin(client):
     # Same convention as the other admin endpoints: hidden (404) unless ADMIN_API_KEY is configured.
     assert client.get("/api/llm/router").status_code == 404
     assert client.post("/api/llm/router/preview", json={"task": "keeper.command"}).status_code == 404
+
+
+def test_long_json_tasks_get_room_less_reasoning_and_json_mode(settings):
+    """A multi-day plan is long JSON: cut off at 4k tokens it can't be parsed (the "couldn't be parsed" error)."""
+    r, t, _ = make(settings)
+    run(r.execute_request(req("tripweaver.plan")))
+    _, p = t.calls[-1]
+    assert p["max_completion_tokens"] == 6500 and p["reasoning_effort"] == "low"
+    assert p["response_format"] == {"type": "json_object"}
+    run(r.execute_request(req("documind.answer")))  # free text: defaults, no JSON mode
+    _, p = t.calls[-1]
+    assert p["max_completion_tokens"] == settings.llm_max_tokens and "response_format" not in p

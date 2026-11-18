@@ -3,7 +3,7 @@ import { cleanCitations, linkCitations } from './citations'
 import { dayBucket, deleteSession, upsertSession } from './sessions'
 import { completedTurns, initialState, reducer, selectRun } from '../hooks/useChat'
 import { layoutGraph } from './layout'
-import { createSSEParser } from './sse'
+import { createSSEParser } from '@appcore/web/sse'
 
 describe('createSSEParser', () => {
   it('reassembles events split across network chunks', () => {

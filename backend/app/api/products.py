@@ -12,13 +12,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.api.routes import get_rag
-from app.core.security import limiter, rate_limit_value
 from app.rag.briefs import UnknownDocumentError
-from app.rag.guardrails import normalize
-from app.rag.llm import user_facing_error
 from app.rag.matcher import run_match
 from app.rag.service import RAGService
-from app.rag.structured import StructuredOutputError
+from appcore.guardrails import normalize
+from appcore.llm.chat import user_facing_error
+from appcore.llm.structured import StructuredOutputError
+from appcore.security import limiter, rate_limit_value
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")

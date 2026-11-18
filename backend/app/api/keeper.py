@@ -14,13 +14,13 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.security import limiter, rate_limit_value
 from app.keeper import reminders, schedule
 from app.keeper.models import KINDS, AgendaItem, Entry, EntryIn, EntryPatch, ScanResult
 from app.keeper.reminders import ReminderSettings
 from app.keeper.service import KeeperService
-from app.rag.guardrails import normalize
-from app.rag.llm import user_facing_error
+from appcore.guardrails import normalize
+from appcore.llm.chat import user_facing_error
+from appcore.security import limiter, rate_limit_value
 
 
 def get_keeper(request: Request) -> KeeperService:

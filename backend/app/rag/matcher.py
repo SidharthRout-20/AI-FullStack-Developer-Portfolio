@@ -16,10 +16,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.config import Settings
-from app.llm import for_task
-from app.rag.llm import ChatLLM
 from app.rag.retriever import HybridRetriever
-from app.rag.structured import complete_json
+from appcore.llm import for_task
+from appcore.llm.chat import ChatLLM
+from appcore.llm.structured import complete_json
 
 MAX_REQUIREMENTS = 10
 EVIDENCE_PER_REQ = 3

@@ -17,9 +17,9 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useState } from 'react'
 import { streamMatch } from '../../lib/api'
-import { listen, speak, voiceSupported } from '../keeper/device'
+import { listen, speak, voiceSupported } from '@appcore/web/device'
 import { del, download, errorText, get, patch, post, put } from '../shared/http'
-import { Button, Card, Empty, ErrorNote, Field, inputClass, Pill, ProductShell, Spinner, Tabs } from '../shared/ui'
+import { Button, Card, Empty, ErrorNote, Field, inputClass, Pill, ProductShell, Spinner, Tabs } from '@appcore/web/ui'
 
 const ACCENT = 'from-sky-500 via-blue-500 to-indigo-500'
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from app.config import Settings
-from app.core.docstore import DocStore
 from app.keeper.schedule import local_now
 from app.keeper.service import KeeperService
 from app.products.careerpilot import CareerService
@@ -11,8 +10,9 @@ from app.products.codelens import CodeService
 from app.products.evolve import EvolveService
 from app.products.flowforge import FlowService
 from app.products.meetingmind import MeetingService
-from app.products.tripweaver import TripService
 from app.rag.service import RAGService
+from appcore.docstore import DocStore
+from safarnama.service import TripService
 
 
 class Suite:

@@ -20,9 +20,9 @@ from app.keeper.models import AgendaItem, Entry, ScanResult
 from app.keeper.reminders import Alert, ReminderSettings
 from app.keeper.store import KeeperStore
 from app.keeper.vision import SCAN_PROMPT, VisionLLM, build_vision
-from app.llm import for_task
-from app.rag.llm import ChatLLM
-from app.rag.structured import extract_json
+from appcore.llm import for_task
+from appcore.llm.chat import ChatLLM
+from appcore.llm.structured import extract_json
 
 logger = logging.getLogger(__name__)
 
