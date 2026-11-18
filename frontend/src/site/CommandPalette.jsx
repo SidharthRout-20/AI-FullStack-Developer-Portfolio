@@ -1,8 +1,8 @@
-import { ArrowRight, Clock3, CornerDownLeft, LayoutGrid, Moon, Search, Sun } from 'lucide-react'
+import { AppWindow, ArrowRight, Clock3, CornerDownLeft, LayoutGrid, Moon, Search, Sparkles, Sun } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { navigate } from '../router'
-import { setThemeMode } from '../theme/theme'
+import { setSkin, setThemeMode } from '../theme/theme'
 import { PRODUCTS, productHref, STATUSES } from './products'
 
 const OPEN_EVENT = 'app:palette'
@@ -22,6 +22,8 @@ function buildActions() {
     { id: 't-light', label: 'Light theme', hint: 'Theme', group: 'Theme', icon: Sun, run: () => setThemeMode('light') },
     { id: 't-dark', label: 'Dark theme', hint: 'Theme', group: 'Theme', icon: Moon, run: () => setThemeMode('dark') },
     { id: 't-auto', label: 'Auto theme (local time)', hint: 'Theme', group: 'Theme', icon: Clock3, run: () => setThemeMode('auto') },
+    { id: 's-personal', label: 'Off the clock (personal side)', hint: 'Site', group: 'Theme', icon: Sparkles, run: () => setSkin('personal') },
+    { id: 's-showcase', label: 'Studio (landing page)', hint: 'Site', group: 'Theme', icon: AppWindow, run: () => setSkin('showcase') },
   ]
 }
 

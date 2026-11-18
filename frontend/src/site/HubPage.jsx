@@ -18,10 +18,14 @@ import { AnimatePresence, motion, useInView, useReducedMotion, useScroll, useSpr
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
 import { Link } from '../router'
+import { greeting, timeIn } from '../theme/skin'
+import { originOf, setSkin, useSkin } from '../theme/theme'
 import { ThemeToggle } from '../theme/ThemeToggle'
 import { PaletteButton } from './CommandPalette'
 import { EXPERTISE, SITE, TIMELINE } from './config'
 import { fillCounts, LABS, PORTFOLIO, productHref } from './products'
+import { MiniPortrait, Polaroid } from './Portrait'
+import { ShowcaseHub, ShowcaseNav } from './ShowcaseHub'
 import { StatusBadge } from './StatusBadge'
 import {
   BackToTop,
@@ -43,12 +47,6 @@ const SECTIONS = [
   { id: 'projects', label: 'Projects' },
   { id: 'contact', label: 'Contact' },
 ]
-
-const initials = SITE.owner
-  .split(' ')
-  .map((w) => w[0])
-  .join('')
-  .slice(0, 2)
 
 // ── Small building blocks ──────────────────────────────────────────────────
 function GitHubIcon({ className = '' }) {
@@ -123,6 +121,35 @@ function SectionTitle({ kicker, title, text }) {
   )
 }
 
+/** A hand-drawn arrow (decorative). `dir` points where the note refers to. */
+function HandArrow({ className = '', dir = 'down-left' }) {
+  const d = {
+    'down-left': 'M62 6 C 52 30, 34 42, 10 46 M10 46 l9 -9 M10 46 l12 4',
+    'down-right': 'M6 6 C 16 30, 34 42, 58 46 M58 46 l-9 -9 M58 46 l-12 4',
+    left: 'M64 22 C 46 10, 26 12, 8 24 M8 24 l11 -3 M8 24 l6 9',
+  }[dir]
+  return (
+    <svg aria-hidden viewBox="0 0 70 52" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <motion.path d={d} initial={{ pathLength: 0 }} whileInView={{ pathLength: 1 }} viewport={{ once: true }} transition={{ duration: 1.1, ease: 'easeInOut', delay: 0.4 }} />
+    </svg>
+  )
+}
+
+/** A handwritten margin note: casual, decorative, personal space only. */
+function HandNote({ children, className = '' }) {
+  return <span aria-hidden className={`personal-only font-hand pointer-events-none text-[22px] leading-none text-amber-200/90 ${className}`}>{children}</span>
+}
+
+/** "9:41 pm here": the owner's local time, refreshed every minute. */
+function useOwnerTime() {
+  const [t, setT] = useState(() => timeIn(SITE.timeZone))
+  useEffect(() => {
+    const id = window.setInterval(() => setT(timeIn(SITE.timeZone)), 30_000)
+    return () => window.clearInterval(id)
+  }, [])
+  return t
+}
+
 function Chip({ children }) {
   return (
     <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[12px] text-ink-200">{children}</span>
@@ -152,6 +179,10 @@ function useActiveSection(enabled) {
 
 /** Sticky navigation. On the portfolio it scroll-spies sections; on other pages links go back to `/#section`. */
 export function SiteHeader({ home = false }) {
+  return useSkin() === 'showcase' ? <ShowcaseNav home={home} /> : <PersonalHeader home={home} />
+}
+
+function PersonalHeader({ home }) {
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
   const active = useActiveSection(home)
@@ -173,9 +204,7 @@ export function SiteHeader({ home = false }) {
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-5">
         <Link to="/" className="flex items-center gap-2.5" onClick={() => home && window.scrollTo({ top: 0, behavior: 'smooth' })}>
-          <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-cyan-400 text-[13px] font-bold text-on-accent shadow-lg shadow-indigo-950/40">
-            {initials}
-          </span>
+          <MiniPortrait square className="size-9 text-[30px] shadow-lg shadow-indigo-950/40" />
           <span className="hidden text-[15px] font-semibold tracking-tight text-white sm:block">{SITE.owner}</span>
         </Link>
 
@@ -241,6 +270,10 @@ export function SiteHeader({ home = false }) {
 
 // ── Page ───────────────────────────────────────────────────────────────────
 export function HubPage() {
+  return useSkin() === 'showcase' ? <ShowcaseHub /> : <PersonalHub />
+}
+
+function PersonalHub() {
   return (
     // overflow-x-clip: cards that slide in from the side must not widen the page before they arrive
     <div className="min-h-full overflow-x-clip">
@@ -273,29 +306,15 @@ const STATS = [
 
 function Avatar() {
   return (
-    <div className="relative mx-auto size-56 sm:size-72">
-      <motion.div
-        aria-hidden
-        className="absolute -inset-1.5 rounded-full bg-[conic-gradient(from_0deg,#6366f1,#22d3ee,#34d399,#a78bfa,#6366f1)] opacity-80 blur-[2px]"
-        animate={{ rotate: 360 }}
-        transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
-      />
-      <div className="absolute inset-0 overflow-hidden rounded-full border-4 border-ink-950 bg-ink-900">
-        {SITE.avatar ? (
-          <img src={SITE.avatar} alt={SITE.owner} className="size-full object-cover" />
-        ) : (
-          <div className="grid size-full place-items-center bg-[radial-gradient(circle_at_30%_25%,var(--color-indigo-500),transparent_60%),radial-gradient(circle_at_75%_80%,var(--color-cyan-500),transparent_55%)]">
-            <span className="text-7xl font-semibold tracking-tight text-on-accent drop-shadow-lg sm:text-8xl">{initials}</span>
-          </div>
-        )}
-      </div>
-      <FloatingBadge className="-left-6 top-8 sm:-left-12" delay={0}>
+    <div className="relative mx-auto w-fit">
+      <Polaroid />
+      <FloatingBadge className="-top-4 -left-6 sm:-left-28" delay={0}>
         <BrainCircuit className="size-4 text-violet-300" /> Generative AI
       </FloatingBadge>
-      <FloatingBadge className="-right-4 top-1/2 sm:-right-10" delay={1.2}>
+      <FloatingBadge className="top-[42%] -right-6 sm:-right-28" delay={1.2}>
         <PanelsTopLeft className="size-4 text-cyan-300" /> React UI/UX
       </FloatingBadge>
-      <FloatingBadge className="bottom-4 left-0 sm:-left-4" delay={2.4}>
+      <FloatingBadge className="bottom-16 -left-8 max-sm:hidden sm:-left-32" delay={2.4}>
         <ServerCog className="size-4 text-emerald-300" /> Python APIs
       </FloatingBadge>
     </div>
@@ -305,7 +324,7 @@ function Avatar() {
 function FloatingBadge({ children, className, delay }) {
   return (
     <motion.span
-      className={`glass absolute flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium whitespace-nowrap text-ink-100 ${className}`}
+      className={`glass pointer-events-none absolute flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium whitespace-nowrap text-ink-100 ${className}`}
       animate={{ y: [0, -8, 0] }}
       transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut', delay }}
     >
@@ -314,9 +333,42 @@ function FloatingBadge({ children, className, delay }) {
   )
 }
 
+/** What I'm on right now: one note at a time, gently rotating (from SITE.now in config.js). */
+function NowNotes() {
+  const [i, setI] = useState(0)
+  const reduce = useReducedMotion()
+  useEffect(() => {
+    if (reduce || SITE.now.length < 2) return
+    const id = window.setInterval(() => setI((x) => (x + 1) % SITE.now.length), 4200)
+    return () => window.clearInterval(id)
+  }, [reduce])
+  return (
+    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="mt-6 flex items-center gap-2.5 text-[13px] text-ink-400">
+      <span className="font-hand text-[20px] text-amber-200/90">now</span>
+      <span className="h-px w-5 bg-white/15" />
+      <span className="relative h-5 min-w-0 flex-1 overflow-hidden">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={i}
+            initial={{ y: 12, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -12, opacity: 0 }}
+            transition={{ duration: 0.35 }}
+            className="absolute inset-0 truncate text-ink-200"
+          >
+            {SITE.now[i]}
+          </motion.span>
+        </AnimatePresence>
+      </span>
+    </motion.p>
+  )
+}
+
 function Hero() {
   const ref = useRef(null)
   const reduce = useReducedMotion()
+  const ownerTime = useOwnerTime()
+  const visitorGreeting = greeting(new Date().getHours())
   // As the hero scrolls away: text drifts up and fades, the avatar sinks and shrinks (depth parallax).
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] })
   const textY = useTransform(scrollYProgress, [0, 1], [0, -120])
@@ -341,12 +393,19 @@ function Hero() {
             {SITE.current}
             <span className="text-ink-600">·</span>
             <MapPin className="size-3.5" /> {SITE.location}
+            {ownerTime && (
+              <>
+                <span className="text-ink-600">·</span>
+                <span className="tabular-nums" title={`Local time in ${SITE.location}`}>{ownerTime.text} here</span>
+              </>
+            )}
           </motion.p>
+          <HandNote className="mt-5 block -rotate-2 text-[24px] text-cyan-200/90">{visitorGreeting}, wherever you are ✦</HandNote>
           <motion.h1
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05, duration: 0.6 }}
-            className="mt-5 text-4xl leading-[1.05] font-semibold tracking-tight text-white sm:text-6xl"
+            className="mt-3 text-4xl leading-[1.05] font-semibold tracking-tight text-white sm:text-6xl"
           >
             Hi, I'm {SITE.owner.split(' ')[0]}.
             <span className="mt-2 block text-gradient animate-gradient bg-[length:200%_auto]">
@@ -367,9 +426,15 @@ function Hero() {
             transition={{ delay: 0.2, duration: 0.6 }}
             className="mt-8 flex flex-wrap items-center gap-3"
           >
-            <a href="#projects" className="group inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[14px] font-semibold text-ink-950 transition hover:shadow-lg hover:shadow-indigo-500/20">
-              See my work <ArrowDown className="size-4 transition group-hover:translate-y-0.5" />
-            </a>
+            <span className="relative">
+              <a href="#projects" className="group inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[14px] font-semibold text-ink-950 transition hover:shadow-lg hover:shadow-indigo-500/20">
+                See my work <ArrowDown className="size-4 transition group-hover:translate-y-0.5" />
+              </a>
+              <span aria-hidden className="personal-only pointer-events-none absolute top-full left-2 hidden items-start text-amber-200/90 sm:flex">
+                <HandArrow dir="left" className="mt-1 h-6 w-9 -scale-y-100 rotate-[200deg]" />
+                <span className="font-hand mt-4 -ml-1 -rotate-3 text-[21px] whitespace-nowrap">start here</span>
+              </span>
+            </span>
             <a href="#contact" className="inline-flex items-center gap-2 rounded-full border border-white/15 px-5 py-2.5 text-[14px] font-semibold text-white transition hover:border-white/30 hover:bg-white/[0.04]">
               Get in touch
             </a>
@@ -391,6 +456,7 @@ function Hero() {
               </div>
             ))}
           </motion.dl>
+          {SITE.now?.length > 0 && <NowNotes />}
         </motion.div>
         <motion.div style={reduce ? undefined : { y: avatarY, scale: avatarScale, rotate: avatarRotate }}>
           <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15, duration: 0.7 }}>
@@ -526,7 +592,7 @@ function TimelineNode({ icon }) {
   )
 }
 
-const PERSONAL = new Set(['keeper', 'tripweaver'])
+const PERSONAL = new Set(['tijori', 'safarnama'])
 
 function useBackendOnline() {
   const [online, setOnline] = useState(null)
@@ -554,8 +620,9 @@ function ProjectsSection() {
           <SectionTitle
             kicker="Projects"
             title={`${PORTFOLIO.length} products, built one at a time`}
-            text="The approved portfolio, in priority order. Each card shows its real status: EFI and TripWeaver are in active development; the others are approved and scheduled, some with an earlier prototype you can already open."
+            text="The approved portfolio, in priority order. Each card shows its real status: Safarnama is being taken end to end first and Jasoos is in active development; the others are approved and scheduled, some with an earlier prototype you can already open."
           />
+          <HandNote className="-mt-6 mb-10 hidden -rotate-3 lg:block">Safarnama: on my desk right now ↓</HandNote>
           <Reveal className="mb-10">
             <div role="tablist" aria-label="Filter projects" className="inline-flex rounded-full border border-white/[0.07] bg-ink-900/50 p-1">
               {['all', 'personal', 'work'].map((f) => (
@@ -737,7 +804,8 @@ function Stack() {
 }
 
 // ── Contact ────────────────────────────────────────────────────────────────
-function ContactSection() {
+/** The contact form (shared by both skins): posts to /api/contact, with a honeypot field for bots. */
+export function ContactForm() {
   const [form, setForm] = useState({ name: '', email: '', message: '', website: '' })
   const [state, setState] = useState('idle')
   const [error, setError] = useState('')
@@ -772,6 +840,51 @@ function ContactSection() {
   const field = 'w-full rounded-2xl border border-white/10 bg-ink-950/40 px-4 py-3 text-[14.5px] text-white outline-none transition placeholder:text-ink-500 focus:border-brand-400/60'
 
   return (
+    <form onSubmit={(e) => void submit(e)} className="glass relative overflow-hidden rounded-3xl p-6 sm:p-8" aria-label="Contact form">
+      <AnimatePresence mode="wait">
+        {state === 'sent' ? (
+          <motion.div key="sent" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="grid min-h-80 place-items-center text-center">
+            <div>
+              <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 16 }} className="mx-auto grid size-16 place-items-center rounded-full bg-emerald-500/15 text-emerald-300">
+                <CircleCheck className="size-8" />
+              </motion.span>
+              <h3 className="mt-4 text-xl font-semibold text-white">Message sent</h3>
+              <p className="mt-1 text-[14px] text-ink-300">Thanks for reaching out, I'll reply soon.</p>
+              <button type="button" onClick={() => setState('idle')} className="mt-5 text-[13px] text-cyan-300 hover:underline">Send another</button>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className="text-[12.5px] font-medium text-ink-300">Name</span>
+                <input id="contact-name" required minLength={2} maxLength={80} className={`${field} mt-1.5`} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Your name" autoComplete="name" />
+              </label>
+              <label className="block">
+                <span className="text-[12.5px] font-medium text-ink-300">Email</span>
+                <input id="contact-email" required type="email" maxLength={254} className={`${field} mt-1.5`} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@company.com" autoComplete="email" />
+              </label>
+            </div>
+            <label className="block">
+              <span className="text-[12.5px] font-medium text-ink-300">Message</span>
+              <textarea id="contact-message" required minLength={10} maxLength={3000} rows={6} className={`${field} mt-1.5 resize-y`} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="What would you like to build?" />
+            </label>
+            {/* honeypot: hidden from people, irresistible to bots */}
+            <input tabIndex={-1} autoComplete="off" aria-hidden className="absolute -left-[9999px] size-px opacity-0" name="website" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
+            {state === 'error' && <p role="alert" className="text-[13px] text-rose-300">{error}</p>}
+            <button type="submit" disabled={state === 'sending'} className="btn-primary inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-500 via-violet-500 to-cyan-500 py-3 text-[14.5px] font-semibold text-on-accent shadow-lg shadow-indigo-950/30 transition hover:brightness-110 disabled:opacity-60">
+              {state === 'sending' ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
+              {state === 'sending' ? 'Sending…' : 'Send message'}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </form>
+  )
+}
+
+function ContactSection() {
+  return (
     <section id="contact" className="scroll-mt-20 px-5 py-20">
       <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr]">
         <div>
@@ -788,49 +901,11 @@ function ContactSection() {
               {SITE.location}
             </p>
             <div className="pt-3"><Socials size="lg" /></div>
+            <p aria-hidden className="personal-only font-hand pt-4 -rotate-2 text-[30px] text-ink-200">— {SITE.owner.split(' ')[0]}</p>
           </Reveal>
         </div>
         <Reveal from="right">
-          <form onSubmit={(e) => void submit(e)} className="glass relative overflow-hidden rounded-3xl p-6 sm:p-8" aria-label="Contact form">
-            <AnimatePresence mode="wait">
-              {state === 'sent' ? (
-                <motion.div key="sent" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="grid min-h-80 place-items-center text-center">
-                  <div>
-                    <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 300, damping: 16 }} className="mx-auto grid size-16 place-items-center rounded-full bg-emerald-500/15 text-emerald-300">
-                      <CircleCheck className="size-8" />
-                    </motion.span>
-                    <h3 className="mt-4 text-xl font-semibold text-white">Message sent</h3>
-                    <p className="mt-1 text-[14px] text-ink-300">Thanks for reaching out, I'll reply soon.</p>
-                    <button type="button" onClick={() => setState('idle')} className="mt-5 text-[13px] text-cyan-300 hover:underline">Send another</button>
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="block">
-                      <span className="text-[12.5px] font-medium text-ink-300">Name</span>
-                      <input id="contact-name" required minLength={2} maxLength={80} className={`${field} mt-1.5`} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Your name" autoComplete="name" />
-                    </label>
-                    <label className="block">
-                      <span className="text-[12.5px] font-medium text-ink-300">Email</span>
-                      <input id="contact-email" required type="email" maxLength={254} className={`${field} mt-1.5`} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@company.com" autoComplete="email" />
-                    </label>
-                  </div>
-                  <label className="block">
-                    <span className="text-[12.5px] font-medium text-ink-300">Message</span>
-                    <textarea id="contact-message" required minLength={10} maxLength={3000} rows={6} className={`${field} mt-1.5 resize-y`} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} placeholder="What would you like to build?" />
-                  </label>
-                  {/* honeypot: hidden from people, irresistible to bots */}
-                  <input tabIndex={-1} autoComplete="off" aria-hidden className="absolute -left-[9999px] size-px opacity-0" name="website" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
-                  {state === 'error' && <p role="alert" className="text-[13px] text-rose-300">{error}</p>}
-                  <button type="submit" disabled={state === 'sending'} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-500 via-violet-500 to-cyan-500 py-3 text-[14.5px] font-semibold text-on-accent shadow-lg shadow-indigo-950/30 transition hover:brightness-110 disabled:opacity-60">
-                    {state === 'sending' ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
-                    {state === 'sending' ? 'Sending…' : 'Send message'}
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </form>
+          <ContactForm />
         </Reveal>
       </div>
     </section>
@@ -843,8 +918,10 @@ function SiteFooter() {
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 text-center text-[13px] text-ink-400 sm:flex-row sm:text-left">
         <p>
           © {new Date().getFullYear()} {SITE.owner}. Designed & built with React 19, Tailwind v4 and FastAPI.
+          <span className="mt-1 block text-ink-500">Made in {SITE.location.split(',')[0]} · built and hosted on free tiers</span>
         </p>
         <div className="flex items-center gap-4">
+          <button type="button" onClick={(e) => setSkin('showcase', originOf(e))} className="text-ink-400 transition hover:text-white">Back to the Studio</button>
           <Socials />
           <a href="#about" className="text-ink-300 hover:text-white">Back to top ↑</a>
         </div>

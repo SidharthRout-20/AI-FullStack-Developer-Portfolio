@@ -85,7 +85,7 @@ export default function EFIApp() {
   }
 
   return (
-    <ProductShell name="EFI" tagline="Engineering Failure Investigator: evidence-backed answers to why a build, test or deploy failed" icon={Bug} accent={ACCENT}>
+    <ProductShell name="Jasoos" tagline="The build-failure detective: evidence-backed answers to why a build, test or deploy failed" icon={Bug} accent={ACCENT}>
       <Tabs
         value={tab === 'investigation' ? 'investigation' : tab}
         onChange={(t) => {

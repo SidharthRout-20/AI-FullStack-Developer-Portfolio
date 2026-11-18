@@ -104,10 +104,10 @@ describe('EFI evidence and report rendering helpers', () => {
     expect(reportMarkdown({ ...inv, data: { ...inv.data, report: null } })).toBe('')
   })
 
-  it('is registered as the first portfolio product with its own app route', () => {
-    const p = PRODUCTS.find((x) => x.slug === 'efi')
-    expect(p?.app.route).toBe('/efi')
-    expect(p?.priority).toBe(1)
+  it('is registered as the second portfolio product (after Safarnama) with its own app route', () => {
+    const p = PRODUCTS.find((x) => x.id === 'efi')
+    expect(p?.app.route).toBe('/jasoos')
+    expect(p?.priority).toBe(2)
     expect(p?.status).toBe('in_development')
   })
 })

@@ -154,7 +154,7 @@ function ScanForm({
         type="button"
         onClick={() => void save()}
         disabled={saving}
-        className="w-full rounded-xl bg-gradient-to-r from-fuchsia-500 via-pink-500 to-orange-400 py-2.5 text-[14px] font-semibold text-on-accent shadow-lg shadow-pink-950/30 transition hover:brightness-110 disabled:opacity-60"
+        className="btn-primary w-full rounded-xl bg-gradient-to-r from-fuchsia-500 via-pink-500 to-orange-400 py-2.5 text-[14px] font-semibold text-on-accent shadow-lg shadow-pink-950/30 transition hover:brightness-110 disabled:opacity-60"
       >
         {saving ? 'Saving…' : 'Save to Keeper'}
       </button>

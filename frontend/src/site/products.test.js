@@ -3,13 +3,14 @@ import { forecastFreshness } from '../products/tripweaver/freshness'
 import { fillCounts, LABS, LIVE_COUNT, MODULE_STATUSES, PORTFOLIO, PRODUCTS, productBySlug, productHref, STATUSES } from './products'
 
 const ids = (list) => list.map((p) => p.id)
-const APPROVED = ['efi', 'keeper', 'documind-respond', 'follow-through', 'tripweaver']
+const APPROVED = ['tripweaver', 'efi', 'keeper', 'documind-respond', 'follow-through']
 
 describe('approved portfolio', () => {
   it('contains exactly the five approved products, in priority order, each once', () => {
     expect(ids(PORTFOLIO)).toEqual(APPROVED)
     expect(PORTFOLIO.map((p) => p.priority)).toEqual([1, 2, 3, 4, 5])
-    expect(PORTFOLIO.map((p) => p.name)).toEqual(['EFI', 'Keeper', 'DocuMind Respond', 'Follow-through', 'TripWeaver'])
+    expect(PORTFOLIO.map((p) => p.name)).toEqual(['Safarnama', 'Jasoos', 'Tijori', 'Pramaan', 'Vaada'])
+    expect(PORTFOLIO.every((p) => p.meaning)).toBe(true) // every name says what it means
   })
 
   it('keeps CareerPilot, FlowForge, Evolve and CodeLens in Labs, and TripWeaver out of Labs', () => {
@@ -42,6 +43,11 @@ describe('approved portfolio', () => {
   it('resolves old URLs to the product that replaced them', () => {
     expect(productBySlug('documind').id).toBe('documind-respond')
     expect(productBySlug('meetingmind').id).toBe('follow-through')
+    // renamed products keep their old addresses
+    for (const [old, id] of [['efi', 'efi'], ['keeper', 'keeper'], ['documind-respond', 'documind-respond'], ['follow-through', 'follow-through'], ['tripweaver', 'tripweaver']])
+      expect(productBySlug(old).id).toBe(id)
+    expect(productBySlug('safarnama').app.route).toBe('/safarnama')
+    expect(productBySlug('jasoos').app.route).toBe('/jasoos')
     expect(productHref(productBySlug('careerpilot'))).toBe('/careerpilot')
   })
 })

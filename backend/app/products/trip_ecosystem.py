@@ -84,7 +84,7 @@ souvenirs). Never state prices, shops, stock or availability. Reply with JSON:
 {"items": [{"name": str, "kind": "craft"|"food"|"clothing"|"art"|"other", "why": str (1 sentence),
 "search_terms": [short words a shop name or category might contain]}]}"""
 
-COMPANION_SYSTEM = """You are TripWeaver's travel companion. You help a traveller during their trip using ONLY the
+COMPANION_SYSTEM = """You are Safarnama's travel companion. You help a traveller during their trip using ONLY the
 context given: their itinerary, time, weather (with its fetch time), budget, bookings and the CANDIDATE PLACES list
 (real places from OpenStreetMap, each with a ref like "P3"). Rules:
 - Never invent places, ratings, prices, opening hours, availability or bookings. Recommend places only by their ref.
@@ -119,11 +119,15 @@ class TripEcosystem:
 
     # ── trip records & access helpers ────────────────────────────────────────
     @staticmethod
-    def new_trip_fields(owner: str | None, req: Any = None) -> dict[str, Any]:
+    def new_trip_fields(
+        owner: str | None, req: Any = None, *, country: str | None = None, travellers: int | None = None
+    ) -> dict[str, Any]:
         party = getattr(req, "party", None) if req is not None else None
+        currency = trip_logic.currency_for(country)
         return {
             "owner": owner, "share_key": secrets.token_urlsafe(18), "status": "planning",
-            "party": {"type": party, "travellers": None}, "budget": {"total": None, "currency": "EUR", "categories": {}},
+            "party": {"type": party, "travellers": travellers},
+            "budget": {"total": None, "currency": currency, "categories": {}},
             "checklists": [], "companion": [], "weather_now": {},
         }  # fmt: skip
 
@@ -207,7 +211,8 @@ class TripEcosystem:
         if not any(d["weather"] for d in days):
             trip["weather_updated_at"] = None  # fetched, but nothing covers these dates: don't imply a forecast
         trip["party"] = {"type": body.get("party"), "travellers": body.get("travellers")}
-        trip["budget"] = {"total": body.get("budget"), "currency": body.get("currency", "EUR"), "categories": {}}
+        currency = body.get("currency") or trip_logic.currency_for(dests[0].get("country"))
+        trip["budget"] = {"total": body.get("budget"), "currency": currency, "categories": {}}
         await self._enrich(trip)  # type: ignore[attr-defined]
         return self.db.put("trips", trip)
 
@@ -259,6 +264,11 @@ class TripEcosystem:
         await self._enrich({**trip, "destinations": dests, "days": days})  # type: ignore[attr-defined]
         req = {**(trip.get("request") or {}), "days": len(days)}
         changes = {"days": days, "destinations": dests, "request": req}
+        title = trip_logic.retitle(
+            trip.get("title") or "", [d["name"] for d in dests[:-1]], [d["name"] for d in dests], len(days)
+        )
+        if title != trip.get("title"):
+            changes["title"] = title
         if fetched and not trip.get("weather_updated_at") and any(d.get("weather") for d in days):
             changes["weather_updated_at"] = fetched
         return self._save_trip(trip, changes)
@@ -476,6 +486,21 @@ class TripEcosystem:
         self.child(trip, collection, child_id)
         self.db.delete(collection, child_id[:40])
         self.db.delete_blob(f"tripdoc:{child_id[:40]}")
+
+    def sync_booking_expense(self, trip: dict[str, Any], booking: dict[str, Any]) -> None:
+        """Keep the expense a booking created in step with it: gone when the booking is cancelled or deleted (a
+        cancellation fee is the traveller's to add), actual spend once booked, an estimate while only planned."""
+        status = booking.get("status")
+        for e in self.children(trip, "expenses"):
+            if e.get("booking_id") != booking["id"]:
+                continue
+            if status in ("cancelled", "deleted"):
+                self.db.delete("expenses", e["id"])
+            else:
+                kind = "actual" if status == "booked" else "estimate"
+                if e.get("kind") != kind:
+                    self.db.put("expenses", {**e, "kind": kind}, id=e["id"], parent=trip["id"])
+        self.hub.publish(trip["id"], {"event": "expenses", "id": booking["id"]})
 
     def save_place(self, trip: dict[str, Any], place: dict[str, Any], by: str) -> dict[str, Any]:
         key = place.get("osm_id") or place["name"].lower()

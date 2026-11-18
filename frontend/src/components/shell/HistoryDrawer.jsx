@@ -69,7 +69,7 @@ export function HistoryDrawer({ open, sessions, activeId, now, onClose, onOpen, 
               <button
                 type="button"
                 onClick={onNew}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 px-3 py-2 text-[13px] font-medium text-on-accent shadow-lg shadow-indigo-950/40 transition hover:brightness-110"
+                className="btn-primary flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 to-cyan-500 px-3 py-2 text-[13px] font-medium text-on-accent shadow-lg shadow-indigo-950/40 transition hover:brightness-110"
               >
                 <MessageSquarePlus className="size-4" /> New chat
               </button>

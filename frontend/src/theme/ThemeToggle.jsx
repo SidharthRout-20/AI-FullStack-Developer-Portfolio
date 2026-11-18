@@ -1,6 +1,7 @@
 import { Clock3, Moon, Sun } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useId } from 'react'
+import { SkinSwitch } from './SkinSwitch'
 import { DAY_START, NIGHT_START, setThemeMode, useTheme } from './theme'
 
 const OPTIONS = [
@@ -9,8 +10,8 @@ const OPTIONS = [
   { mode: 'dark', icon: Moon, label: 'Dark' },
 ]
 
-/** Three-way segmented control: Light · Auto (local time) · Dark. */
-export function ThemeToggle({ className = '' }) {
+/** Skin switch (Studio / Off the clock) + three-way segmented control: Light · Auto (local time) · Dark. */
+export function ThemeToggle({ className = '', compact = false }) {
   const { mode, theme } = useTheme()
   const pill = useId()
 
@@ -20,10 +21,12 @@ export function ThemeToggle({ className = '' }) {
   }
 
   return (
+    <div className={`flex items-center gap-1.5 ${className}`}>
+    <SkinSwitch compact={compact} />
     <div
       role="radiogroup"
       aria-label={`Theme (currently ${theme})`}
-      className={`relative flex items-center rounded-full border border-white/10 bg-white/[0.03] p-0.5 ${className}`}
+      className="theme-seg relative flex items-center rounded-full border border-white/10 bg-white/[0.03] p-0.5"
     >
       {OPTIONS.map(({ mode: m, icon: Icon, label }) => {
         const active = m === mode
@@ -51,6 +54,7 @@ export function ThemeToggle({ className = '' }) {
           </button>
         )
       })}
+    </div>
     </div>
   )
 }

@@ -65,7 +65,7 @@ export function Companion({ trip, api, onTrip, setNote, onPins }) {
   return (
     <div className="space-y-3">
       <Card>
-        <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><Bot className="size-4 text-emerald-300" /> Travel companion</p>
+        <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><Bot className="pa-ink size-4" /> Travel companion</p>
         <p className="mt-1 text-[12.5px] text-ink-400">
           Answers from your itinerary, local time, stored forecast, budget, bookings and real nearby places. It never books, orders or pays: you confirm every change.
         </p>

@@ -1,16 +1,17 @@
 /** Trip dashboard and post-trip summary. */
 import { Bot, CalendarCheck, CloudRain, CloudSun, Flag, ListChecks, MapPin, PiggyBank, Sparkles, Thermometer, Bookmark } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { navigate } from '../../router'
 import { errorText } from '../shared/http'
 import { Button, Card, ErrorNote, Pill, Spinner } from '../shared/ui'
 import { forecastFreshness } from './freshness'
-import { money, nextUp, pct } from './logic'
+import { dateRange, money, nextUp, pct } from './logic'
 
 function Tile({ icon: Icon, title, children, action }) {
   return (
     <Card>
       <div className="flex items-center gap-2">
-        <Icon className="size-4 text-emerald-300" />
+        <Icon className="pa-ink size-4" />
         <p className="text-[13px] font-semibold text-white">{title}</p>
         {action && <span className="ml-auto">{action}</span>}
       </div>
@@ -38,12 +39,19 @@ export function Overview({ trip, api, owner, goTab }) {
 
   return (
     <div className="grid gap-3 md:grid-cols-2">
+      {owner && upcoming.length === 0 && bookings !== null && (
+        <section className="relative overflow-hidden rounded-2xl border border-[color:var(--pa-line)] bg-[color:var(--pa-soft)] p-5 md:col-span-2">
+          <p className="pa-display text-[22px] font-semibold text-white">Ready to book?</p>
+          <p className="mt-1 max-w-2xl text-[13px] text-ink-300">Stays, travel and things to do for {(trip.destinations ?? []).map((d) => d.name).join(' and ')}, pre-filled with your dates on MakeMyTrip, Booking.com, Airbnb and Google. Free, and nothing is booked until you confirm on their site.</p>
+          <button type="button" className="btn-primary pa-gradient mt-3 rounded-full px-4 py-2 text-[13px] font-semibold text-on-accent" onClick={() => goTab('bookings')}>See booking options</button>
+        </section>
+      )}
       <Tile icon={Flag} title={up ? `Today · day ${up.day}` : 'Your itinerary'} action={<button type="button" className="chip" onClick={() => goTab('itinerary')}>Open itinerary</button>}>
         {up?.activity ? (
           <p><span className="text-white">{up.now ? 'Now' : `Next at ${up.activity.time}`}: {up.activity.name}</span>{up.activity.note ? ` · ${up.activity.note}` : ''}</p>
         ) : up ? <p>Nothing else planned today.</p> : (
           <p>{trip.days.length} day{trip.days.length > 1 ? 's' : ''} in {(trip.destinations ?? []).map((d) => d.name).join(' → ')}
-            {trip.days[0]?.date ? `, starting ${trip.days[0].date}` : ' (no dates yet)'} · {trip.days.reduce((n, d) => n + d.activities.length, 0)} stops</p>
+            {trip.days[0]?.date ? `, ${dateRange(trip.days[0].date, trip.days.at(-1).date)}` : ' (no dates yet)'} · {trip.days.reduce((n, d) => n + d.activities.length, 0)} stops</p>
         )}
       </Tile>
       <Tile icon={CloudSun} title="Weather" action={<Pill tone={fresh.stale ? 'warn' : 'neutral'}>{fresh.label}</Pill>}>
@@ -124,9 +132,9 @@ export function Summary({ trip, api }) {
   return (
     <div className="space-y-3">
       <Card>
-        <p className="flex items-center gap-2 text-[15px] font-semibold text-white"><MapPin className="size-4 text-emerald-300" /> {s.title}</p>
+        <p className="flex items-center gap-2 text-[15px] font-semibold text-white"><MapPin className="pa-ink size-4" /> {s.title}</p>
         <p className="mt-1 text-[13px] text-ink-300">
-          {s.destinations.join(' → ')} · {s.dates.start ? `${s.dates.start} to ${s.dates.end}` : 'undated'} · {s.days} days · {s.stops} stops · {s.distance_km} km between stops
+          {s.destinations.join(' → ')} · {s.dates.start ? dateRange(s.dates.start, s.dates.end) : 'undated'} · {s.days} days · {s.stops} stops · {s.distance_km} km between stops
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <div><p className="text-[12px] text-ink-400">Spent</p><p className="text-[18px] font-semibold text-white">{money(s.spend.actual_total, s.spend.currency)}</p>
@@ -144,7 +152,7 @@ export function Summary({ trip, api }) {
         </div>
         {ideas && (
           <>
-            <ul className="mt-2 space-y-1 text-[13px]">{ideas.ideas.map((i) => <li key={i.destination}><span className="text-white">{i.destination}</span> · <span className="text-ink-300">{i.why}</span></li>)}</ul>
+            <ul className="mt-2 space-y-1 text-[13px]">{ideas.ideas.map((i) => <li key={i.destination} className="flex flex-wrap items-baseline gap-x-2"><span className="text-white">{i.destination}</span> · <span className="text-ink-300">{i.why}</span> <button type="button" className="pa-ink text-[12.5px] font-medium hover:underline" onClick={() => navigate(`/safarnama?to=${encodeURIComponent(i.destination)}`)}>Plan this →</button></li>)}</ul>
             <p className="mt-1 text-[11.5px] text-ink-500">AI-generated ideas based on this trip; no prices or availability implied.</p>
           </>
         )}

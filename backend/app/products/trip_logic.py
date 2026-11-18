@@ -78,6 +78,58 @@ INDOOR_CATEGORIES = {"museum", "gallery", "aquarium", "arts centre", "theatre", 
 STREET_FOOD = {"fast food", "food court"}
 
 
+_EURO = (
+    "Austria",
+    "Belgium",
+    "Croatia",
+    "Cyprus",
+    "Estonia",
+    "Finland",
+    "France",
+    "Germany",
+    "Greece",
+    "Ireland",
+    "Italy",
+    "Latvia",
+    "Lithuania",
+    "Luxembourg",
+    "Malta",
+    "Netherlands",
+    "Portugal",
+    "Slovakia",
+    "Slovenia",
+    "Spain",
+)
+CURRENCIES: dict[str, str] = {
+    **{c.lower(): "EUR" for c in _EURO},
+    "india": "INR", "japan": "JPY", "indonesia": "IDR", "singapore": "SGD", "türkiye": "TRY", "turkey": "TRY",
+    "nepal": "NPR", "bhutan": "BTN", "sri lanka": "LKR", "maldives": "MVR", "bangladesh": "BDT", "thailand": "THB",
+    "vietnam": "VND", "viet nam": "VND", "malaysia": "MYR", "philippines": "PHP", "china": "CNY", "south korea": "KRW",
+    "united arab emirates": "AED", "uae": "AED", "qatar": "QAR", "oman": "OMR", "saudi arabia": "SAR", "egypt": "EGP",
+    "morocco": "MAD", "kenya": "KES", "south africa": "ZAR", "united kingdom": "GBP", "uk": "GBP", "switzerland": "CHF",
+    "norway": "NOK", "sweden": "SEK", "denmark": "DKK", "iceland": "ISK", "czechia": "CZK", "czech republic": "CZK",
+    "hungary": "HUF", "poland": "PLN", "united states": "USD", "united states of america": "USD", "usa": "USD",
+    "canada": "CAD", "mexico": "MXN", "brazil": "BRL", "argentina": "ARS", "peru": "PEN", "australia": "AUD",
+    "new zealand": "NZD", "mauritius": "MUR", "seychelles": "SCR", "georgia": "GEL", "azerbaijan": "AZN",
+}  # fmt: skip
+
+
+def retitle(title: str, old_names: list[str], new_names: list[str], days: int) -> str:
+    """A title Safarnama generated ("3 days in Jaipur", or "Jaipur → Pushkar" for a hand-built trip) follows the trip
+    when a destination is added; anything the traveller or the planner wrote in their own words is kept."""
+    route = " → ".join(new_names)
+    if title == " → ".join(old_names):
+        return route
+    if re.fullmatch(r"\d+ days? in .+", title) and title.split(" in ", 1)[1] == " → ".join(old_names):
+        return f"{days} days in {route}"
+    return title
+
+
+def currency_for(country: str | None, fallback: str = "EUR") -> str:
+    """The local currency for a country name (as map providers return it); `fallback` when it isn't known."""
+    return CURRENCIES.get((country or "").strip().lower(), fallback)
+
+
 def describe(tags: dict[str, str]) -> tuple[str, str]:
     """(natural group, human category) for an OpenStreetMap feature."""
     for key in _KEYS:

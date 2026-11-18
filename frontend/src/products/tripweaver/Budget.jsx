@@ -83,7 +83,7 @@ export function Budget({ trip, api, owner, onTrip, setNote }) {
       {!sum ? <Spinner label="Loading budget…" /> : (
         <Card>
           <div className="flex flex-wrap items-baseline gap-3">
-            <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><PiggyBank className="size-4 text-emerald-300" /> Budget</p>
+            <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><PiggyBank className="pa-ink size-4" /> Budget</p>
             <p className="text-[13px] text-ink-300">
               Spent <span className="font-semibold text-white">{money(sum.actual_total, sum.currency)}</span>
               {sum.budget_total != null && <> of {money(sum.budget_total, sum.currency)} · <span className={sum.over_budget ? 'text-rose-300' : 'text-emerald-300'}>{money(sum.remaining, sum.currency)} left</span></>}
@@ -96,6 +96,9 @@ export function Budget({ trip, api, owner, onTrip, setNote }) {
             </div>
           )}
           {sum.remaining_after_estimates != null && sum.estimated_total > 0 && <p className="mt-1 text-[12px] text-ink-400">After estimates: {money(sum.remaining_after_estimates, sum.currency)} left.</p>}
+          {!Object.values(sum.by_category).some((v) => v.actual || v.estimated || v.budget) ? (
+            <p className="mt-3 rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-[12.5px] text-ink-400">Nothing spent or planned yet. Add an expense below, or set a total budget to track against.</p>
+          ) : (
           <table className="mt-3 w-full text-[12.5px]">
             <thead><tr className="text-left text-ink-400"><th className="py-1 font-medium">Category</th><th className="font-medium">Actual</th><th className="font-medium">Estimated</th><th className="font-medium">Budget</th></tr></thead>
             <tbody>
@@ -104,6 +107,7 @@ export function Budget({ trip, api, owner, onTrip, setNote }) {
               ))}
             </tbody>
           </table>
+          )}
           {sum.unconverted.length > 0 && <p className="mt-2 text-[12px] text-amber-300">{sum.unconverted.length} expense(s) in another currency had no reference rate, so they're not in the totals. Re-add them with your own rate.</p>}
           {sum.rates.length > 0 && <p className="mt-2 text-[11.5px] text-ink-500">Rates used: {sum.rates.join('; ')}. Reference rates, not live quotes.</p>}
           {sum.settlements.length > 0 && (

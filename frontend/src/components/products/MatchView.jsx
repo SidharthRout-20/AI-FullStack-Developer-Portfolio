@@ -139,7 +139,7 @@ export function MatchView() {
             type="button"
             onClick={analyze}
             disabled={running || text.trim().length < 40}
-            className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-rose-500 px-4 py-2 text-[12.5px] font-semibold text-on-accent shadow-lg shadow-rose-950/40 transition hover:brightness-110 disabled:opacity-40"
+            className="btn-primary flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-rose-500 px-4 py-2 text-[12.5px] font-semibold text-on-accent shadow-lg shadow-rose-950/40 transition hover:brightness-110 disabled:opacity-40"
           >
             {running ? <LoaderCircle className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
             {running ? 'Analyzing…' : 'Analyze'}

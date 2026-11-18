@@ -99,7 +99,7 @@ export function TopBar({ view, onView, health, documents, error, streaming, onRe
         ) : (
           <span className="h-7 w-40 animate-pulse rounded-lg bg-white/5" />
         )}
-        <ThemeToggle className="hidden md:flex" />
+        <ThemeToggle compact className="hidden md:flex" />
         <button
           type="button"
           onClick={onReset}

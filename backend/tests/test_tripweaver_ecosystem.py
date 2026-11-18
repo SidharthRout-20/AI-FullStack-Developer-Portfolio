@@ -549,3 +549,69 @@ def test_companion_reply_hides_internal_place_refs():
         trip_logic.strip_refs("Try Café Lisboa (P1), then P12 if it rains.", cands)
         == "Try Café Lisboa, then Museu if it rains."
     )
+
+
+def test_trip_currency_follows_the_destination_country():
+    assert trip_logic.currency_for("India") == "INR"
+    assert trip_logic.currency_for(" japan ") == "JPY"
+    assert trip_logic.currency_for("Portugal") == "EUR"
+    assert trip_logic.currency_for("Atlantis") == "EUR"  # unknown → the fallback, never a guess
+    assert trip_logic.currency_for(None, fallback="USD") == "USD"
+
+
+def test_quick_planner_choices_win_over_the_model(env):
+    c, _ = env
+    h = owner(c)
+    prompt = "2 days in Lisbon, Portugal, from 2030-05-01 to 2030-05-02, for a family with kids (4 travellers)."
+    events = parse_sse(
+        c.post("/api/trips/plan", json={"prompt": prompt, "party": "family", "travellers": 4}, headers=h).text
+    )
+    trip = events[-1][1]["trip"]
+    assert trip["party"] == {"type": "family", "travellers": 4}
+    assert trip["budget"]["currency"] == "EUR"  # Lisbon → Portugal → euro
+    bad = c.post("/api/trips/plan", json={"prompt": prompt, "party": "everyone"}, headers=h)
+    assert bad.status_code == 422
+
+
+def test_manual_trip_without_a_currency_uses_the_local_one(env):
+    c, _ = env
+    h = owner(c)
+    r = c.post("/api/trips", json={"destinations": [{"name": "Lisbon", "days": 2}]}, headers=h)
+    assert r.status_code == 201, r.text
+    assert r.json()["budget"]["currency"] == "EUR"
+
+
+def test_a_bookings_cost_follows_the_booking(env):
+    c, _ = env
+    h = owner(c)
+    trip = manual(c, h)
+    t = f"/api/trips/{trip['id']}"
+    spent = lambda: c.get(f"{t}/budget", headers=h).json()["actual_total"]  # noqa: E731
+    estimated = lambda: c.get(f"{t}/budget", headers=h).json()["estimated_total"]  # noqa: E731
+    b = c.post(
+        f"{t}/bookings",
+        json={"type": "hotel", "title": "Haveli", "cost": 300, "add_expense": True, "status": "planned"},
+        headers=h,
+    ).json()
+    assert (spent(), estimated()) == (0, 300)
+    c.patch(f"{t}/bookings/{b['id']}", json={"status": "booked"}, headers=h)
+    assert (spent(), estimated()) == (300, 0)
+    c.patch(f"{t}/bookings/{b['id']}", json={"status": "cancelled"}, headers=h)
+    assert (spent(), estimated()) == (0, 0)
+    b2 = c.post(
+        f"{t}/bookings", json={"type": "flight", "title": "LIS-OPO", "cost": 80, "add_expense": True}, headers=h
+    ).json()
+    c.post(f"{t}/expenses", json={"amount": 20, "currency": "EUR", "category": "food"}, headers=h)
+    assert spent() == 100
+    assert c.delete(f"{t}/bookings/{b2['id']}", headers=h).status_code == 204
+    assert spent() == 20  # the traveller's own expense stays
+
+
+def test_generated_titles_follow_added_destinations():
+    assert trip_logic.retitle("3 days in Jaipur", ["Jaipur"], ["Jaipur", "Pushkar"], 4) == "4 days in Jaipur → Pushkar"
+    assert (
+        trip_logic.retitle("Lisbon → Porto", ["Lisbon", "Porto"], ["Lisbon", "Porto", "Braga"], 6)
+        == "Lisbon → Porto → Braga"
+    )
+    assert trip_logic.retitle("Our honeymoon", ["Goa"], ["Goa", "Gokarna"], 6) == "Our honeymoon"
+    assert trip_logic.retitle("3 days in Rajasthan", ["Jaipur"], ["Jaipur", "Pushkar"], 4) == "3 days in Rajasthan"

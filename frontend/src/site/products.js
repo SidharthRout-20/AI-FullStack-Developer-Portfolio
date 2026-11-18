@@ -17,6 +17,7 @@ import {
  * visibility: 'portfolio' = one of the approved products · 'labs' = experiments / reusable capabilities
  * status:     see STATUSES. "live" only when the principal workflow works end to end, persists, is access-
  *             controlled where needed and is tested; approval is NOT completion.
+ * meaning:    one line on what the product's name means (shown on the product page and the Studio home).
  * app:        a route that can be opened today. kind 'product' = the product itself; 'prototype' = an earlier app
  *             the product builds on (it does not provide the approved product's advertised workflow).
  */
@@ -40,10 +41,13 @@ const REGISTRY = [
   // ── Approved portfolio (exactly five) ─────────────────────────────────────
   {
     id: 'efi',
-    name: 'EFI',
-    fullName: 'Engineering Failure Investigator',
+    slug: 'jasoos',
+    aliases: ['efi'],
+    name: 'Jasoos',
+    meaning: 'Hindi for detective: it investigates why something failed, and shows its evidence.',
+    fullName: 'Jasoos: the build-failure detective',
     visibility: 'portfolio',
-    priority: 1,
+    priority: 2,
     status: 'in_development',
     lastVerified: VERIFIED,
     statusNote:
@@ -59,7 +63,7 @@ const REGISTRY = [
     icon: Bug,
     accent: 'from-rose-500 via-red-500 to-orange-400',
     tags: ['Evidence-grounded AI', 'Log & diff parsing', 'Secret redaction'],
-    app: { label: 'Open EFI', route: '/efi', kind: 'product' },
+    app: { label: 'Open Jasoos', route: '/jasoos', kind: 'product' },
     available: [
       'Upload or paste logs, stack traces, diffs, JUnit XML, manifests and config (text only, size-capped)',
       'Secret redaction before storage or analysis',
@@ -72,18 +76,22 @@ const REGISTRY = [
   },
   {
     id: 'keeper',
-    name: 'Keeper',
-    fullName: 'Keeper: Purchase & Warranty Recovery',
+    slug: 'tijori',
+    aliases: ['keeper'],
+    image: 'keeper',
+    name: 'Tijori',
+    meaning: 'Hindi for the family strongbox, where the bills and warranty cards are kept.',
+    fullName: 'Tijori: purchase & warranty recovery',
     visibility: 'portfolio',
-    priority: 2,
+    priority: 3,
     status: 'planned',
     lastVerified: VERIFIED,
     statusNote:
-      'Approved and deferred until EFI. Purchase capture, deadline provenance, claim packs and claim tracking are not built yet. ' +
+      'Approved and deferred until Jasoos. Purchase capture, deadline provenance, claim packs and claim tracking are not built yet. ' +
       'The earlier Keeper memory assistant is still available as a prototype.',
     tagline: 'Never lose money to a missed return window or warranty claim.',
     description:
-      'Photograph a bill or warranty card: Keeper extracts the purchase facts with their source, tracks return and warranty ' +
+      'Photograph a bill or warranty card: Tijori extracts the purchase facts with their source, tracks return and warranty ' +
       'deadlines (verified, confirmed by you, estimated or unknown, never guessed), and when something breaks, assembles the ' +
       'claim evidence and drafts the message for you to send.',
     category: 'Personal admin',
@@ -102,12 +110,14 @@ const REGISTRY = [
   },
   {
     id: 'documind-respond',
-    aliases: ['documind'],
+    slug: 'pramaan',
+    aliases: ['documind-respond', 'documind'],
     image: 'documind',
-    name: 'DocuMind Respond',
-    fullName: 'DocuMind Respond',
+    name: 'Pramaan',
+    meaning: 'Sanskrit and Hindi for proof: every answer is backed by approved evidence.',
+    fullName: 'Pramaan: questionnaires answered from evidence',
     visibility: 'portfolio',
-    priority: 3,
+    priority: 4,
     status: 'gated',
     lastVerified: VERIFIED,
     statusNote:
@@ -134,12 +144,14 @@ const REGISTRY = [
   },
   {
     id: 'follow-through',
-    aliases: ['meetingmind'],
+    slug: 'vaada',
+    aliases: ['follow-through', 'meetingmind'],
     image: 'meetingmind',
-    name: 'Follow-through',
-    fullName: 'Follow-through',
+    name: 'Vaada',
+    meaning: 'Hindi and Urdu for a promise: commitments made in a meeting are kept.',
+    fullName: 'Vaada: every commitment, followed through',
     visibility: 'portfolio',
-    priority: 4,
+    priority: 5,
     status: 'planned',
     lastVerified: VERIFIED,
     statusNote:
@@ -165,10 +177,14 @@ const REGISTRY = [
   },
   {
     id: 'tripweaver',
-    name: 'TripWeaver',
-    fullName: 'TripWeaver: Your Complete Travel Ecosystem',
+    slug: 'safarnama',
+    aliases: ['tripweaver'],
+    image: 'tripweaver',
+    name: 'Safarnama',
+    meaning: 'Urdu and Hindi for a travelogue: the whole journey, from the first idea to the memories.',
+    fullName: 'Safarnama: your complete travel companion',
     visibility: 'portfolio',
-    priority: 5,
+    priority: 1,
     status: 'in_development',
     lastVerified: VERIFIED,
     statusNote:
@@ -179,25 +195,25 @@ const REGISTRY = [
       'identity is per browser (no accounts), and ordering, booking, ratings and live transit need commercial providers.',
     tagline: 'One intelligent platform to plan, discover, experience, manage and remember every journey.',
     description:
-      'TripWeaver owns the journey from planning to returning home. The itinerary is the organising object: food, shopping, ' +
+      'Safarnama owns the journey from planning to returning home. The itinerary is the organising object: food, shopping, ' +
       'experiences, weather, routes, bookings and expenses are all connected to the trip, its days, the next stop, the ' +
       'traveller\'s location, time and budget. Recommendations come from real provider data, never invented places, ratings ' +
-      'or availability, and nothing is ordered, booked or paid by TripWeaver: external actions are confirmed hand-offs to the provider.',
+      'or availability, and nothing is ordered, booked or paid by Safarnama: external actions are confirmed hand-offs to the provider.',
     category: 'Travel',
     icon: Route,
     accent: 'from-lime-500 via-emerald-500 to-teal-500',
     tags: ['Itinerary-centred', 'Contextual discovery', 'Travel companion'],
-    app: { label: 'Open TripWeaver', route: '/tripweaver', kind: 'product' },
+    app: { label: 'Open Safarnama', route: '/safarnama', kind: 'product' },
     modules: [
       { id: 'planning', title: 'Trip planning & management', status: 'available', text: 'AI planner (free text, several cities) or manual trips with up to 5 destinations and 14 days, dates, party, travellers, budget, interests and pace; edit, archive, upcoming/active/past grouping; share link for collaborators (view, vote, shared expenses). Identity is per browser: no accounts yet.' },
       { id: 'itinerary', title: 'Intelligent itinerary engine', status: 'available', text: 'Day-wise morning/afternoon/evening plan with durations, route legs and travel times, best visiting order, edit/move/remove/reorder, pins kept on re-plan, regeneration of selected days, schedule checks (overlaps, closed at visit time) and evidence-backed labels: Must visit, Time sensitive, Weather dependent, Reservation recommended, Near your route, Traveller favourite; Local favourite and Hidden gem only as your own tags (no rating data exists).' },
       { id: 'discovery', title: 'Local discovery', status: 'available', text: 'Ten OpenStreetMap categories around a destination, a stop or your location (with permission): food, sights, experiences, shopping, nature, indoor, family, nightlife, transport, services; filters, saved places, add to the itinerary, map pins. No ratings or prices: free map data has none.' },
-      { id: 'food', title: 'Food discovery & ordering', status: 'partial', text: 'Restaurants, cafés, street food and markets with cuisine, vegetarian, vegan and open-at-visit filters, meal slotting near your route, and menu/booking/phone hand-offs taken from the venue data. Ordering, delivery and table booking need commercial provider integrations: TripWeaver hands off and never simulates an order.' },
+      { id: 'food', title: 'Food discovery & ordering', status: 'partial', text: 'Restaurants, cafés, street food and markets with cuisine, vegetarian, vegan and open-at-visit filters, meal slotting near your route, and menu/booking/phone hand-offs taken from the venue data. Ordering, delivery and table booking need commercial provider integrations: Safarnama hands off and never simulates an order.' },
       { id: 'shopping', title: 'Local shopping & souvenirs', status: 'partial', text: 'Souvenir, craft, artisan, market and local-food shops from OpenStreetMap, plus AI-suggested local specialities (labelled) matched to real nearby shops. Stock and prices are not known.' },
       { id: 'experiences', title: 'Experiences & activities', status: 'partial', text: 'Museums, theatres, zoos, aquariums, parks, nature spots and family venues from OpenStreetMap, with venue-site hand-offs. Guided tours, events and ticket availability need a provider (integration pending).' },
       { id: 'weather', title: 'Weather & travel intelligence', status: 'available', text: 'Per-destination daily forecast, current conditions, hourly rain with the driest window, forecast-derived alerts (not official warnings), weather-dependent labels, indoor alternatives and re-planning; every forecast shows when it was fetched.' },
       { id: 'maps', title: 'Maps, navigation & local transport', status: 'partial', text: 'Interactive map with itinerary and discovery pins, day routes, driving times (OSRM, no live traffic), walking estimates, stations and airports with transfer times. Public-transport timetables and cycling routes are not integrated.' },
-      { id: 'bookings', title: 'Booking & reservation management', status: 'available', text: 'Flights, hotels, trains, buses, cars, restaurants, activities, tours and tickets saved with references, times, cancellation terms and costs, linked to days and stops, with provider hand-offs. Direct booking needs provider APIs: TripWeaver never claims a booking it did not see confirmed.' },
+      { id: 'bookings', title: 'Booking & reservation management', status: 'available', text: 'Flights, hotels, trains, buses, cars, restaurants, activities, tours and tickets saved with references, times, cancellation terms and costs, linked to days and stops, with provider hand-offs. Direct booking needs provider APIs: Safarnama never claims a booking it did not see confirmed.' },
       { id: 'budget', title: 'Budget & expenses', status: 'available', text: 'Trip and category budgets, actual spend kept separate from estimates, daily totals, group split and settle-up, dated reference exchange rates (Frankfurter) or your own rate, and receipt reading by a vision model as a draft you confirm.' },
       { id: 'companion', title: 'Travel companion', status: 'available', text: 'Uses your itinerary, local time, location (only when you allow it), stored forecast with its age, budget, bookings and real nearby places. Suggestions are checked against real data and applied only when you confirm; it never books, orders or pays.' },
       { id: 'documents', title: 'Travel documents & preparedness', status: 'available', text: 'Confirmations, tickets, insurance, emergency contacts and notes with small file attachments, visible only to the trip owner; checklists and a packing list built from the forecast, trip length and party.' },
@@ -228,7 +244,7 @@ const REGISTRY = [
     visibility: 'labs',
     status: 'labs',
     lastVerified: VERIFIED,
-    statusNote: 'Archived to Labs: replaced in the portfolio by EFI. Note: its match score uses the documents indexed in DocuMind, not the resume you save.',
+    statusNote: 'Archived to Labs: replaced in the portfolio by Jasoos. Note: its match score uses the documents indexed in DocuMind, not the resume you save.',
     tagline: 'Job-hunt copilot: tailored resume and cover letter, voice mock interviews, application board.',
     category: 'Labs · Career',
     icon: BriefcaseBusiness,
@@ -273,7 +289,7 @@ const REGISTRY = [
     visibility: 'labs',
     status: 'labs',
     lastVerified: VERIFIED,
-    statusNote: 'Labs. Its chunkers and import graph are reusable code-analysis capabilities for EFI.',
+    statusNote: 'Labs. Its chunkers and import graph are reusable code-analysis capabilities for Jasoos.',
     tagline: 'Index a public GitHub repo and ask architecture questions with file-and-line citations.',
     category: 'Labs · Developer tools',
     icon: Code2,
@@ -282,7 +298,7 @@ const REGISTRY = [
     app: { label: 'Open CodeLens', route: '/codelens', kind: 'labs' },
     stack: ['React Flow', 'FastAPI', 'Python ast', 'BM25 + RRF'],
   },
-].map((p) => ({ ...p, slug: p.id, features: p.features ?? [], aliases: p.aliases ?? [] }))
+].map((p) => ({ ...p, slug: p.slug ?? p.id, features: p.features ?? [], aliases: p.aliases ?? [] }))
 
 /** The approved portfolio, in priority order. Its length is THE product count shown anywhere on the site. */
 export const PORTFOLIO = REGISTRY.filter((p) => p.visibility === 'portfolio').sort((a, b) => a.priority - b.priority)

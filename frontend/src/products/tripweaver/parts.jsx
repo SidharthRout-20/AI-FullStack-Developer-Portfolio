@@ -8,12 +8,13 @@ import { hostOf, LABEL_TONE, safeLink } from './logic'
  * Every external action (order, book, reserve, call) is a hand-off to the provider's own site. TripWeaver never
  * places an order or booking itself, and says so before the traveller leaves.
  */
-export function Handoff({ link, place, onClose, onSave }) {
+export function Handoff({ link, place, onClose, onSave, onOpened }) {
   const [save, setSave] = useState(!!onSave)
   if (!link || !safeLink(link.url)) return null
   const host = hostOf(link.url)
   const go = () => {
     if (save && onSave) onSave()
+    onOpened?.()
     onClose()
   }
   return (
@@ -27,8 +28,8 @@ export function Handoff({ link, place, onClose, onSave }) {
             </h2>
             <p className="mt-1.5 text-[13px] text-ink-300">
               {link.kind === 'phone'
-                ? 'Your phone will place the call. TripWeaver is not involved in the conversation.'
-                : `You're leaving TripWeaver for ${host}${link.source ? ` (link from ${link.source})` : ''}. TripWeaver hasn't ordered, booked or paid for anything, and can't confirm availability.`}
+                ? 'Your phone will place the call. Safarnama is not involved in the conversation.'
+                : `You're leaving Safarnama for ${host}${link.source ? ` (link from ${link.source})` : ''}. Safarnama hasn't ordered, booked or paid for anything, and can't confirm availability.`}
             </p>
             {link.kind !== 'phone' && (
               <p className="mt-1.5 text-[12.5px] text-ink-400">After you book or order there, save the confirmation under Bookings so it sits with this trip.</p>
@@ -43,7 +44,7 @@ export function Handoff({ link, place, onClose, onSave }) {
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={go} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-lime-500 to-teal-500 px-4 py-2 text-[13px] font-semibold text-on-accent">
+          <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={go} className="btn-primary inline-flex items-center gap-2 rounded-xl pa-gradient px-4 py-2 text-[13px] font-semibold text-on-accent">
             {link.kind === 'phone' ? <Phone className="size-4" /> : <ExternalLink className="size-4" />} {link.kind === 'phone' ? 'Call' : `Open ${host}`}
           </a>
         </div>

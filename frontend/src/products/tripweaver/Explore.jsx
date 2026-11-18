@@ -218,7 +218,7 @@ export function Explore({ trip, api, owner, onTrip, onPins, setNote, initialGrou
       )}
 
       <Card>
-        <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><Bookmark className="size-4 text-emerald-300" /> Saved places ({saved.length})</p>
+        <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><Bookmark className="pa-ink size-4" /> Saved places ({saved.length})</p>
         {saved.length === 0 ? (
           <p className="mt-1 text-[12.5px] text-ink-400">Save places from the results to keep a shortlist for this trip.</p>
         ) : (

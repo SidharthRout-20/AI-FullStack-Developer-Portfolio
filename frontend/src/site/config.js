@@ -7,9 +7,35 @@ export const SITE = {
   role: "AI Full-Stack Developer",
   current: "Senior Consultant at Deloitte",
   location: "Bengaluru, India",
-  /** Put a square photo at frontend/public/avatar.jpg and set '/avatar.jpg'. Empty → initials monogram. */
-  avatar: "",
+  /** Your local time is shown in the personal space ("9:41 pm here"). IANA time zone name. */
+  timeZone: "Asia/Kolkata",
+  /** "Now" notes in the personal space: what you're actually working on. Keep them true; empty array hides them. */
+  now: [
+    "Taking Safarnama end to end, from the first idea to the booking",
+    "Teaching an LLM router to live on Groq's free tier",
+    "Making Jasoos explain failing builds with evidence",
+  ],
+  /**
+   * Your photo: save a square image (at least 600×600) as frontend/public/me.jpg. It is used for the polaroid in
+   * Off the clock and the small portraits in the headers. Until the file exists, a placeholder is shown.
+   */
+  avatar: "/me.jpg",
+  /** A tight crop of your face for the small round portraits (headers, the switch). Empty → the photo above. */
+  avatarFace: "/me-face.jpg",
+  /** Handwritten caption under the polaroid. Empty → "Bengaluru, <year>". */
+  photoCaption: "",
+  /** Link to a PDF résumé (e.g. put it at frontend/public/resume.pdf and set "/resume.pdf"). Empty → button hidden. */
+  resume: "",
   headline: "I build AI products, from the model to the last pixel.",
+  /** One line under the Studio headline. Keep it true; empty hides it. */
+  availability: "Open to AI product engineering roles and collaborations",
+  /** Enterprise clients you have worked for (shown as a count and a list in the Studio). */
+  clients: ["HP", "Telefónica", "HSBC", "USAA"],
+  /** The Studio's scroll-lit statement: the short story of your career, in your own words. */
+  statement:
+    "I started on COBOL mainframes for USAA, moved into React interfaces for HP, Telefónica and HSBC, and today " +
+    "deliver Generative-AI proofs of concept at Deloitte. In my own time I build AI products end to end: the model, " +
+    "the API, and every pixel in between.",
   /** Shown as the hero stat and in the intro: keep in step with the resume. */
   years: 6,
   intro:

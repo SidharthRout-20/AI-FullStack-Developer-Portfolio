@@ -136,6 +136,9 @@ class In(BaseModel):
 
 class PlanIn(In):
     prompt: str = Field(min_length=10, max_length=1000)
+    # Choices the traveller made explicitly (the quick planner): they win over what the model reads from the prompt.
+    party: Literal["solo", "couple", "family", "friends", "group"] | None = None
+    travellers: int | None = Field(None, ge=1, le=50)
 
 
 class DestinationIn(In):
@@ -155,7 +158,7 @@ class ManualIn(In):
     travellers: int | None = Field(None, ge=1, le=50)
     travellers_note: str | None = Field(None, max_length=80)
     budget: float | None = Field(None, ge=0, le=10_000_000)
-    currency: str = Field("EUR", pattern=CUR)
+    currency: str | None = Field(None, pattern=CUR)  # default: the first destination's local currency
     interests: list[str] = Field(default_factory=list, max_length=10)
     pace: Literal["relaxed", "balanced", "packed"] = "balanced"
     notes: str | None = Field(None, max_length=800)
@@ -348,7 +351,7 @@ async def plan(request: Request, body: PlanIn, svc: Trips, w: Caller) -> Streami
     today = dt.date.today()
 
     async def events() -> AsyncIterator[dict[str, Any]]:
-        async for ev in svc.plan(normalize(body.prompt), today, owner):
+        async for ev in svc.plan(normalize(body.prompt), today, owner, party=body.party, travellers=body.travellers):
             if ev.get("event") == "done":
                 ev = {**ev, "trip": svc.view(ev["trip"], "owner")}  # never the owner hash
             yield ev
@@ -612,13 +615,16 @@ async def add_booking(trip_id: str, body: BookingIn, svc: Trips, w: Caller) -> d
 @router.patch("/{trip_id}/bookings/{booking_id}")
 def update_booking(trip_id: str, booking_id: str, body: BookingPatch, svc: Trips, w: Caller) -> dict[str, Any]:
     trip, _ = access(svc, trip_id, w, "owner")
-    return svc.update_child(trip, "bookings", booking_id, body.model_dump(exclude_unset=True))
+    booking = svc.update_child(trip, "bookings", booking_id, body.model_dump(exclude_unset=True))
+    svc.sync_booking_expense(trip, booking)
+    return booking
 
 
 @router.delete("/{trip_id}/bookings/{booking_id}", status_code=204)
 def delete_booking(trip_id: str, booking_id: str, svc: Trips, w: Caller) -> None:
     trip, _ = access(svc, trip_id, w, "owner")
     svc.delete_child(trip, "bookings", booking_id)
+    svc.sync_booking_expense(trip, {"id": booking_id, "status": "deleted"})
 
 
 # ── budget & expenses ──────────────────────────────────────────────────────

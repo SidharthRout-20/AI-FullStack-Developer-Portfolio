@@ -8,7 +8,7 @@ import { StatusBadge, TONE } from './StatusBadge'
 function Section({ title, children }) {
   return (
     <>
-      <h2 className="mt-10 text-[12px] font-semibold tracking-[0.18em] text-cyan-300 uppercase">{title}</h2>
+      <h2 className="kicker mt-10 text-[12px] font-semibold tracking-[0.18em] text-cyan-300 uppercase">{title}</h2>
       <div className="mt-4">{children}</div>
     </>
   )
@@ -35,6 +35,7 @@ export function ProductPage({ product: p }) {
               <StatusBadge status={p.status} />
             </div>
             <p className="mt-1 text-[16px] text-ink-200">{p.tagline}</p>
+            {p.meaning && <p className="mt-1.5 text-[13px] text-ink-400 italic">{p.name}: {p.meaning}</p>}
             <p className="mt-1 text-[12px] text-ink-500">
               {p.visibility === 'portfolio' ? `Portfolio priority ${p.priority}` : 'Labs'} · {p.category} · status last verified {p.lastVerified}
             </p>
@@ -49,7 +50,7 @@ export function ProductPage({ product: p }) {
           {p.app && (
             <Link
               to={p.app.route}
-              className="mt-3 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-[13.5px] font-semibold text-ink-950 transition hover:bg-ink-100"
+              className="btn-primary mt-3 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-[13.5px] font-semibold text-ink-950 transition hover:bg-ink-100"
             >
               {p.app.label} <ArrowUpRight className="size-4" />
             </Link>

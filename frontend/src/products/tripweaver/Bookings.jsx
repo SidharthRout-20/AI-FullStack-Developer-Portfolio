@@ -3,7 +3,9 @@ import { BedDouble, Bus, Car, CalendarCheck, ExternalLink, Plane, Plus, Ticket, 
 import { useCallback, useEffect, useState } from 'react'
 import { errorText } from '../shared/http'
 import { Button, Card, Empty, ErrorNote, Field, inputClass, Pill, Spinner } from '../shared/ui'
+import { BookPanel } from './BookPanel'
 import { BOOKING_TYPES, hostOf, money, safeLink } from './logic'
+import { ACCENT } from './QuickPlan'
 
 const ICON = { flight: Plane, hotel: BedDouble, train: TrainFront, bus: Bus, car: Car, restaurant: UtensilsCrossed }
 const BLANK = { type: 'hotel', title: '', provider: '', reference: '', start: '', end: '', day: '', activity_id: '', cost: '', currency: '', cancellation: '', url: '', status: 'booked', notes: '', add_expense: true }
@@ -45,12 +47,13 @@ export function Bookings({ trip, api, setNote, prefill, onUsedPrefill }) {
 
   return (
     <div className="space-y-3">
+      <BookPanel trip={trip} onSave={(p) => { setForm({ ...BLANK, currency: trip.budget?.currency ?? '', ...p }); window.requestAnimationFrame(() => document.getElementById('booking-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })) }} />
       <Card>
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><CalendarCheck className="size-4 text-emerald-300" /> Bookings & reservations</p>
+        <div id="booking-form" className="flex scroll-mt-20 flex-wrap items-center gap-2">
+          <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><CalendarCheck className="pa-ink size-4" /> Your bookings</p>
           {!form && <Button variant="ghost" className="ml-auto !py-1.5" onClick={() => setForm({ ...BLANK, currency: trip.budget?.currency ?? 'EUR' })}><Plus className="size-4" /> Add a booking</Button>}
         </div>
-        <p className="mt-1 text-[12.5px] text-ink-400">Keep flights, hotels, trains, tables and tickets with the trip. These are your records: TripWeaver doesn't make or confirm bookings.</p>
+        <p className="mt-1 text-[12.5px] text-ink-400">Keep flights, hotels, trains, tables and tickets with the trip. These are your records: Safarnama doesn't make or confirm bookings.</p>
         {form && (
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <Field label="Type">
@@ -93,7 +96,7 @@ export function Bookings({ trip, api, setNote, prefill, onUsedPrefill }) {
               <input type="checkbox" checked={!!form.add_expense} onChange={set('add_expense')} /> Add the cost to the budget ({form.status === 'booked' ? 'actual spend' : 'estimate'})
             </label>
             <div className="flex gap-2 sm:col-span-2">
-              <Button accent="from-lime-500 to-teal-500" onClick={() => void submit()} busy={busy} disabled={!form.title.trim()}>Save booking</Button>
+              <Button accent={ACCENT} onClick={() => void submit()} busy={busy} disabled={!form.title.trim()}>Save booking</Button>
               <Button variant="ghost" onClick={() => setForm(null)}>Cancel</Button>
             </div>
           </div>
@@ -101,7 +104,7 @@ export function Bookings({ trip, api, setNote, prefill, onUsedPrefill }) {
       </Card>
       <ErrorNote message={error} />
       {!items ? <Spinner label="Loading bookings…" /> : items.length === 0 ? (
-        <Empty icon={Ticket} title="No bookings yet" text="Add confirmations as you book. Use “Book on the venue's site” links in Explore to hand off to the provider." />
+        <Empty icon={Ticket} title="No bookings yet" text="Book with one of the searches above, then save the confirmation here, or add one you made elsewhere." />
       ) : (
         <ul className="space-y-2">
           {items.map((b) => {
@@ -119,12 +122,12 @@ export function Bookings({ trip, api, setNote, prefill, onUsedPrefill }) {
                   {stop && <p className="text-[12px] text-emerald-300">Linked to {stop.label}</p>}
                   {b.cancellation && <p className="text-[12px] text-ink-400">Cancellation: {b.cancellation}</p>}
                   {b.notes && <p className="text-[12px] text-ink-400">{b.notes}</p>}
-                  <p className="text-[11px] text-ink-500">Saved by you · not booked or verified by TripWeaver</p>
+                  <p className="text-[11px] text-ink-500">Saved by you · not booked or verified by Safarnama</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   {b.url && safeLink(b.url) && <a className="chip" href={b.url} target="_blank" rel="noopener noreferrer"><ExternalLink className="size-3" /> {hostOf(b.url)}</a>}
-                  {b.status !== 'cancelled' && <button type="button" className="chip" onClick={() => void api.updateBooking(b.id, { status: 'cancelled' }).then(load)}>Mark cancelled</button>}
-                  <button type="button" aria-label={`Delete ${b.title}`} className="grid size-7 place-items-center text-ink-500 hover:text-rose-300" onClick={() => void api.deleteBooking(b.id).then(load)}><Trash2 className="size-3.5" /></button>
+                  {b.status !== 'cancelled' && <button type="button" className="chip" onClick={() => void api.updateBooking(b.id, { status: 'cancelled' }).then(() => { load(); setNote('Marked cancelled. Its cost was taken out of the budget; add any cancellation fee as an expense.') }).catch((e) => setError(errorText(e)))}>Mark cancelled</button>}
+                  <button type="button" aria-label={`Delete ${b.title}`} className="grid size-7 place-items-center text-ink-500 hover:text-rose-300" onClick={() => void api.deleteBooking(b.id).then(() => { load(); setNote(`Deleted “${b.title}”, with any cost it had added to the budget.`) }).catch((e) => setError(errorText(e)))}><Trash2 className="size-3.5" /></button>
                 </div>
               </li>
             )

@@ -1,10 +1,12 @@
 import {
   Bot, CalendarCheck, CalendarDays, ChevronDown, ChevronUp, CloudRain, CloudSun, Compass, Copy, ExternalLink, FileText,
   History, Landmark, LayoutDashboard, Lightbulb, MapPin, PencilLine, Pin, PiggyBank, Plus, RefreshCw, Route, Share2, Shuffle,
-  Soup, Star, ThumbsDown, ThumbsUp, TrainFront, Trash2, Trees, Umbrella, Users, UtensilsCrossed, Wand2, WifiOff, Flag,
+  Soup, Star, ThumbsDown, ThumbsUp, TrainFront, Trash2, Trees, Umbrella, Users, UtensilsCrossed, Wand2, WifiOff, Flag, Zap, TriangleAlert,
 } from 'lucide-react'  // prettier-ignore
 import { AnimatePresence, motion } from 'motion/react'
 import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import '@fontsource-variable/fraunces'
+import { API_BASE } from '../../lib/apiBase'
 import { navigate, usePath } from '../../router'
 import { errorText } from '../shared/http'
 import { Button, Card, Empty, ErrorNote, Field, inputClass, Pill, ProductShell, Spinner, Steps, Tabs } from '../shared/ui'
@@ -16,13 +18,14 @@ import { Companion } from './Companion'
 import { Documents } from './Documents'
 import { Explore } from './Explore'
 import { forecastFreshness } from './freshness'
-import { endTime, groupByPart, groupTrips, PHASE_LABEL, safeLink, shareUrl } from './logic'
+import { dateRange, endTime, groupByPart, groupTrips, PHASE_LABEL, safeLink, shareUrl } from './logic'
 import { Overview, Summary } from './Overview'
+import { DestinationStrip, HeroChip, PhotoCredits, PlaceImage, TripHero } from './Visuals'
+import { ACCENT, QuickPlan, usePlanStream } from './QuickPlan'
 import { Handoff, LabelChips } from './parts'
 import { DayInsights, fmtMin, LegRow, NearbyPanel, RouteSummary } from './Travel'
 
 const TripMap = lazy(() => import('./TripMap').then((m) => ({ default: m.TripMap })))
-const ACCENT = 'from-lime-500 via-emerald-500 to-teal-500'
 const KIND_ICON = { outdoor: Trees, indoor: Landmark, food: UtensilsCrossed, transit: TrainFront }
 const EXAMPLES = [
   '3 relaxed days in Lisbon next week, love food markets and viewpoints',
@@ -31,50 +34,97 @@ const EXAMPLES = [
 ]
 const CACHE = 'tripweaver-last'
 const PART_LABEL = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' }
+const PARTY_LABEL = { solo: 'Solo', couple: 'Couple', family: 'Family', friends: 'Friends', group: 'Group' }
+const HERO_BTN = 'inline-flex items-center gap-1.5 rounded-full bg-[#fff]/15 px-3 py-1.5 text-[12.5px] font-medium text-[#fff] backdrop-blur-md transition hover:bg-[#fff]/25'
 
 export default function TripWeaverApp() {
   const path = usePath()
-  const tripId = path.match(/^\/tripweaver\/([\w-]+)/)?.[1] ?? null
+  const tripId = path.match(/^\/safarnama\/([\w-]+)/)?.[1] ?? null
   return (
-    <ProductShell name="TripWeaver" tagline="Your complete travel ecosystem, organised around your itinerary" icon={Route} accent={ACCENT}>
+    <ProductShell name="Safarnama" tagline="Plan, book and keep every journey in one place" icon={Route} accent={ACCENT} product="safarnama">
       {tripId ? <TripView key={tripId} id={tripId} /> : <MyTrips />}
     </ProductShell>
   )
 }
 
 // ── My trips ────────────────────────────────────────────────────────────────
+const plusDays = (iso, n) => {
+  const [y, m, d] = iso.split('-').map(Number)
+  const t = new Date(y, m - 1, d + n)
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
+}
+
+/** The server keeps trips only when it has its database; on a serverless host without one they can vanish. */
+function useStorageWarning() {
+  const [warn, setWarn] = useState(false)
+  useEffect(() => {
+    if (/localhost|127\.0\.0\.1/.test(API_BASE)) return // a local server keeps its SQLite file
+    const ctrl = new AbortController()
+    fetch(`${API_BASE}/api/health`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((h) => setWarn(h?.storage === 'sqlite'))
+      .catch(() => {})
+    return () => ctrl.abort()
+  }, [])
+  return warn
+}
+
 function MyTrips() {
-  const [mode, setMode] = useState('ai')
+  const [mode, setMode] = useState('quick')
   const [trips, setTrips] = useState(null)
   const [error, setError] = useState(null)
+  const storageWarning = useStorageWarning()
   const load = useCallback(() => tripsApi.list().then(setTrips).catch((e) => (setTrips([]), setError(errorText(e)))), [])
   useEffect(() => void load(), [load])
   const groups = useMemo(() => groupTrips(trips ?? []), [trips])
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div className="text-center">
-        <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Where to next?</h1>
-        <p className="mt-2 text-[14px] text-ink-400">Plan with the AI planner or build the trip yourself; then discover food, shops and experiences, keep bookings, budget and documents with it, and get help while you travel.</p>
+    <div className="mx-auto max-w-5xl space-y-8">
+      <header className="pt-2 text-center">
+        <p className="pa-ink text-[12px] font-semibold tracking-[0.18em] uppercase">Safarnama · your travelogue</p>
+        <h1 className="pa-display mt-2 text-[44px] leading-[1.02] font-semibold text-white sm:text-[64px]">
+          Where to <span className="pa-gradient-text">next?</span>
+        </h1>
+        <p className="mx-auto mt-3 max-w-xl text-[15px] text-ink-400">Four taps to a day-by-day plan with real places, weather and routes. Then book, budget and keep your documents in one place.</p>
+      </header>
+      <DestinationStrip />
+      {storageWarning && (
+        <p className="mx-auto flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-400/30 bg-amber-400/[0.08] px-4 py-3 text-[13px] text-ink-200">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-400" />
+          <span>Heads-up: this server isn't connected to its database yet, so a trip can fail to open or disappear between visits. Planning works, but nothing is kept reliably until the database is connected.</span>
+        </p>
+      )}
+      <div className="mx-auto max-w-3xl space-y-4">
+        {mode === 'quick' ? <QuickPlan /> : mode === 'ai' ? <Planner /> : <ManualTrip />}
+        <p className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[12.5px] text-ink-500">
+          {mode !== 'quick' && <button type="button" className="inline-flex items-center gap-1 hover:text-white" onClick={() => setMode('quick')}><Zap className="size-3.5" /> Quick plan (4 taps)</button>}
+          {mode !== 'ai' && <button type="button" className="inline-flex items-center gap-1 hover:text-white" onClick={() => setMode('ai')}><Wand2 className="size-3.5" /> Describe it in your words</button>}
+          {mode !== 'manual' && <button type="button" className="inline-flex items-center gap-1 hover:text-white" onClick={() => setMode('manual')}><PencilLine className="size-3.5" /> Build it myself</button>}
+        </p>
+        <ErrorNote message={error} />
       </div>
-      <Tabs value={mode} onChange={setMode} tabs={[{ id: 'ai', label: 'Plan with AI', icon: Wand2 }, { id: 'manual', label: 'Create it myself', icon: PencilLine }]} />
-      {mode === 'ai' ? <Planner /> : <ManualTrip />}
-      <ErrorNote message={error} />
       {trips === null ? <Spinner label="Loading your trips…" /> : trips.length === 0 ? (
         <p className="text-center text-[12.5px] text-ink-500">Your trips appear here. They're tied to this browser (no account needed); share a trip with its link.</p>
       ) : (
         groups.map((g) => (
           <section key={g.phase}>
-            <h2 className="mb-2 text-[12px] font-semibold tracking-wide text-ink-400 uppercase">{PHASE_LABEL[g.phase]}</h2>
-            <ul className="grid gap-2.5 sm:grid-cols-2">
+            <h2 className="pa-display mb-3 text-[22px] font-semibold text-white">{PHASE_LABEL[g.phase]}</h2>
+            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {g.trips.map((t) => (
                 <li key={t.id} className="group relative">
-                  <button type="button" onClick={() => navigate(`/tripweaver/${t.id}`)} className="w-full rounded-2xl border border-white/[0.07] bg-ink-900/60 p-4 text-left transition hover:border-emerald-400/40">
-                    <p className="pr-6 text-[14.5px] font-semibold text-white">{t.title}</p>
-                    <p className="mt-0.5 text-[12px] text-ink-400">{t.destinations.join(' → ')} · {t.days} days{t.start ? ` · ${t.start}` : ''} · v{t.version}</p>
+                  <button type="button" onClick={() => navigate(`/safarnama/${t.id}`)} className="block w-full overflow-hidden rounded-3xl border border-white/[0.07] bg-ink-900/60 text-left shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:shadow-xl">
+                    <span className="relative block h-36 overflow-hidden">
+                      <PlaceImage name={t.destinations[0]} className="transition duration-700 group-hover:scale-[1.05]" />
+                      <span className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                      <span className="absolute bottom-3 left-4 text-[12px] font-medium text-[#fff]/90">{t.destinations.join(' → ')}</span>
+                    </span>
+                    <span className="block p-4">
+                      <span className="pa-display block pr-6 text-[19px] leading-tight font-semibold text-white">{t.title}</span>
+                      <span className="mt-1 block text-[12.5px] text-ink-400">{t.start ? dateRange(t.start, plusDays(t.start, t.days - 1)) : 'No dates yet'} · {t.days} day{t.days === 1 ? '' : 's'}</span>
+                    </span>
                   </button>
                   <button type="button" aria-label={`Delete ${t.title}`} onClick={() => window.confirm(`Delete “${t.title}” with its bookings, expenses and documents?`) && void tripApi(t.id).remove().then(load)}
-                    className="absolute top-3 right-3 grid size-7 place-items-center rounded-lg text-ink-500 hover:text-rose-300 sm:opacity-0 sm:group-hover:opacity-100">
+                    className="absolute top-3 right-3 grid size-8 place-items-center rounded-full bg-black/40 text-[#fff]/85 backdrop-blur hover:text-rose-200 sm:opacity-0 sm:group-hover:opacity-100">
                     <Trash2 className="size-3.5" />
                   </button>
                 </li>
@@ -83,41 +133,19 @@ function MyTrips() {
           </section>
         ))
       )}
+      <div className="mx-auto max-w-3xl"><PhotoCredits /></div>
     </div>
   )
 }
 
 function Planner() {
   const [prompt, setPrompt] = useState('')
-  const [steps, setSteps] = useState([])
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(null)
-  const plan = async () => {
-    setBusy(true)
-    setError(null)
-    setSteps([{ name: 'understand', detail: 'reading your request…', done: false }])
-    try {
-      await tripsApi.plan(prompt, (ev) => {
-        if (ev.event === 'step') {
-          setSteps((s) => {
-            const rest = s.filter((x) => x.name !== ev.step).map((x) => ({ ...x, done: true }))
-            const next = { understand: 'geocode', geocode: 'weather', weather: 'plan', plan: 'map', map: 'meals', meals: 'wellbeing' }[String(ev.step)]
-            return [...rest, { name: String(ev.step), detail: String(ev.detail), done: true }, ...(next ? [{ name: next, detail: '…', done: false }] : [])]
-          })
-        } else if (ev.event === 'done') navigate(`/tripweaver/${ev.trip.id}`)
-        else if (ev.event === 'error') setError(String(ev.message))
-      })
-    } catch (e) {
-      setError(errorText(e))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { steps, busy, error, run } = usePlanStream()
   return (
     <Card>
       <textarea id="trip-prompt" className={`${inputClass} min-h-28 text-[15px]`} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Describe your trip: where (one or more places), when, how long, who's going, what you love…" />
       <div className="mt-3 flex flex-wrap items-center gap-2">{EXAMPLES.map((e) => <button key={e} type="button" className="chip" onClick={() => setPrompt(e)}>{e}</button>)}</div>
-      <Button accent={ACCENT} className="mt-4 w-full" onClick={() => void plan()} busy={busy} disabled={prompt.trim().length < 10}><Wand2 className="size-4" /> Plan my trip</Button>
+      <Button accent={ACCENT} className="mt-4 w-full" onClick={() => void run(prompt)} busy={busy} disabled={prompt.trim().length < 10}><Wand2 className="size-4" /> Plan my trip</Button>
       {steps.length > 0 && <div className="mt-4"><Steps steps={steps} active={busy} /></div>}
       <div className="mt-3"><ErrorNote message={error} /></div>
     </Card>
@@ -125,7 +153,7 @@ function Planner() {
 }
 
 function ManualTrip() {
-  const [f, setF] = useState({ title: '', start_date: '', party: 'couple', travellers: 2, budget: '', currency: 'EUR', interests: '', pace: 'balanced' })
+  const [f, setF] = useState({ title: '', start_date: '', party: 'couple', travellers: 2, budget: '', currency: '', interests: '', pace: 'balanced' })
   const [dests, setDests] = useState([{ name: '', days: 2 }])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -135,13 +163,13 @@ function ManualTrip() {
     setBusy(true)
     setError(null)
     const body = { destinations: dests.filter((d) => d.name.trim()).map((d) => ({ name: d.name.trim(), days: Number(d.days) })), party: f.party, travellers: Number(f.travellers) || null,
-      currency: f.currency.toUpperCase(), pace: f.pace, interests: f.interests.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 10) }  // prettier-ignore
+      ...(f.currency ? { currency: f.currency.toUpperCase() } : {}), pace: f.pace, interests: f.interests.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 10) }  // prettier-ignore
     if (f.title.trim()) body.title = f.title.trim()
     if (f.start_date) body.start_date = f.start_date
     if (f.budget !== '') body.budget = Number(f.budget)
     try {
       const t = await tripsApi.create(body)
-      navigate(`/tripweaver/${t.id}`)
+      navigate(`/safarnama/${t.id}`)
     } catch (e) {
       setError(errorText(e))
     } finally {
@@ -170,10 +198,10 @@ function ManualTrip() {
         <Field label="Travellers"><input type="number" min="1" max="50" className={inputClass} value={f.travellers} onChange={set('travellers')} /></Field>
         <Field label="Pace"><select className={inputClass} value={f.pace} onChange={set('pace')}><option>relaxed</option><option>balanced</option><option>packed</option></select></Field>
         <Field label="Budget" hint="optional"><input type="number" min="0" className={inputClass} value={f.budget} onChange={set('budget')} /></Field>
-        <Field label="Currency"><input maxLength={3} className={`${inputClass} uppercase`} value={f.currency} onChange={set('currency')} /></Field>
+        <Field label="Currency" hint="blank = local currency"><input maxLength={3} className={`${inputClass} uppercase`} value={f.currency} onChange={set('currency')} placeholder="auto" /></Field>
         <Field label="Interests" hint="comma-separated"><input className={inputClass} value={f.interests} onChange={set('interests')} placeholder="food, museums" /></Field>
       </div>
-      <Button accent={ACCENT} className="mt-4 w-full" busy={busy} onClick={() => void create()} disabled={!dests.some((d) => d.name.trim().length >= 2) || total < 1 || total > 14 || f.currency.length !== 3}>
+      <Button accent={ACCENT} className="mt-4 w-full" busy={busy} onClick={() => void create()} disabled={!dests.some((d) => d.name.trim().length >= 2) || total < 1 || total > 14 || (f.currency.length > 0 && f.currency.length !== 3)}>
         <Plus className="size-4" /> Create trip
       </Button>
       <div className="mt-3"><ErrorNote message={error} /></div>
@@ -283,7 +311,7 @@ function TripView({ id }) {
   const copy = async () => {
     try {
       const t = await api.copy()
-      navigate(`/tripweaver/${t.id}`)
+      navigate(`/safarnama/${t.id}`)
     } catch (e) {
       setError(errorText(e))
     }
@@ -293,7 +321,7 @@ function TripView({ id }) {
     return (
       <div className="space-y-3">
         <ErrorNote message={error.includes('not found') ? "This trip doesn't exist, or you need its share link to open it." : error} />
-        <button type="button" className="chip" onClick={() => navigate('/tripweaver')}>← My trips</button>
+        <button type="button" className="chip" onClick={() => navigate('/safarnama')}>← My trips</button>
       </div>
     )
   if (!trip) return <Spinner label="Loading trip…" />
@@ -307,37 +335,32 @@ function TripView({ id }) {
     ...(owner || member ? [{ id: 'budget', label: 'Budget', icon: PiggyBank }] : []),
     ...(owner ? [{ id: 'documents', label: 'Documents', icon: FileText }, { id: 'companion', label: 'Companion', icon: Bot }, { id: 'summary', label: 'Summary', icon: Flag }] : []),
   ]
-  const dests = trip.destinations ?? []
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <button type="button" className="text-[12px] text-ink-400 hover:text-white" onClick={() => navigate('/tripweaver')}>← My trips</button>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">{trip.title}</h1>
-          {trip.summary && <p className="mt-1 max-w-3xl text-[13.5px] text-ink-300">{trip.summary}</p>}
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <Pill><MapPin className="size-3" /> {dests.map((d) => d.name).join(' → ')}</Pill>
-            {trip.days[0]?.date && <Pill><CalendarDays className="size-3" /> {trip.days[0].date} → {trip.days.at(-1).date}</Pill>}
-            {trip.party?.type && <Pill><Users className="size-3" /> {trip.party.type}{trip.party.travellers ? ` · ${trip.party.travellers}` : ''}</Pill>}
-            <Pill tone="info">v{trip.version}</Pill>
-            <ForecastPill at={trip.weather_updated_at} />
-            {!owner && <Pill tone="warn">{member ? 'Shared with you' : 'Read-only (created before trip ownership)'}</Pill>}
-            {live ? <Pill tone="good"><Users className="size-3" /> live</Pill> : offline && <Pill tone="warn"><WifiOff className="size-3" /> offline copy</Pill>}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <button type="button" className="text-[12.5px] text-ink-400 hover:text-white" onClick={() => navigate('/safarnama')}>← My trips</button>
+      <TripHero
+        trip={trip}
+        chips={<>
+          {trip.days[0]?.date && <HeroChip><CalendarDays className="size-3" /> {dateRange(trip.days[0].date, trip.days.at(-1).date)}</HeroChip>}
+          <HeroChip>{trip.days.length} day{trip.days.length === 1 ? '' : 's'}</HeroChip>
+          {trip.party?.type && <HeroChip><Users className="size-3" /> {PARTY_LABEL[trip.party.type] ?? trip.party.type}{trip.party.travellers ? ` · ${trip.party.travellers}` : ''}</HeroChip>}
+          {trip.weather_updated_at && <HeroChip><CloudSun className="size-3" /> {forecastFreshness(trip.weather_updated_at).label}</HeroChip>}
+          {!owner && <HeroChip tone="warn">{member ? 'Shared with you' : 'Read-only (created before trip ownership)'}</HeroChip>}
+          {live ? <HeroChip tone="good"><Users className="size-3" /> live</HeroChip> : offline && <HeroChip tone="warn"><WifiOff className="size-3" /> offline copy</HeroChip>}
+        </>}
+        actions={<>
           {owner && trip.share_key && (
-            <Button variant="ghost" onClick={() => void navigator.clipboard.writeText(shareUrl(location.origin, trip.id, trip.share_key)).then(() => setNote('Share link copied: people with it can view the itinerary, vote and add shared expenses. Documents and bookings stay private.'))}>
-              <Share2 className="size-4" /> Share
-            </Button>
+            <button type="button" className={HERO_BTN} onClick={() => void navigator.clipboard.writeText(shareUrl(location.origin, trip.id, trip.share_key)).then(() => setNote('Share link copied: people with it can view the itinerary, vote and add shared expenses. Documents and bookings stay private.'))}>
+              <Share2 className="size-3.5" /> Share
+            </button>
           )}
-          {owner && <Button variant="ghost" onClick={() => void api.rotateShare().then((t) => { keep(t); setNote('New share link created; the old one no longer works.') })}><RefreshCw className="size-4" /> New link</Button>}
-          {!owner && <Button variant="ghost" onClick={() => void copy()}><Copy className="size-4" /> Save a copy</Button>}
-          {owner && trip.status !== 'archived' && trip.phase === 'past' && <Button variant="ghost" onClick={() => void api.update({ status: 'archived' }).then(keep)}>Archive</Button>}
-          {owner && trip.status === 'archived' && <Button variant="ghost" onClick={() => void api.update({ status: 'planning' }).then(keep)}>Unarchive</Button>}
-        </div>
-      </div>
+          {owner && <button type="button" className={HERO_BTN} title="Create a new share link (the old one stops working)" onClick={() => void api.rotateShare().then((t) => { keep(t); setNote('New share link created; the old one no longer works.') })}><RefreshCw className="size-3.5" /><span className="sr-only sm:not-sr-only">New link</span></button>}
+          {!owner && <button type="button" className={HERO_BTN} onClick={() => void copy()}><Copy className="size-3.5" /> Save a copy</button>}
+          {owner && trip.status !== 'archived' && trip.phase === 'past' && <button type="button" className={HERO_BTN} onClick={() => void api.update({ status: 'archived' }).then(keep)}>Archive</button>}
+          {owner && trip.status === 'archived' && <button type="button" className={HERO_BTN} onClick={() => void api.update({ status: 'planning' }).then(keep)}>Unarchive</button>}
+        </>}
+      />
 
       <Tabs tabs={tabs} value={tab} onChange={(t) => { setTab(t); setPins([]); setNote(null) }} />
       {note && <p className="rounded-xl bg-emerald-500/[0.08] px-3 py-2 text-[13px] text-emerald-200">{note} <button type="button" className="ml-2 text-emerald-300/70 hover:text-white" onClick={() => setNote(null)}>dismiss</button></p>}
@@ -580,7 +603,7 @@ function Itinerary({ trip, api, owner, keep, setNote, setError, onBook, setPins 
 
       {owner && (
         <Card>
-          <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><Plus className="size-4 text-emerald-300" /> Add a stop</p>
+          <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><Plus className="pa-ink size-4" /> Add a stop</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <select aria-label="Day" className={`${inputClass} !w-auto`} value={newStop.day} onChange={(e) => setNewStop((s) => ({ ...s, day: Number(e.target.value) }))}>{trip.days.map((d) => <option key={d.day} value={d.day}>Day {d.day}</option>)}</select>
             <input aria-label="Time" type="time" className={`${inputClass} !w-auto`} value={newStop.time} onChange={(e) => setNewStop((s) => ({ ...s, time: e.target.value }))} />
@@ -597,7 +620,7 @@ function Itinerary({ trip, api, owner, keep, setNote, setError, onBook, setPins 
 
       {owner && (
         <Card>
-          <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><Wand2 className="size-4 text-emerald-300" /> Something changed? Re-plan</p>
+          <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><Wand2 className="pa-ink size-4" /> Something changed? Re-plan</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {['My flight is delayed 4 hours on day 1', 'It will rain all day on day 2', 'Make day 2 more relaxed, we are tired', 'Swap in more local food on day 1'].map((x) => <button key={x} type="button" className="chip" onClick={() => setEvent(x)}>{x}</button>)}
           </div>
@@ -610,7 +633,7 @@ function Itinerary({ trip, api, owner, keep, setNote, setError, onBook, setPins 
           </div>
           <div className="mt-2 flex gap-2">
             <input id="replan-input" className={inputClass} value={event} onChange={(e) => setEvent(e.target.value)} placeholder="Describe what changed…" />
-            <Button accent={ACCENT} onClick={() => void replan()} busy={busy?.startsWith('Re-plan')} disabled={event.trim().length < 5}>Re-plan</Button>
+            <Button accent={ACCENT} className="shrink-0 whitespace-nowrap" onClick={() => void replan()} busy={busy?.startsWith('Re-plan')} disabled={event.trim().length < 5}>Re-plan</Button>
           </div>
         </Card>
       )}
@@ -663,18 +686,9 @@ function EditStop({ a, trip, day, index, busy, onSave, onMove, onDelete }) {
         </select>
         <button type="button" className="chip !text-rose-300" onClick={onDelete}><Trash2 className="size-3" /> Remove</button>
       </div>
-      <p className="text-[11px] text-ink-500">“Local favourite” and “Hidden gem” are your own tags: free map data has no ratings or popularity, so TripWeaver never assigns them itself.</p>
+      <p className="text-[11px] text-ink-500">“Local favourite” and “Hidden gem” are your own tags: free map data has no ratings or popularity, so Safarnama never assigns them itself.</p>
     </div>
   )
 }
 
 /** Weather is stored, not live: show when it was fetched, and flag it when it's old. */
-function ForecastPill({ at }) {
-  const f = forecastFreshness(at)
-  return (
-    <Pill tone={f.stale ? 'warn' : 'neutral'}>
-      <CloudSun className="size-3" /> {f.label}
-      {f.stale ? ' · use Check weather' : ''}
-    </Pill>
-  )
-}

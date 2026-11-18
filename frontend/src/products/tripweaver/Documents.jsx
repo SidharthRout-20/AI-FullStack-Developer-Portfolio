@@ -83,7 +83,7 @@ export function Documents({ trip, api, onTrip, setNote }) {
       <ErrorNote message={error} />
       <Card>
         <div className="flex flex-wrap items-center gap-2">
-          <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><ListChecks className="size-4 text-emerald-300" /> Checklists</p>
+          <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><ListChecks className="pa-ink size-4" /> Checklists</p>
           <Button variant="ghost" className="ml-auto !py-1.5" busy={busy === 'packing'} onClick={() => void packing()}>
             {lists.some((l) => l.kind === 'packing') ? 'Rebuild packing list' : 'Build a packing list'}
           </Button>

@@ -14,12 +14,15 @@ export function ProductShell({
   icon: Icon,
   accent,
   right,
+  product,
   children,
 }) {
+  // `product` turns on that product's theme (styles/product-<id>.css): accent, display type and backdrop texture.
   return (
     <MotionConfig reducedMotion="user">
       <Backdrop />
-      <div className="flex min-h-full flex-col">
+      <div className="flex min-h-full flex-col" data-product={product}>
+        {product && <div aria-hidden className="pa-fx" />}
         <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-ink-950/70 backdrop-blur-xl">
           <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4">
             <Link
@@ -43,7 +46,7 @@ export function ProductShell({
             </div>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-5 lg:py-8">{children}</main>
+        <main className={`mx-auto w-full max-w-7xl flex-1 px-4 py-5 lg:py-8 ${product ? 'pa-content relative z-[1]' : ''}`}>{children}</main>
       </div>
     </MotionConfig>
   )
@@ -102,7 +105,7 @@ export function Button({
   const base = 'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold transition disabled:opacity-50'
   const look =
     variant === 'primary'
-      ? `bg-gradient-to-r ${accent} text-on-accent shadow-lg shadow-black/20 hover:brightness-110 active:scale-[0.98]`
+      ? `btn-primary bg-gradient-to-r ${accent} text-on-accent shadow-lg shadow-black/20 hover:brightness-110 active:scale-[0.98]`
       : 'border border-white/10 bg-white/[0.03] text-ink-200 hover:border-white/20 hover:text-white'
   return (
     <button type={type} onClick={onClick} disabled={disabled || busy} className={`${base} ${look} ${className}`}>

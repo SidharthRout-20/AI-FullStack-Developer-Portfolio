@@ -21,7 +21,7 @@ async function ownerToken() {
   if (have) return have
   pending ??= fetch(`${BASE}/api/efi/owner`, { method: 'POST', headers: { Accept: 'application/json' } })
     .then(async (res) => {
-      if (!res.ok) throw new ApiError(sessionError('EFI', res.status, BASE), res.status)
+      if (!res.ok) throw new ApiError(sessionError('Jasoos', res.status, BASE), res.status)
       const { token } = await res.json()
       try {
         localStorage.setItem(KEY, token)

@@ -99,7 +99,7 @@ export function nextUp(trip, now = new Date()) {
 export const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 export const localIso = (d = new Date()) => `${localDate(d)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 
-export const shareUrl = (origin, id, key) => `${origin}/tripweaver/${id}?share=${encodeURIComponent(key)}`
+export const shareUrl = (origin, id, key) => `${origin}/safarnama/${id}?share=${encodeURIComponent(key)}`
 
 export const pct = (part, whole) => (whole ? Math.max(0, Math.min(100, Math.round((part / whole) * 100))) : 0)
 
@@ -120,3 +120,22 @@ export const DOC_KINDS = ['confirmation', 'ticket', 'insurance', 'accommodation'
 
 /** Only ever open hand-off URLs that came from the provider data and use a safe scheme. */
 export const safeLink = (url) => /^(https?:|tel:)/i.test(String(url ?? ''))
+
+const parseIso = (iso) => {
+  const [y, m, d] = String(iso).split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+/** "Mon 23 – Wed 25 Nov 2026" from ISO dates (calendar dates: no time-zone shifts). One date → "Mon 23 Nov 2026". */
+export function dateRange(start, end) {
+  if (!start) return ''
+  const a = parseIso(start)
+  const b = end ? parseIso(end) : a
+  const f = (d, { month = false, year = false } = {}) =>
+    [d.toLocaleDateString('en-GB', { weekday: 'short' }), d.getDate(), month && d.toLocaleDateString('en-GB', { month: 'short' }), year && d.getFullYear()]
+      .filter(Boolean)
+      .join(' ')
+  if (a.getTime() === b.getTime()) return f(a, { month: true, year: true })
+  const sameYear = a.getFullYear() === b.getFullYear()
+  const first = f(a, { month: !(a.getMonth() === b.getMonth() && sameYear), year: !sameYear })
+  return `${first} – ${f(b, { month: true, year: true })}`
+}

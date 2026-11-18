@@ -530,7 +530,15 @@ class TripService(TripEcosystem):
         self.tools = tools or Tools()
         self.hub = Hub()
 
-    async def plan(self, prompt: str, today: dt.date, owner: str | None = None) -> AsyncIterator[dict[str, Any]]:
+    async def plan(
+        self,
+        prompt: str,
+        today: dt.date,
+        owner: str | None = None,
+        *,
+        party: str | None = None,
+        travellers: int | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         def step(name: str, detail: str) -> dict[str, Any]:
             return {"event": "step", "step": name, "detail": detail}
 
@@ -543,6 +551,8 @@ class TripService(TripEcosystem):
         )
         if req.start_date and req.start_date < today:
             req = req.model_copy(update={"start_date": today})
+        if party:
+            req = req.model_copy(update={"party": party})
         yield step(
             "understand",
             f"{req.days} days in {req.destination} · {req.pace}"
@@ -622,7 +632,7 @@ class TripService(TripEcosystem):
             "trips",
             {"request": req.model_dump(mode="json"), "prompt": prompt, "title": plan.title, "summary": plan.summary,
              "tips": plan.tips, "city": city, "destinations": destinations, "days": days, "version": 1, "history": [],
-             "weather_updated_at": weather_at, **self.new_trip_fields(owner, req)},
+             "weather_updated_at": weather_at, **self.new_trip_fields(owner, req, country=city.get("country"), travellers=travellers)},
         )  # fmt: skip
         yield {"event": "done", "trip": trip}
 

@@ -7,6 +7,7 @@ import { SITE } from './site/config'
 import { HubPage } from './site/HubPage'
 import { ProductPage } from './site/ProductPage'
 import { productBySlug } from './site/products'
+import { SkinWelcome } from './theme/SkinWelcome'
 
 // Each product app is its own code-split chunk: the hub never downloads DocuMind's code.
 const DocuMindApp = lazy(() => import('./App'))
@@ -19,9 +20,11 @@ const APPS = [
   { prefix: '/codelens', title: 'CodeLens · Codebase explorer', label: 'CodeLens', App: lazy(() => import('./products/codelens/CodeLensApp')) },
   { prefix: '/flowforge', title: 'FlowForge · AI automation builder', label: 'FlowForge', App: lazy(() => import('./products/flowforge/FlowForgeApp')) },
   { prefix: '/evolve', title: 'Evolve · Self-improving prompts', label: 'Evolve', App: lazy(() => import('./products/evolve/EvolveApp')) },
-  { prefix: '/efi', title: 'EFI · Engineering Failure Investigator', label: 'EFI', App: lazy(() => import('./products/efi/EFIApp')) },
-  { prefix: '/tripweaver', title: 'TripWeaver · Travel ecosystem', label: 'TripWeaver', App: lazy(() => import('./products/tripweaver/TripWeaverApp')) },
+  { prefix: '/jasoos', title: 'Jasoos · Build-failure detective', label: 'Jasoos', App: lazy(() => import('./products/efi/EFIApp')) },
+  { prefix: '/safarnama', title: 'Safarnama · Travel companion', label: 'Safarnama', App: lazy(() => import('./products/tripweaver/TripWeaverApp')) },
 ]
+/** Apps that were renamed: old links (including shared trip links) keep working and land on the new address. */
+const RENAMED = { '/efi': '/jasoos', '/tripweaver': '/safarnama' }
 
 function useTitle(title) {
   useEffect(() => {
@@ -34,6 +37,7 @@ export function Root() {
     <>
       <Routes />
       <CommandPalette />
+      <SkinWelcome />
     </>
   )
 }
@@ -43,6 +47,8 @@ function Routes() {
 
   if (path === '/documind' || path.startsWith('/documind/')) return <DocuMindRoute />
   if (path === '/keeper' || path.startsWith('/keeper/')) return <KeeperRoute />
+  const renamed = Object.keys(RENAMED).find((p) => path === p || path.startsWith(`${p}/`))
+  if (renamed) return <Redirect to={RENAMED[renamed] + path.slice(renamed.length) + window.location.search} />
   const app = APPS.find((a) => path === a.prefix || path.startsWith(`${a.prefix}/`))
   if (app) return <ProductRoute {...app} />
 

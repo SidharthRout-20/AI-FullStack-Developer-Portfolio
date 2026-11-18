@@ -29,7 +29,7 @@ async function ownerToken() {
   if (have) return have
   pending ??= fetch(`${BASE}/api/trips/owner`, { method: 'POST', headers: { Accept: 'application/json' } })
     .then(async (res) => {
-      if (!res.ok) throw new ApiError(sessionError('TripWeaver', res.status, BASE), res.status)
+      if (!res.ok) throw new ApiError(sessionError('Safarnama', res.status, BASE), res.status)
       const { token } = await res.json()
       safe(() => localStorage.setItem(KEY, token))
       return token
@@ -45,6 +45,13 @@ async function headers(tripId, extra = {}) {
   const share = tripId ? shareKeyFor(tripId) : ''
   if (share) h['X-Trip-Share'] = share
   return h
+}
+
+/** True when a 422 response is only about unknown fields (a server older than this client). */
+export async function rejectsExtras(res) {
+  const body = await res.clone().json().catch(() => null)
+  const d = body?.detail
+  return Array.isArray(d) && d.length > 0 && d.every((x) => x?.type === 'extra_forbidden')
 }
 
 async function failure(res) {
@@ -132,12 +139,19 @@ export const trips = {
   list: () => call('GET', ''),
   create: (body) => call('POST', '', body),
   /** Plan with the AI planner: streams step events, then done/error. */
-  async plan(prompt, onEvent) {
-    const res = await fetch(`${BASE}/api/trips/plan`, {
-      method: 'POST',
-      headers: await headers(null, { 'Content-Type': 'application/json', Accept: 'text/event-stream' }),
-      body: JSON.stringify({ prompt }),
-    })
+  async plan(prompt, choices, onEvent) {
+    const send = async (body) =>
+      fetch(`${BASE}/api/trips/plan`, {
+        method: 'POST',
+        headers: await headers(null, { 'Content-Type': 'application/json', Accept: 'text/event-stream' }),
+        body: JSON.stringify(body),
+      })
+    // Choices the traveller made explicitly (party, travellers): newer servers keep them over what the model reads.
+    const extra = Object.fromEntries(Object.entries(choices ?? {}).filter(([, v]) => v != null))
+    let res = await send({ prompt, ...extra })
+    // An older server rejects fields it doesn't know (422 extra_forbidden). The prompt already says everything,
+    // so plan from the prompt alone rather than failing.
+    if (res.status === 422 && Object.keys(extra).length && (await rejectsExtras(res))) res = await send({ prompt })
     if (!res.ok || !res.body) throw await failure(res)
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
     const feed = createSSEParser(onEvent)

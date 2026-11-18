@@ -484,7 +484,7 @@ function KeyGate({ onUnlock }) {
         />
         <button
           type="submit"
-          className="mt-3 w-full rounded-xl bg-gradient-to-r from-fuchsia-500 via-pink-500 to-orange-400 py-2.5 text-[14px] font-semibold text-on-accent"
+          className="btn-primary mt-3 w-full rounded-xl bg-gradient-to-r from-fuchsia-500 via-pink-500 to-orange-400 py-2.5 text-[14px] font-semibold text-on-accent"
         >
           Unlock
         </button>
