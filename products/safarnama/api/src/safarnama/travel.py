@@ -156,7 +156,13 @@ def insights(day: dict[str, Any], travellers: str | None, pace: str) -> list[dic
 
     if acts and not any(a.get("kind") == "food" and in_window(a.get("time", ""), LUNCH) for a in acts):
         add("meal", "info", "No lunch stop planned: use “Add meal stops” to slot one in near where you'll be.")
-    busy = sum(int(a.get("duration_min", 60)) for a in acts) + route.get("walk_min", 0) + route.get("drive_min", 0)
+    from safarnama.stops import is_rest  # local import: stops is a leaf module, travel is imported by it indirectly
+
+    busy = (
+        sum(int(a.get("duration_min", 60)) for a in acts if not is_rest(a.get("name", "")))
+        + route.get("walk_min", 0)
+        + route.get("drive_min", 0)
+    )
     if busy >= (480 if pace == "relaxed" else 600):
         add("pace", "warn", f"A long day (~{busy // 60} h of activities and travel): add a rest break.")
     if travellers and _TRAVELLER_NEEDS.search(travellers):
@@ -279,5 +285,8 @@ def meal_gaps(acts: list[dict[str, Any]]) -> list[tuple[str, str]]:
 
 def anchor_for(acts: list[dict[str, Any]], hhmm: str) -> dict[str, Any] | None:
     """The located stop the traveller is at (or just left) at a given time."""
-    before = [a for a in located(acts) if to_min(a.get("time", "09:00")) <= to_min(hhmm)]
-    return before[-1] if before else (located(acts) or [None])[0]
+    from safarnama.stops import placeless
+
+    places = [a for a in located(acts) if not a.get("placeless") and not placeless(a.get("name", ""))]
+    before = [a for a in places if to_min(a.get("time", "09:00")) <= to_min(hhmm)]
+    return before[-1] if before else (places or [None])[0]

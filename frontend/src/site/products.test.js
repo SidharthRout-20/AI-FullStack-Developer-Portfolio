@@ -9,7 +9,7 @@ describe('approved portfolio', () => {
   it('contains exactly the five approved products, in priority order, each once', () => {
     expect(ids(PORTFOLIO)).toEqual(APPROVED)
     expect(PORTFOLIO.map((p) => p.priority)).toEqual([1, 2, 3, 4, 5])
-    expect(PORTFOLIO.map((p) => p.name)).toEqual(['Safarnama', 'Jasoos', 'Tijori', 'Pramaan', 'Vaada'])
+    expect(PORTFOLIO.map((p) => p.name)).toEqual(['Safarnaama', 'Jasoos', 'Tijori', 'Pramaan', 'Vaada'])
     expect(PORTFOLIO.every((p) => p.meaning)).toBe(true) // every name says what it means
   })
 
@@ -46,7 +46,7 @@ describe('approved portfolio', () => {
     // renamed products keep their old addresses
     for (const [old, id] of [['efi', 'efi'], ['keeper', 'keeper'], ['documind-respond', 'documind-respond'], ['follow-through', 'follow-through'], ['tripweaver', 'tripweaver']])
       expect(productBySlug(old).id).toBe(id)
-    expect(productBySlug('safarnama').app.route).toBe('/safarnama')
+    expect(productBySlug('safarnama').app.route).toBe('/safarnaama')
     expect(productBySlug('jasoos').app.route).toBe('/jasoos')
     expect(productHref(productBySlug('careerpilot'))).toBe('/careerpilot')
   })

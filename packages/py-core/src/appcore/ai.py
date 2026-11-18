@@ -6,7 +6,8 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable
-from typing import Any
+from types import UnionType
+from typing import Any, ClassVar, Union, get_args, get_origin
 
 from pydantic import BaseModel, model_validator
 
@@ -59,8 +60,16 @@ def clip(text: str, limit: int) -> str:
 
 
 class Lenient(BaseModel):
-    """Base for LLM *output* schemas: over-long strings/lists are trimmed to the field's max_length instead of
-    failing validation (models often return 12 items when asked for 8). Required fields and types stay strict."""
+    """Base for LLM *output* schemas: fix what models commonly get slightly wrong instead of failing validation.
+
+    - over-long strings/lists are trimmed to the field's max_length (models often return 12 items when asked for 8);
+    - numbers given for text fields become text, a comma-separated string given for a list becomes a list;
+    - null for a field that has a default and doesn't accept null falls back to the default;
+    - `_aliases` maps other names models use for a field ({"notes": "note"}) onto it.
+    Required fields stay required.
+    """
+
+    _aliases: ClassVar[dict[str, str]] = {}
 
     @model_validator(mode="before")
     @classmethod
@@ -68,12 +77,36 @@ class Lenient(BaseModel):
         if not isinstance(data, dict):
             return data
         out = dict(data)
+        for alias, name in cls._aliases.items():
+            if alias in out and out.get(name) in (None, "", []):
+                out[name] = out.pop(alias)
         for name, field in cls.model_fields.items():
-            value = out.get(name)
-            if not isinstance(value, str | list):
+            if name not in out:
                 continue
-            for meta in field.metadata:
-                limit = getattr(meta, "max_length", None)
-                if limit is not None and len(value) > limit:
-                    out[name] = value[:limit]
+            value = out[name]
+            kinds = _kinds(field.annotation)
+            if value is None and not field.is_required() and type(None) not in kinds:
+                del out[name]
+                continue
+            if (
+                isinstance(value, int | float)
+                and not isinstance(value, bool)
+                and str in kinds
+                and not kinds & {int, float}
+            ):
+                value = str(value)
+            elif isinstance(value, str) and list in kinds and str not in kinds:
+                value = [part.strip() for part in value.split(",") if part.strip()]
+            if isinstance(value, str | list):
+                for meta in field.metadata:
+                    limit = getattr(meta, "max_length", None)
+                    if limit is not None and len(value) > limit:
+                        value = value[:limit]
+            out[name] = value
         return out
+
+
+def _kinds(annotation: Any) -> set[Any]:
+    """The plain types an annotation accepts: str | None → {str, NoneType}; list[str] → {list}."""
+    args = get_args(annotation) if get_origin(annotation) in (Union, UnionType) else (annotation,)
+    return {get_origin(a) or a for a in args}

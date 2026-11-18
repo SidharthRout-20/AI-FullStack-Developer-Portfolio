@@ -23,7 +23,7 @@ has no product records, it only serves the apps.
 
 | # | Product | Status | What exists today |
 | --- | --- | --- | --- |
-| 1 | **Safarnama** (travel: plan, book, keep) | In development | Implemented end to end at `/safarnama` (see [Safarnama](products/safarnama/README.md)) and covered by tests, browser-checked locally. Not live: production has no Postgres yet, identity is per browser, and ordering/booking/ratings/transit need commercial providers |
+| 1 | **Safarnaama** (travel: plan, book, keep) | In development | Implemented end to end at `/safarnaama` (see [Safarnaama](products/safarnama/README.md)) and covered by tests, browser-checked locally. Not live yet: identity is per browser (accounts are next), and live prices and booking need provider partnerships |
 | 2 | **Jasoos** (formerly EFI, Engineering Failure Investigator): why did this build, test or deploy fail? | In development | The full workflow (see [EFI](#efi-engineering-failure-investigator)), tested with a mocked model. Not yet live-verified with Groq; history is per browser (no accounts); the deployed backend needs Postgres for it to persist |
 | 3 | **Tijori** (formerly Keeper: purchase & warranty recovery) | Planned | Not built. The earlier Keeper memory assistant (natural-language capture, photo scanning, ntfy / Telegram reminders) runs at `/keeper` as a prototype |
 | 4 | **Pramaan** (formerly DocuMind Respond: security and vendor questionnaires) | Gated | Not built; gated on two committed design partners. The DocuMind RAG Studio it builds on (LangGraph RAG with citations, briefs, Match Analyzer) runs at `/documind` |
@@ -242,12 +242,12 @@ receipts) → `qwen/qwen3.8-27b` (preview, the only verified vision model); audi
 
 ---
 
-## Safarnama (formerly TripWeaver): travel
+## Safarnaama (formerly TripWeaver): travel
 
-Safarnama is being separated into its own product: **[products/safarnama](products/safarnama/README.md)** holds its
+Safarnaama is being separated into its own product: **[products/safarnama](products/safarnama/README.md)** holds its
 API (`api/`, Python package `safarnama`) and web app (`web/`), with their own tests, settings and README. The portfolio
-backend mounts its API at `/api/trips` and the portfolio frontend embeds the app at `/safarnama`, so both deployments
-keep serving it while Safarnama gets its own.
+backend mounts its API at `/api/trips` and the portfolio frontend embeds the app at `/safarnaama`, so both deployments
+keep serving it while Safarnaama gets its own.
 
 ---
 
@@ -270,7 +270,7 @@ A monorepo: the portfolio, the shared core it is built on, and products that are
 
 ```
 .
-├── backend/              # portfolio API (FastAPI): RAG, Keeper, EFI, Labs; mounts Safarnama's API
+├── backend/              # portfolio API (FastAPI): RAG, Keeper, EFI, Labs; mounts Safarnaama's API
 │   ├── app/
 │   │   ├── api/          # HTTP routers: core RAG, products, keeper, cron, LLM router admin
 │   │   ├── rag/          # ingestion, embeddings, hybrid retriever, LangGraph pipeline
@@ -279,7 +279,7 @@ A monorepo: the portfolio, the shared core it is built on, and products that are
 │   │   ├── products/     # careerpilot, codelens, evolve, flowforge, meetingmind, contact
 │   │   └── llm_tasks.py  # the portfolio's LLM tasks, registered with the shared router
 │   └── tests/
-├── frontend/             # portfolio web app (React): hub, product pages, product apps; embeds Safarnama
+├── frontend/             # portfolio web app (React): hub, product pages, product apps; embeds Safarnaama
 ├── packages/
 │   ├── py-core/          # appcore: storage (SQLite / Postgres), doc store, LLM router + clients, security, settings
 │   └── web-core/         # @appcore/web: UI primitives, router, HTTP / SSE, light-dark mode, design system

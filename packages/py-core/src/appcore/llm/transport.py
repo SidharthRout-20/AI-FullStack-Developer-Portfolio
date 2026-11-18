@@ -28,10 +28,14 @@ class ProviderError(Exception):
         status: int | None = None,
         retry_after: float | None = None,
         headers: Mapping[str, str] | None = None,
+        partial: str | None = None,
     ) -> None:
         super().__init__(message or kind)
         self.kind, self.status, self.retry_after = kind, status, retry_after
         self.headers = dict(headers or {})
+        # What the model did generate when the provider rejected it (Groq JSON mode: "failed_generation"), e.g. a
+        # reply cut off by the output budget. Callers can salvage it.
+        self.partial = partial
 
 
 @dataclass
@@ -90,6 +94,15 @@ def _error_code(exc: Any) -> str:
     return str(exc).lower()
 
 
+def _failed_generation(exc: Any) -> str | None:
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        err = body.get("error", body)
+        if isinstance(err, dict) and isinstance(err.get("failed_generation"), str):
+            return err["failed_generation"] or None
+    return None
+
+
 def classify_error(exc: BaseException) -> ProviderError:
     """Map Groq SDK exceptions to router error kinds."""
     if isinstance(exc, ProviderError):
@@ -122,7 +135,9 @@ def classify_error(exc: BaseException) -> ProviderError:
     if status == 413 or "context_length" in code or "reduce the length" in code or "too large" in code:
         return ProviderError("context_exceeded", "request too large for the model", status=status, headers=headers)
     if "json_validate_failed" in code or "tool_use_failed" in code:
-        return ProviderError("malformed", "model output failed provider-side validation", status=status)
+        return ProviderError(
+            "malformed", "model output failed provider-side validation", status=status, partial=_failed_generation(exc)
+        )
     if isinstance(exc, groq.APIStatusError) and (status or 0) >= 500:
         return ProviderError("server", "Groq server error", status=status)
     if isinstance(exc, groq.APIStatusError):

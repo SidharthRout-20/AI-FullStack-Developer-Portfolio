@@ -138,3 +138,80 @@ def test_score_weights_must_over_nice():
 # ── conversation memory ───────────────────────────────────────────────────
 def test_history_capped_to_last_four_exchanges(settings):
     assert settings.max_history_messages == 8
+
+
+def test_cut_off_json_is_retried_asking_for_a_shorter_complete_reply():
+    from pydantic import BaseModel
+
+    from appcore.llm.structured import looks_truncated
+
+    class Out(BaseModel):
+        title: str
+        items: list[str]
+
+    seen: list[list[dict]] = []
+
+    class LLM:
+        async def complete(self, system, messages, *, short=False):
+            seen.append(list(messages))
+            return '{"title": "Tr' if len(seen) == 1 else '{"title": "Trip", "items": ["a"]}'
+
+    out = asyncio.run(complete_json(LLM(), "sys", "prompt", Out, retries=1))
+    assert out.items == ["a"]
+    retry = seen[1]
+    assert retry[-2] == {"role": "assistant", "content": "[reply cut off]"}  # the broken half isn't echoed back
+    assert "cut off" in retry[-1]["content"] and "shorter" in retry[-1]["content"]
+
+    assert looks_truncated('{"a": [1, 2') and looks_truncated('```json\n{"a": "unfinished')
+    assert not looks_truncated('{"a": "brace } and \\" quote", "b": [1]}')
+    assert not looks_truncated("no json at all")
+
+
+def test_cut_off_json_keeps_its_complete_part_without_asking_again():
+    from pydantic import BaseModel
+
+    from appcore.llm.structured import salvage_json
+
+    class Out(BaseModel):
+        title: str
+        items: list[str]
+
+    calls: list[int] = []
+
+    class LLM:
+        async def complete(self, system, messages, *, short=False):
+            calls.append(1)
+            return '```json\n{"title": "Trip", "items": ["a", "b", "unfinish'
+
+    out = asyncio.run(complete_json(LLM(), "sys", "prompt", Out, retries=1))
+    assert out.items == ["a", "b"] and len(calls) == 1  # the cut-off item is dropped, no second call
+
+    assert salvage_json('{"days": [{"day": 1, "stops": ["x"]}, {"day": 2, "stops": ["y", "z') == {
+        "days": [{"day": 1, "stops": ["x"]}, {"day": 2, "stops": ["y"]}]
+    }
+    assert salvage_json('{"a": "brace } in a string", "b": [1, 2') == {"a": "brace } in a string", "b": [1]}
+    assert salvage_json('{"a": 1}') is None  # nothing was cut off
+    assert salvage_json('{"tit') is None  # nothing complete to keep
+
+
+def test_extract_json_tolerates_arrays_and_trailing_commas():
+    assert extract_json('Here you go: [{"day": 1}, {"day": 2},]') == [{"day": 1}, {"day": 2}]
+    assert extract_json('{"a": [1, 2,], "b": {"c": 3,},}') == {"a": [1, 2], "b": {"c": 3}}
+    assert extract_json('{"a": 1} and then {"b": 2}') == {"a": 1}
+
+
+def test_lenient_schemas_coerce_common_model_quirks():
+    from pydantic import Field
+
+    from appcore.ai import Lenient
+
+    class Out(Lenient):
+        _aliases = {"notes": "note"}
+        name: str = Field(max_length=5)
+        note: str = ""
+        who: str | None = None
+        tags: list[str] = Field(default_factory=list, max_length=2)
+
+    out = Out.model_validate({"name": "abcdefgh", "notes": "hi", "who": 2, "tags": "x, y, z"})
+    assert (out.name, out.note, out.who, out.tags) == ("abcde", "hi", "2", ["x", "y"])
+    assert Out.model_validate({"name": "a", "note": None}).note == ""  # null → the default

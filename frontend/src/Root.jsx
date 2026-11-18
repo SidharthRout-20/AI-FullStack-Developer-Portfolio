@@ -23,11 +23,11 @@ const APPS = [
   { prefix: '/flowforge', title: 'FlowForge · AI automation builder', label: 'FlowForge', App: lazy(() => import('./products/flowforge/FlowForgeApp')) },
   { prefix: '/evolve', title: 'Evolve · Self-improving prompts', label: 'Evolve', App: lazy(() => import('./products/evolve/EvolveApp')) },
   { prefix: '/jasoos', title: 'Jasoos · Build-failure detective', label: 'Jasoos', App: lazy(() => import('./products/efi/EFIApp')) },
-  // Safarnama lives in products/safarnama/web (its own app); the portfolio embeds it at /safarnama.
-  { prefix: '/safarnama', title: 'Safarnama · Travel companion', label: 'Safarnama', App: lazy(() => import('@safarnama/web/App')), props: { basePath: '/safarnama' } },
+  // Safarnaama lives in products/safarnama/web (its own app); the portfolio embeds it at /safarnaama.
+  { prefix: '/safarnaama', title: 'Safarnaama · Travel companion', label: 'Safarnaama', App: lazy(() => import('@safarnama/web/App')), props: { basePath: '/safarnaama' } },
 ]
 /** Apps that were renamed: old links (including shared trip links) keep working and land on the new address. */
-const RENAMED = { '/efi': '/jasoos', '/tripweaver': '/safarnama' }
+const RENAMED = { '/efi': '/jasoos', '/tripweaver': '/safarnaama', '/safarnama': '/safarnaama' }
 
 function useTitle(title) {
   useEffect(() => {

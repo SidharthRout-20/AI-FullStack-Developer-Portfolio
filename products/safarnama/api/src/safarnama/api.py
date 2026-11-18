@@ -41,7 +41,7 @@ Role = Literal["owner", "member", "legacy"]
 
 
 def get_trips(request: Request) -> TripService:
-    """The app's TripService (the portfolio and the standalone Safarnama app both set `app.state.trips`)."""
+    """The app's TripService (the portfolio and the standalone Safarnaama app both set `app.state.trips`)."""
     return request.app.state.trips
 
 

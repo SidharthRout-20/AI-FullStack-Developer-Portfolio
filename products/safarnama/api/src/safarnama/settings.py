@@ -1,4 +1,4 @@
-"""Safarnama's settings: appcore's shared settings (database, LLM, CORS, security) plus Safarnama's own.
+"""Safarnaama's settings: appcore's shared settings (database, LLM, CORS, security) plus Safarnaama's own.
 
 Values come from environment variables or `products/safarnama/api/.env` (see `.env.example`).
 """
@@ -20,9 +20,9 @@ class SafarnamaSettings(CoreSettings):
         env_file=(API_DIR / ".env",), env_file_encoding="utf-8", extra="ignore", populate_by_name=True
     )
 
-    app_name: str = "Safarnama"
+    app_name: str = "Safarnaama"
     # Local SQLite files when DATABASE_URL is unset. Trips live in the "tripweaver" store (its Postgres schema),
-    # shared with the portfolio backend while both serve Safarnama.
+    # shared with the portfolio backend while both serve Safarnaama.
     data_dir: Path = API_DIR / "data"
     # Any localhost port during development; the deployed frontend is added with FRONTEND_URL / CORS_ORIGINS.
     cors_origin_regex: str = r"http://(localhost|127\.0\.0\.1)(:\d+)?"

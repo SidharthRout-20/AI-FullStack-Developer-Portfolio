@@ -1,4 +1,4 @@
-"""Safarnama's HTTP API end to end: plan → map → weather → re-plan → vote, and what a trip records."""
+"""Safarnaama's HTTP API end to end: plan → map → weather → re-plan → vote, and what a trip records."""
 
 from __future__ import annotations
 

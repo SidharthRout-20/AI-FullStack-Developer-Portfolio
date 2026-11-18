@@ -1,7 +1,7 @@
 /**
  * "Book this trip": free, pre-filled searches on the providers' own sites (MakeMyTrip, Booking.com, Airbnb, Google…)
  * for every destination and its dates. Each opens through the hand-off dialog; when the traveller comes back, they can
- * save the confirmation with one tap (the booking form is pre-filled). Safarnama never books or pays for anything.
+ * save the confirmation with one tap (the booking form is pre-filled). Safarnaama never books or pays for anything.
  */
 import { ArrowUpRight, BedDouble, Plane, Ticket, UtensilsCrossed } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -92,7 +92,7 @@ export function BookPanel({ trip, onSave }) {
                             key={it.provider + it.label}
                             type="button"
                             onClick={() => setOpen({
-                              kind: 'booking', url: it.url, label: it.label, source: `${it.label} search, pre-filled by Safarnama`,
+                              kind: 'booking', url: it.url, label: it.label, source: `${it.label} search, pre-filled by Safarnaama`,
                               prefill: { type: TYPE_FOR[it.provider] ?? BOOKING_TYPE[g.id], provider: it.label.replace(/^(Trains|Buses|Restaurants) on /, ''), title: g.id === 'stay' ? `Stay in ${p.name}` : '', url: it.url, status: 'booked',
                                 start: g.id === 'stay' && p.checkin ? `${p.checkin}T14:00` : '', end: g.id === 'stay' && p.checkout ? `${p.checkout}T11:00` : '' },
                             })}
@@ -114,7 +114,7 @@ export function BookPanel({ trip, onSave }) {
         })}
       </ul>
       <p className="border-t border-white/[0.06] px-5 py-3 text-[11.5px] text-ink-500 sm:px-6">
-        Prices, availability and cancellation terms come from the provider. Safarnama doesn't see or store your payment details.
+        Prices, availability and cancellation terms come from the provider. Safarnaama doesn't see or store your payment details.
       </p>
       {open && <Handoff link={open} onClose={() => setOpen(null)} onOpened={() => setBack(open)} />}
     </Card>

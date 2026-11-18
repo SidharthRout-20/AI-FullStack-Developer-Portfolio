@@ -1,5 +1,5 @@
 /*
- * Safarnama's product theme. It sits on top of the site skins (Studio / Off the clock, light / dark) and only adds an
+ * Safarnaama's product theme. It sits on top of the site skins (Studio / Off the clock, light / dark) and only adds an
  * identity: a warm "golden hour" accent (saffron → coral), a travelogue serif for display type, and a faint contour-
  * map texture with a sunrise glow behind the app. Everything else (surfaces, text, spacing) stays the core theme's.
  * Scoped to [data-product='safarnama'], set by ProductShell.
@@ -84,7 +84,7 @@
   border-color: var(--pa-line);
 }
 
-/* In the Studio skin the primary action is one solid colour: Safarnama's saffron instead of the site blue */
+/* In the Studio skin the primary action is one solid colour: Safarnaama's saffron instead of the site blue */
 :root[data-skin='showcase'] [data-product='safarnama'] .btn-primary {
   background-color: var(--pa-solid) !important;
 }

@@ -28,8 +28,8 @@ export function Handoff({ link, place, onClose, onSave, onOpened }) {
             </h2>
             <p className="mt-1.5 text-[13px] text-ink-300">
               {link.kind === 'phone'
-                ? 'Your phone will place the call. Safarnama is not involved in the conversation.'
-                : `You're leaving Safarnama for ${host}${link.source ? ` (link from ${link.source})` : ''}. Safarnama hasn't ordered, booked or paid for anything, and can't confirm availability.`}
+                ? 'Your phone will place the call. Safarnaama is not involved in the conversation.'
+                : `You're leaving Safarnaama for ${host}${link.source ? ` (link from ${link.source})` : ''}. Safarnaama hasn't ordered, booked or paid for anything, and can't confirm availability.`}
             </p>
             {link.kind !== 'phone' && (
               <p className="mt-1.5 text-[12.5px] text-ink-400">After you book or order there, save the confirmation under Bookings so it sits with this trip.</p>

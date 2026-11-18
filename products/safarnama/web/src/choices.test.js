@@ -4,7 +4,7 @@ import { composePrompt, customDestination, DESTINATIONS, isoDate, PARTIES, REQUE
 const goa = DESTINATIONS.find((d) => d.name === 'Goa')
 const wed = new Date(2026, 10, 18) // Wednesday 18 Nov 2026
 
-describe('Safarnama quick planner: where', () => {
+describe('Safarnaama quick planner: where', () => {
   it('suggests six different destinations, in-season ones first', () => {
     const picks = suggestDestinations(11, 7)
     expect(picks).toHaveLength(6)
@@ -33,7 +33,7 @@ describe('Safarnama quick planner: where', () => {
   })
 })
 
-describe('Safarnama quick planner: when', () => {
+describe('Safarnaama quick planner: when', () => {
   it('offers this weekend, next week, two weeks out and next month, as real dates', () => {
     const opts = whenOptions(wed, 4)
     expect(opts.map((o) => o.id)).toEqual(['weekend', 'next-week', 'in-two-weeks', 'next-month'])
@@ -52,7 +52,7 @@ describe('Safarnama quick planner: when', () => {
   })
 })
 
-describe('Safarnama quick planner: the request', () => {
+describe('Safarnaama quick planner: the request', () => {
   it('spells out dates, party, interests, pace and requests for the planner', () => {
     const [, nextWeek] = whenOptions(wed, goa.days)
     const prompt = composePrompt({ dest: goa, when: nextWeek, party: 'couple', interests: ['beaches', 'food'], requests: ['veg', 'slow'] })

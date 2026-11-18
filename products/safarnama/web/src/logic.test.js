@@ -57,8 +57,8 @@ describe('TripWeaver trips and money', () => {
     expect(money(12.5, 'EUR')).toMatch(/12[.,]50/)
     expect(pct(50, 200)).toBe(25)
     expect(pct(500, 200)).toBe(100)
-    setBase('/safarnama') // embedded in the portfolio
-    expect(shareUrl('https://x.app', 'abc', 'k y')).toBe('https://x.app/safarnama/abc?share=k%20y')
+    setBase('/safarnaama') // embedded in the portfolio
+    expect(shareUrl('https://x.app', 'abc', 'k y')).toBe('https://x.app/safarnaama/abc?share=k%20y')
     setBase('') // its own site
     expect(shareUrl('https://x.app', 'abc', 'k y')).toBe('https://x.app/abc?share=k%20y')
   })
@@ -73,7 +73,7 @@ describe('session errors', () => {
   })
 })
 
-describe('Safarnama dates', async () => {
+describe('Safarnaama dates', async () => {
   const { dateRange } = await import('./logic')
   it('reads like a person wrote it', () => {
     expect(dateRange('2026-11-23', '2026-11-25')).toBe('Mon 23 – Wed 25 Nov 2026')
@@ -84,7 +84,7 @@ describe('Safarnama dates', async () => {
   })
 })
 
-describe('Safarnama with an older server', async () => {
+describe('Safarnaama with an older server', async () => {
   const { rejectsExtras } = await import('./api')
   const res = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
   it('recognises a rejection that is only about unknown fields', async () => {
@@ -92,5 +92,43 @@ describe('Safarnama with an older server', async () => {
     expect(await rejectsExtras(res(422, extra))).toBe(true)
     expect(await rejectsExtras(res(422, { detail: [...extra.detail, { type: 'string_too_short', loc: ['body', 'prompt'] }] }))).toBe(false)
     expect(await rejectsExtras(res(422, { detail: 'nope' }))).toBe(false)
+  })
+})
+
+describe('Safarnaama itinerary presentation', async () => {
+  const { dayCheck, dayHighlights, isMoment } = await import('./logic')
+  const day = {
+    activities: [
+      { id: 'a', name: 'Breakfast at Hotel', kind: 'food' },
+      { id: 'b', name: 'Tata Tea Museum', kind: 'indoor' },
+      { id: 'c', name: 'Lunch at Saravana Bhavan', kind: 'food' },
+      { id: 'd', name: 'Drive to Eravikulam National Park', kind: 'outdoor' },
+      { id: 'e', name: 'Eravikulam National Park', kind: 'outdoor' },
+      { id: 'f', name: 'Return & Rest at Hotel', kind: 'indoor' },
+    ],
+    issues: [
+      { type: 'unlocated', activity_id: 'd', text: 'Drive to Eravikulam National Park isn’t on the map yet.' },
+      { type: 'unlocated', activity_id: 'e', text: 'Eravikulam National Park isn’t on the map yet.' },
+      { type: 'overlap', activity_id: 'e', text: 'starts before you can get there' },
+    ],
+    insights: [{ type: 'pace', level: 'warn', text: 'A long day' }, { type: 'meal', level: 'info', text: 'tip' }],
+  }
+  it('tells moments of the day from places', () => {
+    expect(day.activities.filter(isMoment).map((a) => a.id)).toEqual(['a', 'd', 'f'])
+    expect(isMoment({ name: 'Anything', placeless: true })).toBe(true)
+    const moments = ['Taxi to Patan', 'Arrive at Tribhuvan International Airport', 'Breakfast at Hotel', 'Short hike to the summit & viewpoint', 'Cable‑car descent & taxi back to Kathmandu', 'Check‑out and taxi to Tribhuvan International Airport']
+    const places = ['Lunch – River view at Sundarijal Guesthouse', 'Patan Museum', 'ओम श्री खाद्य केन्द्र', 'Stop 3', 'Cable‑car ride to Chandragiri Hills']
+    expect(moments.filter((name) => !isMoment({ name }))).toEqual([])
+    expect(places.filter((name) => isMoment({ name }))).toEqual([])
+  })
+  it('highlights the real sights of the day', () => {
+    expect(dayHighlights(day)).toEqual(['Tata Tea Museum', 'Eravikulam National Park'])
+  })
+  it('turns warnings into a short day check with problems first', () => {
+    const c = dayCheck(day)
+    expect(c.problems.map((p) => [p.activity_id, p.kind])).toEqual([['e', 'map'], ['e', 'timing']]) // the drive isn't a place
+    expect(c.timing).toBe(1)
+    expect(c.unmapped).toBe(1)
+    expect(c.tips[0].important).toBe(true)
   })
 })

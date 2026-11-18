@@ -11,7 +11,7 @@ export const SITE = {
   timeZone: "Asia/Kolkata",
   /** "Now" notes in the personal space: what you're actually working on. Keep them true; empty array hides them. */
   now: [
-    "Taking Safarnama end to end, from the first idea to the booking",
+    "Taking Safarnaama end to end, from the first idea to the booking",
     "Teaching an LLM router to live on Groq's free tier",
     "Making Jasoos explain failing builds with evidence",
   ],

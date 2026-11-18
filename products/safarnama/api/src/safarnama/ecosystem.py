@@ -85,7 +85,7 @@ souvenirs). Never state prices, shops, stock or availability. Reply with JSON:
 {"items": [{"name": str, "kind": "craft"|"food"|"clothing"|"art"|"other", "why": str (1 sentence),
 "search_terms": [short words a shop name or category might contain]}]}"""
 
-COMPANION_SYSTEM = """You are Safarnama's travel companion. You help a traveller during their trip using ONLY the
+COMPANION_SYSTEM = """You are Safarnaama's travel companion. You help a traveller during their trip using ONLY the
 context given: their itinerary, time, weather (with its fetch time), budget, bookings and the CANDIDATE PLACES list
 (real places from OpenStreetMap, each with a ref like "P3"). Rules:
 - Never invent places, ratings, prices, opening hours, availability or bookings. Recommend places only by their ref.

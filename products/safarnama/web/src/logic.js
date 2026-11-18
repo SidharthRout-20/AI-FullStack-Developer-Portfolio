@@ -1,4 +1,4 @@
-/** Pure Safarnama UI helpers (unit-tested in logic.test.js). */
+/** Pure Safarnaama UI helpers (unit-tested in logic.test.js). */
 import { appPath } from './base'
 
 export const PARTS = ['morning', 'afternoon', 'evening']
@@ -139,4 +139,48 @@ export function dateRange(start, end) {
   const sameYear = a.getFullYear() === b.getFullYear()
   const first = f(a, { month: !(a.getMonth() === b.getMonth() && sameYear), year: !sameYear })
   return `${first} – ${f(b, { month: true, year: true })}`
+}
+
+// ── Itinerary presentation ────────────────────────────────────────────────
+// Mirrors safarnama/stops.py: hotel meals, rest and travel are moments of the day, not places to find on a map.
+const STAY = '(?:hotel|homestay|home ?stay|resort|guest ?house|stay|room|accommodation|villa|lodge|airbnb)'
+const MEAL_AT_STAY = new RegExp(String.raw`^(?:\S+\s+){0,2}(?:breakfast|brunch|lunch|dinner|tea|coffee|meal|supper)\b.*\b` + STAY + String.raw`\b`, 'i')
+const STAY_RE = new RegExp(String.raw`\b` + STAY + String.raw`\b`, 'gi')
+const MOVING = new RegExp(
+  String.raw`^(?:(?:return|back|head back|go back|check[- ]?in|check[- ]?out|pack|packing|rest|relax|unwind|free time|drive|travel|transfer|depart|departure|arrive|arrival|leave|journey|commute|freshen up)\b` +
+    String.raw`|.*\b(?:taxi|cab|uber|ola|grab|rickshaw|tuk-?tuk|shuttle|bus|train|flight|ferry|transfer|drive)\s+(?:to|back|from|ride to)\b` +
+    String.raw`|(?:return|airport)\s+(?:taxi|cab|transfer)\b)`,
+  'i',
+)
+const plain = (name) => String(name ?? '').replace(/[\u2010-\u2015\u2212]/g, '-').replace(/\s+/g, ' ').trim()
+// Place names are capitalised, numbered or written in their own script.
+const named = (words) => words.some((w) => /^[A-Z0-9]/.test(w) || /[^ -~]/.test(w))
+const generic = (name) => {
+  const words = name.replace(/\s*\([^)]*\)/g, '').split(' ').slice(1)
+  return words.length > 0 && !named(words)
+}
+/** Mirrors safarnama/stops.py: hotel meals, rest, travel legs and place-less activities are moments, not places. */
+export const isMoment = (a) => {
+  if (a.placeless || a.kind === 'transit') return true
+  const name = plain(a.name)
+  const meal = name.match(MEAL_AT_STAY)
+  if (meal && !named(meal[0].replace(STAY_RE, '').split(' ').filter(Boolean).slice(1))) return true
+  return MOVING.test(name) || generic(name)
+}
+
+/** The day's real places worth looking forward to (not meals, not moments), in order. */
+export const dayHighlights = (d, n = 3) => d.activities.filter((a) => !isMoment(a) && a.kind !== 'food').slice(0, n).map((a) => a.name)
+
+const FIXABLE = { overlap: 'timing', unlocated: 'map', closed: 'closed', late: 'late' }
+/**
+ * One calm "day check" instead of a wall of warnings: real problems (each with what to do about it) and helpful tips.
+ * Moments are never "not on the map"; problems come first.
+ */
+export function dayCheck(d) {
+  const moments = new Set(d.activities.filter(isMoment).map((a) => a.id))
+  const problems = (d.issues ?? [])
+    .filter((x) => !(x.type === 'unlocated' && moments.has(x.activity_id)))
+    .map((x) => ({ ...x, kind: FIXABLE[x.type] ?? 'other' }))
+  const tips = (d.insights ?? []).map((x) => ({ ...x, important: x.level === 'warn' }))
+  return { problems, tips, timing: problems.filter((p) => p.kind === 'timing').length, unmapped: problems.filter((p) => p.kind === 'map').length }
 }

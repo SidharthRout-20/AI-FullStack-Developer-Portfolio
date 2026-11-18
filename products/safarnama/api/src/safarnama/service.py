@@ -19,19 +19,20 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import re
 import time
 from collections import defaultdict
 from collections.abc import AsyncIterator, Callable
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 import httpx
 from fastapi import HTTPException
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from appcore.ai import Lenient, ask_json
 from appcore.docstore import DocStore, new_id
 from safarnama import logic as trip_logic
-from safarnama import travel
+from safarnama import stops, travel
 from safarnama.ecosystem import TripEcosystem
 from safarnama.logic import destination_of
 
@@ -81,7 +82,34 @@ class TripRequest(Lenient):
     @field_validator("start_date", mode="before")
     @classmethod
     def _date(cls, v: Any) -> Any:
-        return None if v in ("", "null") else v
+        if isinstance(v, dt.date):
+            return v
+        if not isinstance(v, str) or v.strip() in ("", "null"):
+            return None
+        try:
+            return dt.date.fromisoformat(v.strip()[:10])
+        except ValueError:
+            return None  # "next weekend" etc.: plan without a date rather than fail
+
+    @field_validator("days", mode="before")
+    @classmethod
+    def _days(cls, v: Any) -> Any:
+        try:
+            return max(1, min(10, int(v)))
+        except (TypeError, ValueError):
+            return 3
+
+    @model_validator(mode="before")
+    @classmethod
+    def _shape(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        legs = [x for x in out.get("legs") or [] if isinstance(x, dict) and x.get("destination")]
+        out["legs"] = legs
+        if not out.get("destination") and legs:
+            out["destination"] = legs[0]["destination"]
+        return out
 
     def stops(self) -> list[Leg]:
         """Destinations with their number of days (10 days in total at most)."""
@@ -99,7 +127,28 @@ class TripRequest(Lenient):
         return out
 
 
+_CLOCK = re.compile(r"(\d{1,2})(?:\s*[:.h]\s*(\d{2}))?\s*([ap])?\.?\s*m?\b", re.I)
+
+
+def clock(v: Any, default: str = "09:00") -> str:
+    """ "9:00 AM", "9am", "09:00-10:30", "14h30" → "HH:MM" (24 h); anything else → default."""
+    m = _CLOCK.search(str(v or ""))
+    if not m:
+        return default
+    h, mins, ampm = int(m.group(1)), int(m.group(2) or 0), (m.group(3) or "").lower()
+    if ampm == "p" and h < 12:
+        h += 12
+    elif ampm == "a" and h == 12:
+        h = 0
+    return f"{h:02d}:{mins:02d}" if h < 24 and mins < 60 else default
+
+
 class Activity(Lenient):
+    _aliases: ClassVar[dict[str, str]] = {
+        "place": "name", "title": "name", "activity": "name", "location": "place_query", "query": "place_query",
+        "duration": "duration_min", "minutes": "duration_min", "notes": "note", "description": "note",
+        "start": "time", "start_time": "time", "type": "kind",
+    }  # fmt: skip
     time: str = Field("09:00", max_length=5)
     name: str = Field(max_length=120)
     place_query: str = Field("", max_length=160, description="searchable place name")
@@ -112,6 +161,18 @@ class Activity(Lenient):
     def _kind(cls, v: Any) -> Any:
         return v if v in ("outdoor", "indoor", "food", "transit") else "outdoor"
 
+    @field_validator("time", mode="before")
+    @classmethod
+    def _time(cls, v: Any) -> Any:
+        return clock(v)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _named(cls, data: Any) -> Any:
+        if isinstance(data, dict) and not data.get("name") and data.get("place_query"):
+            data = {**data, "name": str(data["place_query"]).split(",")[0]}
+        return data
+
     @field_validator("duration_min", mode="before")
     @classmethod
     def _dur(cls, v: Any) -> Any:
@@ -121,22 +182,96 @@ class Activity(Lenient):
             return 90
 
 
+_STOP_NAMES = ("name", "place_query", "place", "title", "activity")
+
+
 class Day(Lenient):
-    day: int
+    _aliases: ClassVar[dict[str, str]] = {
+        "stops": "activities", "schedule": "activities", "items": "activities", "plan": "activities",
+        "title": "theme", "day_number": "day",
+    }  # fmt: skip
+    day: int = 0  # 0 = not given: numbered by position
     theme: str = Field("", max_length=120)
-    activities: list[Activity] = Field(min_length=1, max_length=8)
+    activities: list[Activity] = Field(default_factory=list, max_length=8)
+
+    @field_validator("day", mode="before")
+    @classmethod
+    def _day(cls, v: Any) -> Any:
+        m = re.search(r"\d+", str(v if v is not None else ""))
+        return int(m.group()) if m else 0
+
+    @field_validator("activities", mode="before")
+    @classmethod
+    def _stops(cls, v: Any) -> Any:
+        # Drop entries that aren't stops at all (a stray string, one without a name) rather than the whole plan.
+        if not isinstance(v, list):
+            return v
+        return [a for a in v if isinstance(a, dict) and any(a.get(k) for k in _STOP_NAMES)]
+
+
+def _days_of(data: Any, key: str) -> Any:
+    """Accept the shapes models drift into: a bare list of days, {"plan": {...}}, {"itinerary": [...]}."""
+    if isinstance(data, list):
+        return {key: data}
+    if not isinstance(data, dict) or key in data:
+        return data
+    for wrapper in ("plan", "trip", "result", "data"):
+        if isinstance(data.get(wrapper), dict):
+            rest = {k: v for k, v in data.items() if k != wrapper}
+            return _days_of({**data[wrapper], **rest}, key)
+    for alias in ("days", "itinerary", "changed_days", "day_plans"):
+        if isinstance(data.get(alias), list):
+            return {**data, key: data[alias]}
+    return data
+
+
+def _numbered(days: list[Day]) -> list[Day]:
+    """Days with stops, in order; days the model didn't number are numbered by position."""
+    kept = [d for d in days if d.activities]
+    return [d if d.day else d.model_copy(update={"day": i + 1}) for i, d in enumerate(kept)]
 
 
 class Plan(Lenient):
-    title: str = Field(max_length=120)
-    summary: str = Field(max_length=800)
+    _aliases: ClassVar[dict[str, str]] = {
+        "name": "title", "trip_title": "title", "overview": "summary", "description": "summary",
+        "travel_tips": "tips",
+    }  # fmt: skip
+    title: str = Field("", max_length=120)
+    summary: str = Field("", max_length=800)
     days: list[Day] = Field(min_length=1, max_length=10)
     tips: list[str] = Field(default_factory=list, max_length=6)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _unwrap(cls, data: Any) -> Any:
+        return _days_of(data, "days")
+
+    @field_validator("days", mode="after")
+    @classmethod
+    def _real_days(cls, v: list[Day]) -> list[Day]:
+        days = _numbered(v)
+        if not days:
+            raise ValueError("no day has any stops")
+        return days
+
 
 class Replan(Lenient):
+    _aliases: ClassVar[dict[str, str]] = {"summary": "explanation", "reason": "explanation"}
     changed_days: list[Day] = Field(min_length=1, max_length=10)
-    explanation: str = Field(max_length=600)
+    explanation: str = Field("", max_length=600)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _unwrap(cls, data: Any) -> Any:
+        return _days_of(data, "changed_days")
+
+    @field_validator("changed_days", mode="after")
+    @classmethod
+    def _real_days(cls, v: list[Day]) -> list[Day]:
+        days = [d for d in v if d.activities and d.day]
+        if not days:
+            raise ValueError("no re-planned day with a day number and stops")
+        return days
 
 
 UNDERSTAND_SYSTEM = """Extract a trip request as JSON: {"destination": str (city/region), "country": str|null,
@@ -149,8 +284,25 @@ otherwise [])}. Today is {today}."""
 PLAN_SYSTEM = """You are an expert local travel planner. Plan a realistic day-by-day itinerary using REAL, existing,
 well-known places in the destination (exact names that a map search will find). Group nearby places on the same day,
 include meals, and respect opening-hours common sense. When a day's rain probability is >= 60%, prefer indoor
-activities that day. On multi-destination trips each day happens in the destination given for it. Reply with ONE
-JSON object:
+activities that day. On multi-destination trips each day happens in the destination given for it.
+Rules:
+- Each date's weekday is given: never schedule a place on a day it is usually closed (many museums close on
+  Mondays) and say opening days in the note when they matter.
+- Travel between stops is calculated for you: do NOT add separate "Drive to…", "Transfer" or "Return to hotel"
+  stops. For a sight far out of town, mention the realistic drive time in its note and group far sights that lie
+  on the same road on the same day.
+- Leave enough time between stops for real travel; never overlap times.
+- Meals and breaks at the traveller's own accommodation are fine, written as "Breakfast at your stay".
+- "name" is the place itself, exactly as a map knows it (no brackets, no "Stroll through…"); put the activity in
+  the note. "place_query" is that name plus the town.
+- Follow dietary and access requests strictly (vegetarian means no meat suggestions at all).
+- For famous sights with long queues or limited entry, suggest arriving at opening time.
+- Never repeat a place on two days.
+- Don't invent arrival or departure times, flights or airport stops: plan the days at the destination.
+- An excursion far out of town (an hour or more each way, e.g. river rafting, a distant viewpoint) needs most of a
+  day: don't squeeze it into an afternoon after city sights.
+- Keep it compact: at most 6 stops a day and notes under 140 characters.
+Reply with ONE JSON object:
 {"title": str, "summary": str, "tips": [str],
  "days": [{"day": 1, "theme": str, "activities": [{"time": "HH:MM", "name": str, "place_query": str
    (place name + city, for map search), "kind": "outdoor"|"indoor"|"food"|"transit", "duration_min": int, "note": str}]}]}"""
@@ -625,9 +777,13 @@ class TripService(TripEcosystem):
         plan_prompt = (
             f"Destination: {route_text}\nDays: {req.days}\nStart: {req.start_date or 'flexible'}\n"
             f"Interests: {', '.join(req.interests) or 'general sightseeing'}\nPace: {req.pace}\nTravellers: {req.travellers or 'n/a'}\n"
-            f"Weather: {'; '.join(known) or 'unknown'}\n\nOriginal request: {prompt}"
+            f"Weather: {'; '.join(known) or 'unknown'}\n"
+            f"Dates: {'; '.join(f'Day {i + 1} = {d} ({dt.date.fromisoformat(d).strftime("%A")})' for i, d in enumerate(dates) if d) or 'flexible'}\n\n"
+            f"Original request: {prompt}"
         )
-        plan = await ask_json(self.get_llm, PLAN_SYSTEM, plan_prompt, Plan, limit_s=120, task="tripweaver.plan")
+        plan = await self._full_plan(plan_prompt, req.days)
+        if not plan.title.strip():
+            plan = plan.model_copy(update={"title": f"{req.days} days in {city['name']}"[:120]})
         yield step("plan", f"{sum(len(d.activities) for d in plan.days)} activities across {len(plan.days)} days")
 
         near = {n: ((d["lat"], d["lng"]), d["name"]) for n, d in dest_for_day.items()}
@@ -644,7 +800,7 @@ class TripService(TripEcosystem):
         meals = await self._add_meals(draft)
         yield step("meals", f"{meals} meal stop{'s' if meals != 1 else ''} added near your route" if meals
                    else "Meals already planned (or no restaurant data nearby)")  # fmt: skip
-        await self._enrich(draft)
+        await self._enrich(draft, retime=True)
         warn = sum(1 for d in days for x in d.get("insights", []) if x["level"] == "warn")
         drive = sum((d.get("route") or {}).get("drive_min", 0) for d in days)
         yield step("wellbeing", f"Routes timed ({drive} min driving in total) · {warn} heads-up"
@@ -670,12 +826,16 @@ class TripService(TripEcosystem):
             hit = None
             if a.kind == "transit":  # "walk to X" legs: X has its own stop
                 return {**a.model_dump(), "id": new_id(), "votes": {}, "lat": None, "lng": None, "label": None}
-            try:
-                hit = await self.tools.geocode_place(a.place_query or f"{a.name}, {city}", near)
-                if hit is None and a.place_query:
-                    hit = await self.tools.geocode_place(f"{a.name}, {city}", near)
-            except Exception:  # noqa: BLE001
-                logger.info("geocode failed for %s", a.name)
+            if stops.placeless(a.name):  # "Breakfast at your stay", "Drive to…": part of the day, not a place
+                return {**a.model_dump(), "id": new_id(), "votes": {}, "lat": None, "lng": None, "label": None,
+                        "placeless": True}  # fmt: skip
+            for query in stops.place_queries(a.name, a.place_query, city):
+                try:
+                    hit = await self.tools.geocode_place(query, near)
+                except Exception:  # noqa: BLE001
+                    logger.info("geocode failed for one stop")
+                if hit is not None:
+                    break
             return {**a.model_dump(), "id": new_id(), "votes": {}, **(hit or {"lat": None, "lng": None, "label": None})}
 
         out = []
@@ -684,6 +844,38 @@ class TripService(TripEcosystem):
             acts = await asyncio.gather(*(one(a, where, name) for a in d.activities))
             out.append({"day": d.day, "theme": d.theme, "activities": list(acts)})
         return out
+
+    async def _full_plan(self, plan_prompt: str, days: int) -> Plan:
+        """The planner's itinerary for every day. A long reply cut off by the output budget keeps its complete days;
+        the missing days are then asked for on their own (smaller replies that fit), so long trips still plan."""
+        plan = await ask_json(self.get_llm, PLAN_SYSTEM, plan_prompt, Plan, limit_s=120, task="tripweaver.plan")
+        got = sorted({d.day for d in plan.days if 1 <= d.day <= days})
+        for _ in range(3):
+            missing = [n for n in range(1, days + 1) if n not in got]
+            if not missing:
+                break
+            done = "; ".join(f"Day {d.day}: " + ", ".join(a.name for a in d.activities) for d in plan.days)
+            more = await ask_json(
+                self.get_llm,
+                PLAN_SYSTEM,
+                f"{plan_prompt}\n\nAlready planned (do not repeat these places): {done}\n"
+                f"Now plan ONLY days {', '.join(map(str, missing))}, numbered as such, in the same JSON shape.",
+                Plan,
+                limit_s=120,
+                task="tripweaver.plan",
+            )
+            new = [d for d in more.days if d.day in missing] or [
+                d.model_copy(update={"day": n}) for n, d in zip(missing, more.days, strict=False)
+            ]  # numbered from 1 again: take them in order
+            plan = plan.model_copy(update={"days": sorted([*plan.days, *new], key=lambda d: d.day)})
+            got = sorted({d.day for d in plan.days if 1 <= d.day <= days})
+        by_day = {d.day: d for d in plan.days if 1 <= d.day <= days}
+        if not by_day:
+            # Day numbers outside the trip: keep the order the model gave.
+            return plan.model_copy(
+                update={"days": [d.model_copy(update={"day": i + 1}) for i, d in enumerate(plan.days[:days])]}
+            )
+        return plan.model_copy(update={"days": [by_day[n] for n in sorted(by_day)]})
 
     async def replan(self, trip: dict[str, Any], event: str, only_days: list[int] | None = None) -> dict[str, Any]:
         compact = [
@@ -733,7 +925,7 @@ class TripService(TripEcosystem):
                 )
             else:
                 days.append({**d, "changed": False})
-        await self._enrich({**trip, "days": days})
+        await self._enrich({**trip, "days": days}, retime=True)
         history = [*trip.get("history", []), {"version": trip.get("version", 1), "event": event, "explanation": result.explanation,
                                               "days_changed": sorted(located), "at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds")}][-10:]  # fmt: skip
         updated = self.db.patch(
@@ -773,8 +965,12 @@ class TripService(TripEcosystem):
         return {"trip": updated, "alerts": alerts}
 
     # ── routes, wellbeing, nearby places and meals ────────────────────────
-    async def _enrich(self, trip: dict[str, Any]) -> None:
-        """Fill each day's route (leg times, rush-hour flags), air quality and insights in place. Best effort."""
+    async def _enrich(self, trip: dict[str, Any], *, retime: bool = False) -> None:
+        """Fill each day's route (leg times, rush-hour flags), air quality and insights in place. Best effort.
+
+        `retime` (fresh plans and re-plans only): if the model's times leave too little room for real travel, the day
+        is re-timed in order (meals keep their slot) instead of showing clashes. Times set by hand are never moved.
+        """
         req = trip.get("request") or {}
         aqi_by: dict[Any, dict[str, float]] = {}
         for dest in {destination_of(trip, d).get("id"): destination_of(trip, d) for d in trip["days"]}.values():
@@ -793,6 +989,10 @@ class TripService(TripEcosystem):
                 except Exception:  # noqa: BLE001 - fall back to straight-line estimates
                     logger.info("routing unavailable")
             d["route"] = travel.build_route(d["activities"], legs)
+            if retime and any(x["type"] == "overlap" for x in trip_logic.validate_day(d)):
+                d["activities"] = travel.retime(d["activities"], d["route"])
+                d["route"] = travel.build_route(d["activities"], legs)
+                d["retimed"] = True
             if d.get("date") in aqi:
                 d["weather"] = {**(d.get("weather") or {}), "aqi": aqi[d["date"]]}
             d["insights"] = travel.insights(d, req.get("travellers"), req.get("pace", "balanced"))

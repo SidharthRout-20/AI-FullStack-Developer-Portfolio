@@ -1,7 +1,7 @@
 """The portfolio's LLM tasks and quota priorities, registered with appcore's router.
 
 Every LLM call site declares one of these tasks ("product.feature"); the profile maps it to routing needs.
-Safarnama registers its own tasks in its package (safarnama/tasks.py).
+Safarnaama registers its own tasks in its package (safarnama/tasks.py).
 """
 
 from __future__ import annotations
@@ -40,6 +40,6 @@ register_tasks(
         "evolve.judge": TaskProfile(M, "evaluation", "json"),
         "evolve.reflect": TaskProfile(C, "reasoning", "json"),
     },
-    # Quota priority: 1 is protected the most (Safarnama registers "tripweaver": 2).
+    # Quota priority: 1 is protected the most (Safarnaama registers "tripweaver": 2).
     {"efi": 1, "keeper": 3, "documind": 3, "meetingmind": 3},
 )

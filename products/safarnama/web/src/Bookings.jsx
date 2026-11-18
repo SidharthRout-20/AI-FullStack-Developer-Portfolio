@@ -53,7 +53,7 @@ export function Bookings({ trip, api, setNote, prefill, onUsedPrefill }) {
           <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><CalendarCheck className="pa-ink size-4" /> Your bookings</p>
           {!form && <Button variant="ghost" className="ml-auto !py-1.5" onClick={() => setForm({ ...BLANK, currency: trip.budget?.currency ?? 'EUR' })}><Plus className="size-4" /> Add a booking</Button>}
         </div>
-        <p className="mt-1 text-[12.5px] text-ink-400">Keep flights, hotels, trains, tables and tickets with the trip. These are your records: Safarnama doesn't make or confirm bookings.</p>
+        <p className="mt-1 text-[12.5px] text-ink-400">Keep flights, hotels, trains, tables and tickets with the trip. These are your records: Safarnaama doesn't make or confirm bookings.</p>
         {form && (
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <Field label="Type">
@@ -122,7 +122,7 @@ export function Bookings({ trip, api, setNote, prefill, onUsedPrefill }) {
                   {stop && <p className="text-[12px] text-emerald-300">Linked to {stop.label}</p>}
                   {b.cancellation && <p className="text-[12px] text-ink-400">Cancellation: {b.cancellation}</p>}
                   {b.notes && <p className="text-[12px] text-ink-400">{b.notes}</p>}
-                  <p className="text-[11px] text-ink-500">Saved by you · not booked or verified by Safarnama</p>
+                  <p className="text-[11px] text-ink-500">Saved by you · not booked or verified by Safarnaama</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   {b.url && safeLink(b.url) && <a className="chip" href={b.url} target="_blank" rel="noopener noreferrer"><ExternalLink className="size-3" /> {hostOf(b.url)}</a>}

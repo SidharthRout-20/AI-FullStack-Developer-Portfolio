@@ -1,7 +1,7 @@
 import {
-  Bot, CalendarCheck, CalendarDays, ChevronDown, ChevronUp, CloudRain, CloudSun, Compass, Copy, ExternalLink, FileText,
-  History, Landmark, LayoutDashboard, Lightbulb, MapPin, PencilLine, Pin, PiggyBank, Plus, RefreshCw, Route, Share2, Shuffle,
-  Soup, Star, ThumbsDown, ThumbsUp, TrainFront, Trash2, Trees, Umbrella, Users, UtensilsCrossed, Wand2, WifiOff, Flag, Zap, TriangleAlert,
+  Bot, CalendarCheck, Check, CalendarDays, ChevronDown, ChevronUp, CloudRain, CloudSun, Compass, Copy, ExternalLink, FileText,
+  History, Landmark, Lightbulb, MapPin, PencilLine, Pin, PiggyBank, Plus, RefreshCw, Route, Share2, Shuffle,
+  Soup, Star, ThumbsDown, ThumbsUp, TrainFront, Trash2, Trees, Umbrella, Users, UtensilsCrossed, Wand2, WifiOff, X, Zap, TriangleAlert,
 } from 'lucide-react'  // prettier-ignore
 import { AnimatePresence, motion } from 'motion/react'
 import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
@@ -18,14 +18,15 @@ import { Companion } from './Companion'
 import { Documents } from './Documents'
 import { Explore } from './Explore'
 import { forecastFreshness } from './freshness'
-import { dateRange, endTime, groupByPart, groupTrips, PHASE_LABEL, safeLink, shareUrl } from './logic'
+import { dateRange, endTime, groupByPart, groupTrips, isMoment, PHASE_LABEL, safeLink, shareUrl } from './logic'
 import { appPath, getBase, setBase } from './base'
-import { Overview, Summary } from './Overview'
+import { Summary, TripGlance } from './Overview'
 import './styles/safarnama.css'
+import { Connector, DayCheck, DayHeader, StopDot, useDone } from './DayParts'
 import { DestinationStrip, HeroChip, PhotoCredits, PlaceImage, TripHero } from './Visuals'
 import { ACCENT, QuickPlan, usePlanStream } from './QuickPlan'
 import { Handoff, LabelChips } from './parts'
-import { DayInsights, fmtMin, LegRow, NearbyPanel, RouteSummary } from './Travel'
+import { fmtMin, NearbyPanel } from './Travel'
 
 const TripMap = lazy(() => import('./TripMap').then((m) => ({ default: m.TripMap })))
 const KIND_ICON = { outdoor: Trees, indoor: Landmark, food: UtensilsCrossed, transit: TrainFront }
@@ -39,13 +40,13 @@ const PART_LABEL = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Eveni
 const PARTY_LABEL = { solo: 'Solo', couple: 'Couple', family: 'Family', friends: 'Friends', group: 'Group' }
 const HERO_BTN = 'inline-flex items-center gap-1.5 rounded-full bg-[#fff]/15 px-3 py-1.5 text-[12.5px] font-medium text-[#fff] backdrop-blur-md transition hover:bg-[#fff]/25'
 
-/** Safarnama. `basePath` is where it is mounted: '' on its own site, '/safarnama' inside the portfolio. */
+/** Safarnaama. `basePath` is where it is mounted: '' on its own site, '/safarnaama' inside the portfolio. */
 export default function SafarnamaApp({ basePath = '' }) {
   setBase(basePath)
   const path = usePath()
   const tripId = path.startsWith(`${getBase()}/`) ? (path.slice(getBase().length + 1).match(/^([\w-]+)/)?.[1] ?? null) : null
   return (
-    <ProductShell name="Safarnama" tagline="Plan, book and keep every journey in one place" icon={Route} accent={ACCENT} product="safarnama">
+    <ProductShell name="Safarnaama" tagline="Plan, book and keep every journey in one place" icon={Route} accent={ACCENT} product="safarnama">
       {tripId ? <TripView key={tripId} id={tripId} /> : <MyTrips />}
     </ProductShell>
   )
@@ -85,7 +86,7 @@ function MyTrips() {
   return (
     <div className="mx-auto max-w-5xl space-y-8">
       <header className="pt-2 text-center">
-        <p className="pa-ink text-[12px] font-semibold tracking-[0.18em] uppercase">Safarnama · your travelogue</p>
+        <p className="pa-ink text-[12px] font-semibold tracking-[0.18em] uppercase">Safarnaama · your travelogue</p>
         <h1 className="pa-display mt-2 text-[44px] leading-[1.02] font-semibold text-white sm:text-[64px]">
           Where to <span className="pa-gradient-text">next?</span>
         </h1>
@@ -244,7 +245,8 @@ function TripView({ id }) {
   const [error, setError] = useState(null)
   const [note, setNote] = useState(null)
   const [live, setLive] = useState(false)
-  const [tab, setTab] = useState('overview')
+  const [tab, setTab] = useState('plan')
+  const [chat, setChat] = useState(false)
   const [pins, setPins] = useState([])
   const [bookingPrefill, setBookingPrefill] = useState(null)
 
@@ -331,13 +333,14 @@ function TripView({ id }) {
   if (!trip) return <Spinner label="Loading trip…" />
   const owner = trip.role === 'owner'
   const member = trip.role === 'member'
+  // Four tabs, like the travel planners people already know: the plan (with the trip at a glance on top), places to
+  // explore, bookings with their documents, and the budget. The companion is a button that's there on every tab, and
+  // the summary appears on the plan once the trip is over.
   const tabs = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'itinerary', label: 'Itinerary', icon: CalendarDays },
+    { id: 'plan', label: 'Plan', icon: CalendarDays },
     { id: 'explore', label: 'Explore', icon: Compass },
     ...(owner ? [{ id: 'bookings', label: 'Bookings', icon: CalendarCheck }] : []),
     ...(owner || member ? [{ id: 'budget', label: 'Budget', icon: PiggyBank }] : []),
-    ...(owner ? [{ id: 'documents', label: 'Documents', icon: FileText }, { id: 'companion', label: 'Companion', icon: Bot }, { id: 'summary', label: 'Summary', icon: Flag }] : []),
   ]
 
   return (
@@ -370,17 +373,21 @@ function TripView({ id }) {
       {note && <p className="rounded-xl bg-emerald-500/[0.08] px-3 py-2 text-[13px] text-emerald-200">{note} <button type="button" className="ml-2 text-emerald-300/70 hover:text-white" onClick={() => setNote(null)}>dismiss</button></p>}
       <ErrorNote message={error} />
 
-      {tab === 'overview' && <Overview trip={trip} api={api} owner={owner} goTab={setTab} />}
-      {tab === 'summary' && owner && <Summary trip={trip} api={api} />}
-      {tab === 'bookings' && owner && <Bookings trip={trip} api={api} setNote={setNote} prefill={bookingPrefill} onUsedPrefill={() => setBookingPrefill(null)} />}
+      {tab === 'plan' && owner && trip.phase === 'past' && <Summary trip={trip} api={api} />}
+      {tab === 'plan' && <TripGlance trip={trip} api={api} owner={owner} goTab={setTab} />}
+      {tab === 'bookings' && owner && (
+        <>
+          <Bookings trip={trip} api={api} setNote={setNote} prefill={bookingPrefill} onUsedPrefill={() => setBookingPrefill(null)} />
+          <h2 className="pa-display flex items-center gap-2 pt-2 text-[19px] font-semibold text-white"><FileText className="pa-ink size-4" /> Documents & checklists</h2>
+          <Documents trip={trip} api={api} onTrip={keep} setNote={setNote} />
+        </>
+      )}
       {tab === 'budget' && <Budget trip={trip} api={api} owner={owner} onTrip={keep} setNote={setNote} />}
-      {tab === 'documents' && owner && <Documents trip={trip} api={api} onTrip={keep} setNote={setNote} />}
-      {['itinerary', 'explore', 'companion'].includes(tab) && (
+      {['plan', 'explore'].includes(tab) && (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="order-2 min-w-0 lg:order-1">
-            {tab === 'itinerary' && <Itinerary trip={trip} api={api} owner={owner} keep={keep} setNote={setNote} setError={setError} onBook={(p) => { setBookingPrefill(p); setTab('bookings') }} setPins={setPins} />}
+            {tab === 'plan' && <Itinerary trip={trip} api={api} owner={owner} keep={keep} setNote={setNote} setError={setError} onBook={(p) => { setBookingPrefill(p); setTab('bookings') }} setPins={setPins} />}
             {tab === 'explore' && <Explore trip={trip} api={api} owner={owner} onTrip={keep} onPins={setPins} setNote={setNote} />}
-            {tab === 'companion' && owner && <Companion trip={trip} api={api} onTrip={keep} setNote={setNote} onPins={setPins} />}
           </div>
           <div className="order-1 h-[320px] overflow-hidden rounded-2xl border border-white/[0.07] sm:h-[380px] lg:sticky lg:top-22 lg:order-2 lg:h-[calc(100vh-8rem)]">
             <Suspense fallback={<div className="grid size-full place-items-center"><Spinner label="Loading map…" /></div>}>
@@ -389,7 +396,54 @@ function TripView({ id }) {
           </div>
         </div>
       )}
+      {owner && (
+        <CompanionDock open={chat} onOpen={setChat}>
+          <Companion trip={trip} api={api} onTrip={keep} setNote={setNote} onPins={(p) => { setPins(p); if (p?.length && tab !== 'plan' && tab !== 'explore') setTab('plan') }} />
+        </CompanionDock>
+      )}
     </div>
+  )
+}
+
+/** The travel companion as a button that's there on every tab, opening a panel over the page. */
+function CompanionDock({ open, onOpen, children }) {
+  useEffect(() => {
+    if (!open) return
+    const close = (e) => e.key === 'Escape' && onOpen(false)
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [open, onOpen])
+  return (
+    <>
+      <AnimatePresence>
+        {open && (
+          <motion.aside
+            role="dialog"
+            aria-label="Travel companion"
+            initial={{ opacity: 0, y: 24, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 24, scale: 0.98 }}
+            transition={{ duration: 0.2 }}
+            className="fixed right-4 bottom-20 z-40 flex max-h-[min(78vh,720px)] w-[min(440px,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border border-white/10 bg-ink-900 shadow-2xl"
+          >
+            <div className="flex items-center gap-2 border-b border-white/[0.07] px-4 py-3">
+              <Bot className="pa-ink size-4" />
+              <p className="text-[14px] font-semibold text-white">Travel companion</p>
+              <button type="button" className="ml-auto grid size-7 place-items-center rounded-full text-ink-400 hover:bg-white/[0.06] hover:text-white" aria-label="Close the companion" onClick={() => onOpen(false)}><X className="size-4" /></button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">{children}</div>
+          </motion.aside>
+        )}
+      </AnimatePresence>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => onOpen(!open)}
+        className="btn-primary pa-gradient fixed right-4 bottom-4 z-40 inline-flex items-center gap-2 rounded-full px-4 py-3 text-[13.5px] font-semibold text-on-accent shadow-xl"
+      >
+        {open ? <X className="size-4" /> : <Bot className="size-4" />} {open ? 'Close' : 'Ask the companion'}
+      </button>
+    </>
   )
 }
 
@@ -420,6 +474,8 @@ function Itinerary({ trip, api, owner, keep, setNote, setError, onBook, setPins 
   const [alerts, setAlerts] = useState([])
   const [voter, setVoter] = useVoter()
   const [nearbyFor, setNearbyFor] = useState(null)
+  const [open, setOpen] = useState(null) // the stop whose details are showing
+  const [done, toggleDone] = useDone(trip.id)
   const [editing, setEditing] = useState(null)
   const [alts, setAlts] = useState(null)
   const [handoff, setHandoff] = useState(null)
@@ -497,102 +553,146 @@ function Itinerary({ trip, api, owner, keep, setNote, setError, onBook, setPins 
       </AnimatePresence>
 
       {shown.map((d) => (
-        <Card key={`${d.day}-${trip.version}`} className={d.changed ? 'ring-1 ring-amber-400/30' : ''}>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="grid size-7 place-items-center rounded-lg text-[12px] font-bold text-white" style={{ background: DAY_COLORS[(d.day - 1) % DAY_COLORS.length] }}>{d.day}</span>
-            <h3 className="text-[15px] font-semibold text-white">{d.theme || `Day ${d.day}`}</h3>
-            {destName(d) && (trip.destinations?.length ?? 0) > 1 && <Pill><MapPin className="size-3" /> {destName(d)}</Pill>}
-            {d.date && <span className="text-[12px] text-ink-400">{new Date(d.date + 'T00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>}
-            {d.weather?.tmax != null && <Pill tone={d.weather.rain >= 60 ? 'info' : 'neutral'}>{d.weather.rain >= 60 ? <CloudRain className="size-3" /> : <CloudSun className="size-3" />} {Math.round(d.weather.tmin)}–{Math.round(d.weather.tmax)}°C · {d.weather.rain}% rain</Pill>}
-            {d.changed && <Pill tone="warn">re-planned</Pill>}
-            <span className="ml-auto flex items-center gap-2">
-              <RouteSummary route={d.route} />
+        <Card key={`${d.day}-${trip.version}`} className={`!p-4 sm:!p-6 ${d.changed ? 'ring-1 ring-amber-400/30' : ''}`}>
+          <DayHeader
+            d={d}
+            done={done}
+            multiDest={(trip.destinations?.length ?? 0) > 1}
+            destName={destName(d)}
+            right={<>
+              {d.changed && <Pill tone="warn">re-planned</Pill>}
               {owner && d.activities.length > 1 && <button type="button" className="chip" disabled={!!busy} onClick={() => void optimise(d.day)} title="Reorder for the least travel and re-time around rush hour"><Shuffle className="size-3" /> Optimise</button>}
-            </span>
-          </div>
+            </>}
+          />
           {(d.best_window || d.rain_spells?.length > 0) && (
-            <p className="mt-2 text-[12px] text-sky-200">
-              {d.rain_spells?.length > 0 && <>Rain likely {d.rain_spells.map((s) => `${s.from}–${s.to} (${s.max}%)`).join(', ')}. </>}
-              {d.best_window && <>Driest window {d.best_window.from}–{d.best_window.to} (~{d.best_window.rain}%).</>}
-              <span className="text-ink-500"> Hourly forecast, Open-Meteo.</span>
+            <p className="mt-2 flex items-start gap-1.5 text-[12px] text-sky-300">
+              <CloudRain className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                {d.rain_spells?.length > 0 && <>Rain likely {d.rain_spells.map((s) => `${s.from}–${s.to} (${s.max}%)`).join(', ')}. </>}
+                {d.best_window && <>Driest window {d.best_window.from}–{d.best_window.to}.</>}
+              </span>
             </p>
           )}
-          <DayInsights insights={d.insights} />
-          {d.issues?.length > 0 && (
-            <ul className="mt-2 space-y-1">{d.issues.map((x, i) => <li key={i} className="rounded-lg bg-rose-500/[0.07] px-2.5 py-1.5 text-[12.5px] text-rose-200">{x.text}</li>)}</ul>
-          )}
-          {d.activities.length === 0 && <p className="mt-3 text-[13px] text-ink-400">No stops yet. Add one below, or find places in Explore.</p>}
+          <DayCheck d={d} owner={owner} busy={!!busy} onFixTiming={() => void optimise(d.day)} onFind={(aid) => { setEditing(aid); setOpen(aid) }} />
+          {d.activities.length === 0 && <p className="mt-4 text-[13px] text-ink-400">Nothing planned yet. Add a stop below, or find places in Explore.</p>}
           {groupByPart(d.activities).map(({ part, items }) => (
-            <div key={part} className="mt-3">
-              <p className="mb-1 text-[11px] font-semibold tracking-wide text-ink-500 uppercase">{PART_LABEL[part]}</p>
-              <ol className="space-y-1">
+            <div key={part} className="mt-4">
+              <p className="mb-1 pl-[60px] text-[11px] font-semibold tracking-[0.14em] text-ink-500 uppercase">{PART_LABEL[part]}</p>
+              <ol>
                 {items.map(({ a, index: i }) => {
                   const Icon = KIND_ICON[a.kind] ?? Trees
+                  const moment = isMoment(a)
                   const score = Object.values(a.votes ?? {}).reduce((s, v) => s + v, 0)
                   const mine = (a.votes ?? {})[voter] ?? 0
                   const leg = d.route?.legs.find((l) => l.to === a.id)
                   const links = stopLinks(a)
                   const weatherDep = (a.labels ?? []).some((l) => l.id === 'weather_dependent')
+                  const isOpen = open === a.id
+                  const isDone = done.has(a.id)
+                  const bookable = !moment && (a.kind === 'food' || a.kind === 'indoor' || (a.labels ?? []).some((l) => l.id === 'reservation'))
+                  if (moment)
+                    return (
+                      <Fragment key={a.id}>
+                        <li className="grid grid-cols-[52px_28px_1fr] items-center gap-x-2 py-1">
+                          <span className="text-right font-mono text-[11.5px] text-ink-500">{a.time}</span>
+                          <span className="grid place-items-center"><StopDot a={a} Icon={Icon} moment /></span>
+                          <button type="button" onClick={() => setOpen(isOpen ? null : a.id)} className="min-w-0 text-left text-[12.5px] text-ink-400 hover:text-ink-200">
+                            <span className="text-ink-300">{a.name}</span> · {fmtMin(a.duration_min)}
+                            {isOpen && a.note && <span className="block text-ink-500">{a.note}</span>}
+                          </button>
+                        </li>
+                        {isOpen && owner && (
+                          <li className="pl-[88px]">
+                            <div className="flex flex-wrap gap-1.5 pb-1">
+                              <button type="button" className="chip" onClick={() => setEditing(editing === a.id ? null : a.id)}><PencilLine className="size-3" /> Edit</button>
+                            </div>
+                            {editing === a.id && (
+                              <EditStop a={a} trip={trip} day={d} index={i} busy={!!busy}
+                                onSave={(changes) => void edit(a, changes, 'Saved; the day was re-timed and re-checked.')}
+                                onMove={(toDay, index) => void run('Moving…', () => api.moveActivity(a.id, toDay, index), (t) => { keep(t); setEditing(null) })}
+                                onDelete={() => void run('Removing…', () => api.deleteActivity(a.id), (t) => { keep(t); setEditing(null) })} />
+                            )}
+                          </li>
+                        )}
+                      </Fragment>
+                    )
                   return (
                     <Fragment key={a.id}>
-                      {leg && <LegRow leg={leg} />}
-                      <li className="rounded-xl p-2 transition hover:bg-white/[0.03]">
-                        <div className="flex items-start gap-3">
-                          <span className="w-11 shrink-0 pt-0.5 font-mono text-[12px] text-ink-400">{a.time}</span>
-                          <div className="min-w-0 flex-1">
-                            <p className="flex flex-wrap items-center gap-1.5 text-[14px] font-medium text-white">
-                              <Icon className="size-3.5 shrink-0 text-ink-400" /> {a.name}
-                              {a.pinned && <Pin className="size-3 text-amber-300" aria-label="pinned" />}
-                              {a.lat == null && <span className="text-[10.5px] text-ink-500">(not on map)</span>}
-                            </p>
-                            {a.note && <p className="text-[12.5px] text-ink-400">{a.note}</p>}
-                            <LabelChips labels={a.labels} />
-                            <p className="text-[11px] text-ink-500">{d.day}.{i + 1} · {a.duration_min} min · until {endTime(a)}{a.added ? ` · added (${a.added === 'meal' ? 'meal slot' : a.added})` : ''}</p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-0.5">
-                            {a.lat != null && <button type="button" aria-label={`Food and sights near ${a.name}`} aria-expanded={nearbyFor === a.id} onClick={() => setNearbyFor(nearbyFor === a.id ? null : a.id)} className={`grid size-7 place-items-center rounded-lg ${nearbyFor === a.id ? 'bg-white/10 text-white' : 'text-ink-500 hover:text-white'}`}><Compass className="size-3.5" /></button>}
-                            <button type="button" aria-label={`Upvote ${a.name}`} onClick={() => void vote(a, 1)} className={`grid size-7 place-items-center rounded-lg ${mine === 1 ? 'bg-emerald-500/15 text-emerald-300' : 'text-ink-500 hover:text-white'}`}><ThumbsUp className="size-3.5" /></button>
-                            <span className={`w-5 text-center text-[12px] tabular-nums ${score > 0 ? 'text-emerald-300' : score < 0 ? 'text-rose-300' : 'text-ink-500'}`}>{score}</span>
-                            <button type="button" aria-label={`Downvote ${a.name}`} onClick={() => void vote(a, -1)} className={`grid size-7 place-items-center rounded-lg ${mine === -1 ? 'bg-rose-500/15 text-rose-300' : 'text-ink-500 hover:text-white'}`}><ThumbsDown className="size-3.5" /></button>
-                            {owner && <button type="button" aria-label={`Edit ${a.name}`} aria-expanded={editing === a.id} onClick={() => setEditing(editing === a.id ? null : a.id)} className="grid size-7 place-items-center rounded-lg text-ink-500 hover:text-white"><PencilLine className="size-3.5" /></button>}
-                          </div>
+                      <Connector leg={leg} />
+                      <li className="grid grid-cols-[52px_28px_1fr] gap-x-2">
+                        <div className="pt-2.5 text-right">
+                          <p className={`font-mono text-[13px] font-semibold ${isDone ? 'text-ink-500 line-through' : 'text-white'}`}>{a.time}</p>
+                          <p className="text-[10.5px] text-ink-500">{fmtMin(a.duration_min)}</p>
                         </div>
-                        {(links.length > 0 || (owner && weatherDep) || owner) && (
-                          <div className="mt-1.5 flex flex-wrap gap-1.5 pl-14">
-                            {links.map((l) => <button key={l.url} type="button" className="chip" onClick={() => setHandoff({ link: l, place: a })}><ExternalLink className="size-3" /> {l.label}</button>)}
-                            {owner && weatherDep && <button type="button" className="chip" onClick={() => void showAlts(a)}><Umbrella className="size-3" /> Indoor alternatives</button>}
-                            {owner && <button type="button" className="chip" onClick={() => onBook({ type: a.kind === 'food' ? 'restaurant' : 'ticket', title: a.name, activity_id: a.id, day: d.day, url: links[0]?.url ?? '' })}><CalendarCheck className="size-3" /> Save a booking</button>}
+                        <div className="flex justify-center pt-2"><StopDot a={a} Icon={Icon} done={isDone} /></div>
+                        <motion.div layout="position" className={`mb-1 min-w-0 rounded-2xl border transition ${isOpen ? 'border-white/10 bg-white/[0.04]' : 'border-transparent hover:bg-white/[0.03]'}`}>
+                          <div className="flex items-start gap-2 p-2.5">
+                            <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : a.id)} className="min-w-0 flex-1 text-left">
+                              <p className={`flex flex-wrap items-center gap-1.5 text-[14.5px] font-semibold ${isDone ? 'text-ink-400 line-through' : 'text-white'}`}>
+                                {a.name}
+                                {a.pinned && <Pin className="size-3 text-amber-400" aria-label="pinned" />}
+                                {a.lat == null && <span className="rounded-full bg-amber-400/15 px-1.5 py-px text-[10.5px] font-medium text-amber-300 no-underline">no map pin</span>}
+                              </p>
+                              {a.note && <p className={`mt-0.5 text-[12.5px] text-ink-400 ${isOpen ? '' : 'line-clamp-1'}`}>{a.note}</p>}
+                              <LabelChips labels={a.labels} />
+                            </button>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button type="button" aria-label={`Upvote ${a.name}`} onClick={() => void vote(a, mine === 1 ? 0 : 1)} className={`inline-flex h-7 items-center gap-1 rounded-full px-2 text-[12px] ${mine === 1 ? 'bg-emerald-500/15 text-emerald-300' : 'text-ink-500 hover:text-white'}`}>
+                                <ThumbsUp className="size-3.5" />{score !== 0 && <span className="tabular-nums">{score}</span>}
+                              </button>
+                              <button type="button" aria-label={isDone ? `Mark ${a.name} not done` : `Mark ${a.name} done`} aria-pressed={isDone} onClick={() => toggleDone(a.id)}
+                                className={`grid size-7 place-items-center rounded-full border transition ${isDone ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-300' : 'border-white/10 text-ink-500 hover:border-white/25 hover:text-white'}`}>
+                                <Check className="size-3.5" />
+                              </button>
+                            </div>
                           </div>
-                        )}
-                        {editing === a.id && owner && (
-                          <EditStop a={a} trip={trip} day={d} index={i} busy={!!busy}
-                            onSave={(changes) => void edit(a, changes, 'Saved; the day was re-timed and re-checked.')}
-                            onMove={(toDay, index) => void run('Moving…', () => api.moveActivity(a.id, toDay, index), (t) => { keep(t); setEditing(null) })}
-                            onDelete={() => void run('Removing…', () => api.deleteActivity(a.id), (t) => { keep(t); setEditing(null) })} />
-                        )}
-                        {alts?.for === a.id && (
-                          <div className="mt-2 ml-14 rounded-xl border border-white/[0.07] bg-ink-950/40 p-3">
-                            <p className="text-[12.5px] text-ink-300">Indoor places near {alts.around} (OpenStreetMap):</p>
-                            {alts.places.length === 0 ? <p className="text-[12.5px] text-ink-500">None found nearby.</p> : (
-                              <ul className="mt-1 space-y-1">
-                                {alts.places.slice(0, 6).map((p) => (
-                                  <li key={p.name} className="flex items-center gap-2 text-[12.5px]">
-                                    <span className="min-w-0 flex-1 truncate text-white">{p.name} <span className="text-ink-400">· {p.category} · {p.distance_m} m</span></span>
-                                    {p.planned ? <span className="text-ink-500">in plan</span> : (
-                                      <button type="button" className="chip" onClick={() => void run('Swapping…', async () => {
-                                        await api.addStop(d.day, { name: p.name, lat: p.lat, lng: p.lng, kind: 'indoor', time: a.time, duration_min: a.duration_min, added: 'discovery', distance_m: p.distance_m, near: a.name, ...(p.opening_hours ? { opening_hours: p.opening_hours } : {}), ...(p.website ? { website: p.website } : {}) })
-                                        return api.deleteActivity(a.id)
-                                      }, (t) => { keep(t); setAlts(null); setNote(`Swapped ${a.name} for ${p.name}.`) })}>Swap in</button>
-                                    )}
-                                  </li>
-                                ))}
-                              </ul>
+                          <AnimatePresence initial={false}>
+                            {isOpen && (
+                              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                <div className="flex flex-wrap gap-1.5 px-2.5 pb-2.5">
+                                  <span className="mr-1 self-center text-[11px] text-ink-500">until {endTime(a)}{a.added ? ` · added (${a.added === 'meal' ? 'meal slot' : a.added})` : ''}</span>
+                                  {a.lat != null && <button type="button" className="chip" aria-expanded={nearbyFor === a.id} onClick={() => setNearbyFor(nearbyFor === a.id ? null : a.id)}><Compass className="size-3" /> Food & sights nearby</button>}
+                                  {links.map((l) => <button key={l.url} type="button" className="chip" onClick={() => setHandoff({ link: l, place: a })}><ExternalLink className="size-3" /> {l.label}</button>)}
+                                  {owner && weatherDep && <button type="button" className="chip" onClick={() => void showAlts(a)}><Umbrella className="size-3" /> Indoor alternatives</button>}
+                                  {owner && bookable && <button type="button" className="chip" onClick={() => onBook({ type: a.kind === 'food' ? 'restaurant' : 'ticket', title: a.name, activity_id: a.id, day: d.day, url: links[0]?.url ?? '' })}><CalendarCheck className="size-3" /> Save a booking</button>}
+                                  <button type="button" aria-label={`Downvote ${a.name}`} className={`chip ${mine === -1 ? '!text-rose-300' : ''}`} onClick={() => void vote(a, mine === -1 ? 0 : -1)}><ThumbsDown className="size-3" /> Not for us</button>
+                                  {owner && <button type="button" aria-label={`Edit ${a.name}`} aria-expanded={editing === a.id} className="chip" onClick={() => setEditing(editing === a.id ? null : a.id)}><PencilLine className="size-3" /> {a.lat == null ? 'Edit or pin on the map' : 'Edit'}</button>}
+                                </div>
+                              </motion.div>
                             )}
-                          </div>
-                        )}
+                          </AnimatePresence>
+                          {editing === a.id && owner && (
+                            <div className="px-2.5 pb-2.5">
+                              <EditStop a={a} trip={trip} day={d} index={i} busy={!!busy}
+                                onSave={(changes) => void edit(a, changes, 'Saved; the day was re-timed and re-checked.')}
+                                onMove={(toDay, index) => void run('Moving…', () => api.moveActivity(a.id, toDay, index), (t) => { keep(t); setEditing(null) })}
+                                onDelete={() => void run('Removing…', () => api.deleteActivity(a.id), (t) => { keep(t); setEditing(null) })} />
+                            </div>
+                          )}
+                          {alts?.for === a.id && (
+                            <div className="mx-2.5 mb-2.5 rounded-xl border border-white/[0.07] bg-ink-950/40 p-3">
+                              <p className="text-[12.5px] text-ink-300">Indoor places near {alts.around} (OpenStreetMap):</p>
+                              {alts.places.length === 0 ? <p className="text-[12.5px] text-ink-500">None found nearby.</p> : (
+                                <ul className="mt-1 space-y-1">
+                                  {alts.places.slice(0, 6).map((p) => (
+                                    <li key={p.name} className="flex items-center gap-2 text-[12.5px]">
+                                      <span className="min-w-0 flex-1 truncate text-white">{p.name} <span className="text-ink-400">· {p.category} · {p.distance_m} m</span></span>
+                                      {p.planned ? <span className="text-ink-500">in plan</span> : (
+                                        <button type="button" className="chip" onClick={() => void run('Swapping…', async () => {
+                                          await api.addStop(d.day, { name: p.name, lat: p.lat, lng: p.lng, kind: 'indoor', time: a.time, duration_min: a.duration_min, added: 'discovery', distance_m: p.distance_m, near: a.name, ...(p.opening_hours ? { opening_hours: p.opening_hours } : {}), ...(p.website ? { website: p.website } : {}) })
+                                          return api.deleteActivity(a.id)
+                                        }, (t) => { keep(t); setAlts(null); setNote(`Swapped ${a.name} for ${p.name}.`) })}>Swap in</button>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          )}
+                        </motion.div>
                       </li>
                       {nearbyFor === a.id && (
-                        <li className="pl-14">
+                        <li className="pl-[88px]">
                           <NearbyPanel api={api} day={d.day} activityId={a.id} activityName={a.name} defaultTime={endTime(a)} onAdded={(t) => { keep(t); setNearbyFor(null); setNote(`Added to day ${d.day}; travel times updated.`) }} />
                         </li>
                       )}
@@ -690,7 +790,7 @@ function EditStop({ a, trip, day, index, busy, onSave, onMove, onDelete }) {
         </select>
         <button type="button" className="chip !text-rose-300" onClick={onDelete}><Trash2 className="size-3" /> Remove</button>
       </div>
-      <p className="text-[11px] text-ink-500">“Local favourite” and “Hidden gem” are your own tags: free map data has no ratings or popularity, so Safarnama never assigns them itself.</p>
+      <p className="text-[11px] text-ink-500">“Local favourite” and “Hidden gem” are your own tags: free map data has no ratings or popularity, so Safarnaama never assigns them itself.</p>
     </div>
   )
 }

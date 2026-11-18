@@ -177,12 +177,12 @@ const REGISTRY = [
   },
   {
     id: 'tripweaver',
-    slug: 'safarnama',
-    aliases: ['tripweaver'],
+    slug: 'safarnaama',
+    aliases: ['tripweaver', 'safarnama'],
     image: 'tripweaver',
-    name: 'Safarnama',
+    name: 'Safarnaama',
     meaning: 'Urdu and Hindi for a travelogue: the whole journey, from the first idea to the memories.',
-    fullName: 'Safarnama: your complete travel companion',
+    fullName: 'Safarnaama: your complete travel companion',
     visibility: 'portfolio',
     priority: 1,
     status: 'in_development',
@@ -195,25 +195,25 @@ const REGISTRY = [
       'identity is per browser (no accounts), and ordering, booking, ratings and live transit need commercial providers.',
     tagline: 'One intelligent platform to plan, discover, experience, manage and remember every journey.',
     description:
-      'Safarnama owns the journey from planning to returning home. The itinerary is the organising object: food, shopping, ' +
+      'Safarnaama owns the journey from planning to returning home. The itinerary is the organising object: food, shopping, ' +
       'experiences, weather, routes, bookings and expenses are all connected to the trip, its days, the next stop, the ' +
       'traveller\'s location, time and budget. Recommendations come from real provider data, never invented places, ratings ' +
-      'or availability, and nothing is ordered, booked or paid by Safarnama: external actions are confirmed hand-offs to the provider.',
+      'or availability, and nothing is ordered, booked or paid by Safarnaama: external actions are confirmed hand-offs to the provider.',
     category: 'Travel',
     icon: Route,
     accent: 'from-lime-500 via-emerald-500 to-teal-500',
     tags: ['Itinerary-centred', 'Contextual discovery', 'Travel companion'],
-    app: { label: 'Open Safarnama', route: '/safarnama', kind: 'product' },
+    app: { label: 'Open Safarnaama', route: '/safarnaama', kind: 'product' },
     modules: [
       { id: 'planning', title: 'Trip planning & management', status: 'available', text: 'AI planner (free text, several cities) or manual trips with up to 5 destinations and 14 days, dates, party, travellers, budget, interests and pace; edit, archive, upcoming/active/past grouping; share link for collaborators (view, vote, shared expenses). Identity is per browser: no accounts yet.' },
       { id: 'itinerary', title: 'Intelligent itinerary engine', status: 'available', text: 'Day-wise morning/afternoon/evening plan with durations, route legs and travel times, best visiting order, edit/move/remove/reorder, pins kept on re-plan, regeneration of selected days, schedule checks (overlaps, closed at visit time) and evidence-backed labels: Must visit, Time sensitive, Weather dependent, Reservation recommended, Near your route, Traveller favourite; Local favourite and Hidden gem only as your own tags (no rating data exists).' },
       { id: 'discovery', title: 'Local discovery', status: 'available', text: 'Ten OpenStreetMap categories around a destination, a stop or your location (with permission): food, sights, experiences, shopping, nature, indoor, family, nightlife, transport, services; filters, saved places, add to the itinerary, map pins. No ratings or prices: free map data has none.' },
-      { id: 'food', title: 'Food discovery & ordering', status: 'partial', text: 'Restaurants, cafés, street food and markets with cuisine, vegetarian, vegan and open-at-visit filters, meal slotting near your route, and menu/booking/phone hand-offs taken from the venue data. Ordering, delivery and table booking need commercial provider integrations: Safarnama hands off and never simulates an order.' },
+      { id: 'food', title: 'Food discovery & ordering', status: 'partial', text: 'Restaurants, cafés, street food and markets with cuisine, vegetarian, vegan and open-at-visit filters, meal slotting near your route, and menu/booking/phone hand-offs taken from the venue data. Ordering, delivery and table booking need commercial provider integrations: Safarnaama hands off and never simulates an order.' },
       { id: 'shopping', title: 'Local shopping & souvenirs', status: 'partial', text: 'Souvenir, craft, artisan, market and local-food shops from OpenStreetMap, plus AI-suggested local specialities (labelled) matched to real nearby shops. Stock and prices are not known.' },
       { id: 'experiences', title: 'Experiences & activities', status: 'partial', text: 'Museums, theatres, zoos, aquariums, parks, nature spots and family venues from OpenStreetMap, with venue-site hand-offs. Guided tours, events and ticket availability need a provider (integration pending).' },
       { id: 'weather', title: 'Weather & travel intelligence', status: 'available', text: 'Per-destination daily forecast, current conditions, hourly rain with the driest window, forecast-derived alerts (not official warnings), weather-dependent labels, indoor alternatives and re-planning; every forecast shows when it was fetched.' },
       { id: 'maps', title: 'Maps, navigation & local transport', status: 'partial', text: 'Interactive map with itinerary and discovery pins, day routes, driving times (OSRM, no live traffic), walking estimates, stations and airports with transfer times. Public-transport timetables and cycling routes are not integrated.' },
-      { id: 'bookings', title: 'Booking & reservation management', status: 'available', text: 'Flights, hotels, trains, buses, cars, restaurants, activities, tours and tickets saved with references, times, cancellation terms and costs, linked to days and stops, with provider hand-offs. Direct booking needs provider APIs: Safarnama never claims a booking it did not see confirmed.' },
+      { id: 'bookings', title: 'Booking & reservation management', status: 'available', text: 'Flights, hotels, trains, buses, cars, restaurants, activities, tours and tickets saved with references, times, cancellation terms and costs, linked to days and stops, with provider hand-offs. Direct booking needs provider APIs: Safarnaama never claims a booking it did not see confirmed.' },
       { id: 'budget', title: 'Budget & expenses', status: 'available', text: 'Trip and category budgets, actual spend kept separate from estimates, daily totals, group split and settle-up, dated reference exchange rates (Frankfurter) or your own rate, and receipt reading by a vision model as a draft you confirm.' },
       { id: 'companion', title: 'Travel companion', status: 'available', text: 'Uses your itinerary, local time, location (only when you allow it), stored forecast with its age, budget, bookings and real nearby places. Suggestions are checked against real data and applied only when you confirm; it never books, orders or pays.' },
       { id: 'documents', title: 'Travel documents & preparedness', status: 'available', text: 'Confirmations, tickets, insurance, emergency contacts and notes with small file attachments, visible only to the trip owner; checklists and a packing list built from the forecast, trip length and party.' },

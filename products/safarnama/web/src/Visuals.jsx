@@ -1,5 +1,5 @@
 /**
- * Safarnama's imagery: destination photos (Wikimedia Commons, credited), the trip hero banner, photo trip cards and a
+ * Safarnaama's imagery: destination photos (Wikimedia Commons, credited), the trip hero banner, photo trip cards and a
  * drifting strip of places for the home screen. Places without a photo get a warm gradient with a contour pattern.
  */
 import { Info } from 'lucide-react'

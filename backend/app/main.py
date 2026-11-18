@@ -75,7 +75,7 @@ def create_app(
         jobs = settings.background_jobs
         reminder_task = asyncio.create_task(keeper.scheduler_loop(settings.public_url)) if jobs else None
         app.state.suite = Suite(settings, rag, keeper)
-        app.state.trips = app.state.suite.trips  # Safarnama's API reads its service from here
+        app.state.trips = app.state.suite.trips  # Safarnaama's API reads its service from here
         app.state.efi = efi_factory(settings)
         scheduler = asyncio.create_task(app.state.suite.flows.scheduler()) if jobs else None
         logger.info("Ready - %d chunks indexed, LLM provider=%s", rag.store.count(), settings.llm_provider)

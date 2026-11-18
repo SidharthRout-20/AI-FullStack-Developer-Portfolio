@@ -30,6 +30,11 @@ class TaskProfile:
     structured: Structured = "none"
     background: bool = False  # optional/background work: lowest quota priority
     signals: bool = True  # allow wording/size signals to raise the complexity
+    # Long structured outputs (a multi-day plan) need more room than settings.llm_max_tokens. Reasoning models spend
+    # part of the budget thinking, so long JSON tasks also ask for less reasoning. Stay under the free tier's
+    # tokens-per-minute limit (8k on Groq), which counts the requested output budget.
+    max_output_tokens: int | None = None
+    reasoning_effort: str | None = None
 
 
 S, M, C, A = Complexity.SIMPLE, Complexity.STANDARD, Complexity.COMPLEX, Complexity.ADVANCED

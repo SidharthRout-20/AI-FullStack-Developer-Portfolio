@@ -592,7 +592,7 @@ function TimelineNode({ icon }) {
   )
 }
 
-const PERSONAL = new Set(['tijori', 'safarnama'])
+const PERSONAL = new Set(['tijori', 'safarnaama'])
 
 function useBackendOnline() {
   const [online, setOnline] = useState(null)
@@ -620,9 +620,9 @@ function ProjectsSection() {
           <SectionTitle
             kicker="Projects"
             title={`${PORTFOLIO.length} products, built one at a time`}
-            text="The approved portfolio, in priority order. Each card shows its real status: Safarnama is being taken end to end first and Jasoos is in active development; the others are approved and scheduled, some with an earlier prototype you can already open."
+            text="The approved portfolio, in priority order. Each card shows its real status: Safarnaama is being taken end to end first and Jasoos is in active development; the others are approved and scheduled, some with an earlier prototype you can already open."
           />
-          <HandNote className="-mt-6 mb-10 hidden -rotate-3 lg:block">Safarnama: on my desk right now ↓</HandNote>
+          <HandNote className="-mt-6 mb-10 hidden -rotate-3 lg:block">Safarnaama: on my desk right now ↓</HandNote>
           <Reveal className="mb-10">
             <div role="tablist" aria-label="Filter projects" className="inline-flex rounded-full border border-white/[0.07] bg-ink-900/50 p-1">
               {['all', 'personal', 'work'].map((f) => (

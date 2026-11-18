@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "safarnama"
 version = "1.0.0"
-description = "Safarnama's API: plan, book and keep every journey in one place."
+description = "Safarnaama's API: plan, book and keep every journey in one place."
 requires-python = ">=3.12"
 dependencies = [
     "appcore",  # packages/py-core in this monorepo

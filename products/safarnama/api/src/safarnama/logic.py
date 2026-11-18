@@ -20,7 +20,7 @@ from collections import defaultdict
 from typing import Any
 from urllib.parse import urlparse
 
-from safarnama import travel
+from safarnama import stops, travel
 
 # ── discovery ───────────────────────────────────────────────────────────────
 # Overpass selectors per discovery group (each selector is applied with `(around:R,lat,lng)` and ["name"]).
@@ -115,7 +115,7 @@ CURRENCIES: dict[str, str] = {
 
 
 def retitle(title: str, old_names: list[str], new_names: list[str], days: int) -> str:
-    """A title Safarnama generated ("3 days in Jaipur", or "Jaipur → Pushkar" for a hand-built trip) follows the trip
+    """A title Safarnaama generated ("3 days in Jaipur", or "Jaipur → Pushkar" for a hand-built trip) follows the trip
     when a destination is added; anything the traveller or the planner wrote in their own words is kept."""
     route = " → ".join(new_names)
     if title == " → ".join(old_names):
@@ -362,7 +362,7 @@ def validate_day(day: dict[str, Any]) -> list[dict[str, str]]:
         if start and travel.is_open(a.get("opening_hours"), start) is False:
             issues.append({"type": "closed", "activity_id": a["id"],
                            "text": f"{a['name']} looks closed at {a['time']} (opening hours: {a['opening_hours']})."})  # fmt: skip
-        if a.get("lat") is None and a.get("kind") != "transit":
+        if a.get("lat") is None and a.get("kind") != "transit" and not stops.placeless(a.get("name", "")):
             issues.append({"type": "unlocated", "activity_id": a["id"], "text": f"{a['name']} isn't on the map yet."})
     return issues
 

@@ -1,5 +1,5 @@
 /**
- * Safarnama's quick planner: a whole trip from four taps (where → when → who → plan), no typing needed.
+ * Safarnaama's quick planner: a whole trip from four taps (where → when → who → plan), no typing needed.
  * Pure helpers (unit-tested in choices.test.js). The choices become a precise request for the existing AI planner
  * (POST /api/trips/plan), so places, weather and routes still come from real provider data.
  *

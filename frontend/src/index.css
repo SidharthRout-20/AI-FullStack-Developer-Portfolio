@@ -5,7 +5,7 @@
 @import '../../packages/web-core/src/styles/theme-light.css';
 @import './styles/skin-showcase.css';
 
-/* Code that lives outside frontend/ but is part of this app: the shared core and Safarnama (embedded at /safarnama) */
+/* Code that lives outside frontend/ but is part of this app: the shared core and Safarnaama (embedded at /safarnama) */
 @source '../../packages/web-core/src';
 @source '../../products/safarnama/web/src';
 

@@ -1,112 +1,52 @@
-/** Trip dashboard and post-trip summary. */
-import { Bot, CalendarCheck, CloudRain, CloudSun, Flag, ListChecks, MapPin, PiggyBank, Sparkles, Thermometer, Bookmark } from 'lucide-react'
+/** The trip at a glance (top of the plan) and the post-trip summary. */
+import { CalendarCheck, CloudRain, Flag, MapPin, Sparkles, Thermometer } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { navigate } from '@appcore/web/router'
 import { appPath } from './base'
 import { errorText } from '@appcore/web/http'
-import { Button, Card, ErrorNote, Pill, Spinner } from '@appcore/web/ui'
-import { forecastFreshness } from './freshness'
-import { dateRange, money, nextUp, pct } from './logic'
+import { Button, Card, ErrorNote, Spinner } from '@appcore/web/ui'
+import { dateRange, money, nextUp } from './logic'
 
-function Tile({ icon: Icon, title, children, action }) {
-  return (
-    <Card>
-      <div className="flex items-center gap-2">
-        <Icon className="pa-ink size-4" />
-        <p className="text-[13px] font-semibold text-white">{title}</p>
-        {action && <span className="ml-auto">{action}</span>}
-      </div>
-      <div className="mt-2 text-[13px] text-ink-300">{children}</div>
-    </Card>
-  )
-}
-
-export function Overview({ trip, api, owner, goTab }) {
-  const [budget, setBudget] = useState(null)
+/**
+ * The trip at a glance, at the top of the plan: what's next, weather warnings and (until something is booked) a
+ * nudge to book. Budget, bookings and saved places have their own tabs, so they aren't repeated here.
+ */
+export function TripGlance({ trip, api, owner, goTab }) {
   const [bookings, setBookings] = useState(null)
-  const [places, setPlaces] = useState(null)
   useEffect(() => {
-    api.budget().then(setBudget).catch(() => setBudget(null))
-    api.places().then(setPlaces).catch(() => setPlaces([]))
     if (owner) api.bookings().then(setBookings).catch(() => setBookings([]))
   }, [api, owner, trip.version])
 
   const up = nextUp(trip)
-  const fresh = forecastFreshness(trip.weather_updated_at)
   const alerts = trip.days.flatMap((d) => (d.alerts ?? []).map((a) => ({ ...a, day: d.day })))
-  const checklists = trip.checklists ?? []
-  const items = checklists.flatMap((l) => l.items)
-  const upcoming = (bookings ?? []).filter((b) => b.status !== 'cancelled').slice(0, 4)
-
+  const booked = (bookings ?? []).some((b) => b.status !== 'cancelled')
+  const showBook = owner && bookings !== null && !booked && trip.phase !== 'past'
+  if (!up && alerts.length === 0 && !showBook) return null
   return (
-    <div className="grid gap-3 md:grid-cols-2">
-      {owner && upcoming.length === 0 && bookings !== null && (
-        <section className="relative overflow-hidden rounded-2xl border border-[color:var(--pa-line)] bg-[color:var(--pa-soft)] p-5 md:col-span-2">
-          <p className="pa-display text-[22px] font-semibold text-white">Ready to book?</p>
-          <p className="mt-1 max-w-2xl text-[13px] text-ink-300">Stays, travel and things to do for {(trip.destinations ?? []).map((d) => d.name).join(' and ')}, pre-filled with your dates on MakeMyTrip, Booking.com, Airbnb and Google. Free, and nothing is booked until you confirm on their site.</p>
-          <button type="button" className="btn-primary pa-gradient mt-3 rounded-full px-4 py-2 text-[13px] font-semibold text-on-accent" onClick={() => goTab('bookings')}>See booking options</button>
-        </section>
+    <div className="space-y-2">
+      {up && (
+        <p className="flex items-center gap-2 rounded-2xl border border-[color:var(--pa-line)] bg-[color:var(--pa-soft)] px-4 py-2.5 text-[13px] text-ink-200">
+          <Flag className="pa-ink size-4 shrink-0" />
+          <span>
+            <span className="font-semibold text-white">Today · day {up.day}</span>
+            {up.activity ? <> · {up.now ? 'Now' : `Next at ${up.activity.time}`}: <span className="text-white">{up.activity.name}</span></> : ' · nothing else planned today'}
+          </span>
+        </p>
       )}
-      <Tile icon={Flag} title={up ? `Today · day ${up.day}` : 'Your itinerary'} action={<button type="button" className="chip" onClick={() => goTab('itinerary')}>Open itinerary</button>}>
-        {up?.activity ? (
-          <p><span className="text-white">{up.now ? 'Now' : `Next at ${up.activity.time}`}: {up.activity.name}</span>{up.activity.note ? ` · ${up.activity.note}` : ''}</p>
-        ) : up ? <p>Nothing else planned today.</p> : (
-          <p>{trip.days.length} day{trip.days.length > 1 ? 's' : ''} in {(trip.destinations ?? []).map((d) => d.name).join(' → ')}
-            {trip.days[0]?.date ? `, ${dateRange(trip.days[0].date, trip.days.at(-1).date)}` : ' (no dates yet)'} · {trip.days.reduce((n, d) => n + d.activities.length, 0)} stops</p>
-        )}
-      </Tile>
-      <Tile icon={CloudSun} title="Weather" action={<Pill tone={fresh.stale ? 'warn' : 'neutral'}>{fresh.label}</Pill>}>
-        <ul className="space-y-1">
-          {(trip.destinations ?? []).map((d) => {
-            const now = trip.weather_now?.[String(d.id)]
-            const day = trip.days.find((x) => x.destination === d.id && x.weather) ?? (d.id == null ? trip.days.find((x) => x.weather) : null)
-            return (
-              <li key={d.id ?? d.name}>
-                <span className="text-white">{d.name}</span>
-                {now ? <> · now {Math.round(now.temp)}°C (observed {now.observed_at?.slice(11, 16)}, fetched {new Date(now.fetched_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</> : ''}
-                {day?.weather ? <> · day {day.day}: {Math.round(day.weather.tmin)}–{Math.round(day.weather.tmax)}°C, {day.weather.rain}% rain</> : !now && <span> · no forecast for these dates</span>}
-              </li>
-            )
-          })}
+      {alerts.length > 0 && (
+        <ul className="rounded-2xl border border-amber-400/25 bg-amber-400/[0.06] px-4 py-2.5 text-[12.5px] text-amber-100">
+          {alerts.slice(0, 3).map((a, i) => (
+            <li key={i}>{a.type === 'heavy_rain' ? <CloudRain className="mr-1 inline size-3.5" /> : <Thermometer className="mr-1 inline size-3.5" />}Day {a.day}: {a.text}</li>
+          ))}
+          <li className="mt-0.5 text-[11px] text-ink-500">From the Open-Meteo forecast; not official weather warnings.</li>
         </ul>
-        {alerts.length > 0 && (
-          <ul className="mt-2 space-y-0.5">
-            {alerts.slice(0, 4).map((a, i) => (
-              <li key={i} className="text-amber-200">{a.type === 'heavy_rain' ? <CloudRain className="inline size-3.5" /> : <Thermometer className="inline size-3.5" />} Day {a.day}: {a.text}</li>
-            ))}
-            <li className="text-[11px] text-ink-500">Derived from the Open-Meteo forecast; not official weather warnings.</li>
-          </ul>
-        )}
-      </Tile>
-      {owner && (
-        <Tile icon={CalendarCheck} title="Bookings" action={<button type="button" className="chip" onClick={() => goTab('bookings')}>Manage</button>}>
-          {!bookings ? <Spinner label="Loading…" /> : upcoming.length === 0 ? <p>No bookings saved yet.</p> : (
-            <ul className="space-y-0.5">{upcoming.map((b) => <li key={b.id}><span className="text-white">{b.title}</span>{b.start ? ` · ${b.start.replace('T', ' ')}` : ''}{b.reference ? ` · ref ${b.reference}` : ''}</li>)}</ul>
-          )}
-        </Tile>
       )}
-      <Tile icon={PiggyBank} title="Budget" action={<button type="button" className="chip" onClick={() => goTab('budget')}>Open</button>}>
-        {!budget ? <p>—</p> : (
-          <>
-            <p>Spent <span className="text-white">{money(budget.actual_total, budget.currency)}</span>{budget.budget_total != null && <> of {money(budget.budget_total, budget.currency)}</>}
-              {budget.estimated_total > 0 && <> · {money(budget.estimated_total, budget.currency)} estimated</>}</p>
-            {budget.budget_total != null && <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className={`h-full ${budget.over_budget ? 'bg-rose-400' : 'bg-emerald-400'}`} style={{ width: `${pct(budget.actual_total, budget.budget_total)}%` }} /></div>}
-          </>
-        )}
-      </Tile>
-      <Tile icon={Bookmark} title="Saved places" action={<button type="button" className="chip" onClick={() => goTab('explore')}>Explore</button>}>
-        {!places ? <p>—</p> : places.length === 0 ? <p>None yet: save restaurants, shops and sights from Explore.</p> : <p>{places.slice(0, 6).map((p) => p.name).join(' · ')}{places.length > 6 ? ` +${places.length - 6}` : ''}</p>}
-      </Tile>
-      {owner && (
-        <Tile icon={ListChecks} title="Checklists" action={<button type="button" className="chip" onClick={() => goTab('documents')}>Open</button>}>
-          {checklists.length === 0 ? <p>No checklists yet.</p> : <p>{items.filter((i) => i.done).length} of {items.length} items done across {checklists.length} list{checklists.length > 1 ? 's' : ''}.</p>}
-        </Tile>
-      )}
-      {owner && (
-        <Tile icon={Bot} title="Travel companion">
-          <p>Ask what to do nearby, how to adjust for the weather, or where to eat next. It uses this trip's real data.</p>
-          <Button variant="ghost" className="mt-2 !py-1.5" onClick={() => goTab('companion')}>Ask the companion</Button>
-        </Tile>
+      {showBook && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-white/[0.07] bg-white/[0.02] px-4 py-2.5 text-[13px] text-ink-300">
+          <CalendarCheck className="pa-ink size-4 shrink-0" />
+          <span className="min-w-0 flex-1">Stays, travel and tickets with your dates already filled in. Nothing is booked until you confirm on their site.</span>
+          <button type="button" className="chip" onClick={() => goTab('bookings')}>See booking options</button>
+        </div>
       )}
     </div>
   )

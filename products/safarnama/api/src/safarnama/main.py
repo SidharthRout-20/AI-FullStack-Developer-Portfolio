@@ -1,4 +1,4 @@
-"""Safarnama as a standalone FastAPI service.
+"""Safarnaama as a standalone FastAPI service.
 
 Run locally (from products/safarnama/api):   uvicorn safarnama.main:create_app --factory --reload --port 8100
 
@@ -44,7 +44,7 @@ def create_app(
             llm["llm"] = llm_factory(settings)
         return llm["llm"]
 
-    app = FastAPI(title="Safarnama API", version="1.0.0", docs_url=None if settings.is_production else "/docs")
+    app = FastAPI(title="Safarnaama API", version="1.0.0", docs_url=None if settings.is_production else "/docs")
     store = DocStore(settings.data_dir / "tripweaver.sqlite3", settings.db_url)
     app.state.settings = settings
     app.state.trips = TripService(store, get_llm, tools)

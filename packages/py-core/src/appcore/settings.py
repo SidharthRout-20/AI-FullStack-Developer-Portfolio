@@ -1,7 +1,7 @@
 """Settings every app built on appcore shares: environment, CORS, database, LLM routing and security.
 
 Each app subclasses `CoreSettings` with its own fields and defaults (the portfolio's `app.config.Settings`,
-Safarnama's `safarnama.settings.SafarnamaSettings`). All values come from environment variables or a `.env` file,
+Safarnaama's `safarnama.settings.SafarnamaSettings`). All values come from environment variables or a `.env` file,
 validated once at startup by pydantic-settings. Nothing secret is hard-coded.
 """
 

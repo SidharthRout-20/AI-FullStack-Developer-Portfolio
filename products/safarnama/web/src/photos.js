@@ -1,6 +1,6 @@
 /**
  * Destination photos for the quick planner: one well-known sight per place, from Wikimedia Commons.
- * Bundled from assets/destinations (800×600 WebP), so they load wherever Safarnama runs. Each is used under its licence; the credit is shown on the tile.
+ * Bundled from assets/destinations (800×600 WebP), so they load wherever Safarnaama runs. Each is used under its licence; the credit is shown on the tile.
  * Generated once by a build script; edit by hand if a photo is replaced.
  */
 const FILES = import.meta.glob('./assets/destinations/*.webp', { eager: true, import: 'default' })

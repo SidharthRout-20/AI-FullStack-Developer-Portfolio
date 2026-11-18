@@ -5,7 +5,7 @@ import { destinationInfo } from './choices'
 const jaipur = { name: 'Jaipur', country: 'India', checkin: '2026-11-23', checkout: '2026-11-26' }
 const find = (groups, id, provider) => groups.find((g) => g.id === id)?.items.find((i) => i.provider === provider)
 
-describe('Safarnama booking hand-offs', () => {
+describe('Safarnaama booking hand-offs', () => {
   it('works out each destination’s stay from the itinerary dates', () => {
     const trip = {
       destinations: [{ name: 'Lisbon', country: 'Portugal', start_day: 1, end_day: 2 }, { name: 'Porto', country: 'Portugal', start_day: 3, end_day: 3 }],

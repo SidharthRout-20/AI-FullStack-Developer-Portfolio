@@ -1,6 +1,6 @@
 /**
  * Free booking hand-offs: pre-filled searches on the providers' own sites (no API keys, no fees, no affiliate account
- * needed). Safarnama never books, holds or pays for anything: the traveller finishes on the provider's site and can
+ * needed). Safarnaama never books, holds or pays for anything: the traveller finishes on the provider's site and can
  * then save the confirmation with the trip. Pure helpers, unit-tested in booking.test.js.
  *
  * `prefilled` says what we checked: true = the provider opened with the place, dates and guests filled in when the

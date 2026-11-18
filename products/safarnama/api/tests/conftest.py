@@ -1,4 +1,4 @@
-"""Shared fixtures for Safarnama's tests: an isolated app (temp SQLite), scripted model replies and fake providers.
+"""Shared fixtures for Safarnaama's tests: an isolated app (temp SQLite), scripted model replies and fake providers.
 
 Tests never call a model or a map/weather service: fast, deterministic and free.
 """
@@ -83,7 +83,7 @@ class FakeTools:
 
 
 class ScriptedLLM:
-    """Answers Safarnama's prompts by recognising their system prompt."""
+    """Answers Safarnaama's prompts by recognising their system prompt."""
 
     RULES = [("Extract a trip request", TRIP_REQ), ("travel planner", PLAN), ("revise an existing itinerary", REPLAN)]
 

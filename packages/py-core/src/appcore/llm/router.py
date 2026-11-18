@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from appcore.llm.catalog import ModelCatalog, ModelSpec
-from appcore.llm.classify import Classification, Complexity, LLMRequest, classify_request
+from appcore.llm.classify import TASKS, Classification, Complexity, LLMRequest, classify_request
 from appcore.llm.quota import QuotaTracker
 from appcore.llm.transport import ChatResult, GroqTransport, ProviderError, Transport, build_messages
 from appcore.settings import CoreSettings as Settings
@@ -230,7 +230,8 @@ class LLMRouter:
         return None if ok else why
 
     def _max_out(self, spec: ModelSpec, req: LLMRequest) -> int:
-        want = req.max_output_tokens or self.settings.llm_max_tokens
+        profile = TASKS.get(req.task)
+        want = req.max_output_tokens or (profile and profile.max_output_tokens) or self.settings.llm_max_tokens
         return min(want, spec.max_output_tokens or want)
 
     def _quota_tokens(self, cls: Classification, req: LLMRequest, spec: ModelSpec) -> int:
@@ -314,14 +315,18 @@ class LLMRouter:
             "max_completion_tokens": self._max_out(spec, req),
             "temperature": req.temperature if req.temperature is not None else self.settings.llm_temperature,
         }
-        effort = req.reasoning_effort
+        profile = TASKS.get(req.task)
+        effort = req.reasoning_effort or (profile and profile.reasoning_effort)
         if effort is None and cls.complexity == Complexity.SIMPLE:
             effort = "none" if "none" in spec.effort_values else "low"
         if effort and spec.effort_values:
             p["reasoning_effort"] = effort if effort in spec.effort_values else spec.effort_values[0]
         if spec.hides_reasoning_param and spec.reasoning:
             p["reasoning_format"] = "hidden"  # keep thinking out of the content (JSON parsing stays reliable)
-        if cls.structured in ("schema", "strict") and req.schema:
+        if cls.structured == "json" and spec.json_object:
+            # Groq checks the reply is one well-formed JSON object (a malformed one fails over to another model)
+            p["response_format"] = {"type": "json_object"}
+        elif cls.structured in ("schema", "strict") and req.schema:
             p["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {"name": "response", "schema": req.schema, "strict": cls.structured == "strict"},
@@ -336,7 +341,11 @@ class LLMRouter:
         return min(8.0, self.settings.llm_router_backoff_s * (2**attempt))
 
     async def _run(
-        self, req: LLMRequest, call: Callable[[ModelSpec, Classification], Awaitable[ChatResult | Any]]
+        self,
+        req: LLMRequest,
+        call: Callable[[ModelSpec, Classification], Awaitable[ChatResult | Any]],
+        *,
+        keep_partial: bool = False,
     ) -> tuple[Any, RoutingDecision, ModelSpec]:
         cls = classify_request(req)
         d = self._new_decision(req, cls)
@@ -385,6 +394,12 @@ class LLMRouter:
                     return result, d, spec
                 d.attempts.append({"model": spec.id, "ok": False, "error": err.kind, "status": err.status})
                 logger.info("LLM router: %s failed on %s (%s)", req.task, spec.id, err.kind)
+                if keep_partial and err.kind == "malformed" and err.partial and cls.structured == "json":
+                    # JSON mode rejected the reply (usually cut off by the output budget). Hand the text back: the
+                    # structured-output layer keeps its complete part or asks again, which beats a weaker fallback.
+                    d.final_model, d.outcome = spec.id, "ok"
+                    d.latency_ms = round((self.clock() - started) * 1000)
+                    return ChatResult(text=err.partial, finish_reason="malformed", headers=err.headers), d, spec
                 if err.kind == "rate_limit":
                     wait = self.quota.rate_limited(spec.id, err.retry_after, err.headers)
                     retry_hint = wait if retry_hint is None else min(retry_hint, wait)
@@ -471,7 +486,7 @@ class LLMRouter:
             return await self.transport.chat(spec.id, msgs, self._params(spec, cls, req))
 
         try:
-            res, d, spec = await self._run(req, call)
+            res, d, spec = await self._run(req, call, keep_partial=True)
         except NoCompatibleModelError as exc:
             self.usage[f"{req.product}|-|failed"] += 1
             logger.info("LLM router: %s → no model (%s)", req.task, exc)
