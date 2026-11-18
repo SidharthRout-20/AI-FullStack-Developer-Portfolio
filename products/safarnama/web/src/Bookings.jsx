@@ -17,8 +17,14 @@ export function Bookings({ trip, api, setNote, prefill, onUsedPrefill }) {
   const [busy, setBusy] = useState(false)
   const load = useCallback(() => api.bookings().then(setItems).catch((e) => (setItems([]), setError(errorText(e)))), [api])
   useEffect(() => void load(), [load])
+  // A new prefill while this tab is already open (e.g. "add more details" from the welcome-back question) opens the form.
+  const [seen, setSeen] = useState(prefill)
+  if (prefill && prefill !== seen) {
+    setSeen(prefill)
+    setForm({ ...BLANK, currency: trip.budget?.currency ?? '', ...prefill })
+  }
   useEffect(() => {
-    if (prefill) onUsedPrefill?.() // consumed: the form above was initialised from it
+    if (prefill) onUsedPrefill?.() // consumed: the form was initialised from it
   }, [prefill, onUsedPrefill])
 
   const stops = trip.days.flatMap((d) => d.activities.map((a) => ({ id: a.id, label: `Day ${d.day} · ${a.time} ${a.name}`, day: d.day })))
@@ -47,7 +53,7 @@ export function Bookings({ trip, api, setNote, prefill, onUsedPrefill }) {
 
   return (
     <div className="space-y-3">
-      <BookPanel trip={trip} onSave={(p) => { setForm({ ...BLANK, currency: trip.budget?.currency ?? '', ...p }); window.requestAnimationFrame(() => document.getElementById('booking-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })) }} />
+      <BookPanel trip={trip} />
       <Card>
         <div id="booking-form" className="flex scroll-mt-20 flex-wrap items-center gap-2">
           <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><CalendarCheck className="pa-ink size-4" /> Your bookings</p>
@@ -126,6 +132,7 @@ export function Bookings({ trip, api, setNote, prefill, onUsedPrefill }) {
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   {b.url && safeLink(b.url) && <a className="chip" href={b.url} target="_blank" rel="noopener noreferrer"><ExternalLink className="size-3" /> {hostOf(b.url)}</a>}
+                  {b.status === 'planned' && <button type="button" className="chip" onClick={() => void api.updateBooking(b.id, { status: 'booked' }).then(() => { load(); setNote(`Marked “${b.title}” as booked.`) }).catch((e) => setError(errorText(e)))}>I booked it</button>}
                   {b.status !== 'cancelled' && <button type="button" className="chip" onClick={() => void api.updateBooking(b.id, { status: 'cancelled' }).then(() => { load(); setNote('Marked cancelled. Its cost was taken out of the budget; add any cancellation fee as an expense.') }).catch((e) => setError(errorText(e)))}>Mark cancelled</button>}
                   <button type="button" aria-label={`Delete ${b.title}`} className="grid size-7 place-items-center text-ink-500 hover:text-rose-300" onClick={() => void api.deleteBooking(b.id).then(() => { load(); setNote(`Deleted “${b.title}”, with any cost it had added to the budget.`) }).catch((e) => setError(errorText(e)))}><Trash2 className="size-3.5" /></button>
                 </div>

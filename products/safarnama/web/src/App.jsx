@@ -26,6 +26,8 @@ import { Connector, DayCheck, DayHeader, StopDot, useDone } from './DayParts'
 import { DestinationStrip, HeroChip, PhotoCredits, PlaceImage, TripHero } from './Visuals'
 import { ACCENT, QuickPlan, usePlanStream } from './QuickPlan'
 import { Handoff, LabelChips } from './parts'
+import { setAwayTrip } from './away'
+import { AwayCheck } from './AwayCheck'
 import { fmtMin, NearbyPanel } from './Travel'
 
 const TripMap = lazy(() => import('./TripMap').then((m) => ({ default: m.TripMap })))
@@ -249,6 +251,10 @@ function TripView({ id }) {
   const [chat, setChat] = useState(false)
   const [pins, setPins] = useState([])
   const [bookingPrefill, setBookingPrefill] = useState(null)
+  useEffect(() => {
+    setAwayTrip(id)
+    return () => setAwayTrip(null)
+  }, [id])
 
   const keep = useCallback((t) => {
     setTrip(t)
@@ -396,6 +402,7 @@ function TripView({ id }) {
           </div>
         </div>
       )}
+      {owner && <AwayCheck key={trip.id} trip={trip} api={api} setNote={setNote} onDetails={(p) => { setBookingPrefill(p); setTab('bookings') }} />}
       {owner && (
         <CompanionDock open={chat} onOpen={setChat}>
           <Companion trip={trip} api={api} onTrip={keep} setNote={setNote} onPins={(p) => { setPins(p); if (p?.length && tab !== 'plan' && tab !== 'explore') setTab('plan') }} />

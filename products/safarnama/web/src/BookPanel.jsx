@@ -1,7 +1,7 @@
 /**
  * "Book this trip": free, pre-filled searches on the providers' own sites (MakeMyTrip, Booking.com, Airbnb, Google…)
- * for every destination and its dates. Each opens through the hand-off dialog; when the traveller comes back, they can
- * save the confirmation with one tap (the booking form is pre-filled). Safarnaama never books or pays for anything.
+ * for every destination and its dates. Each opens through the hand-off dialog; when the traveller comes back, the trip
+ * asks whether they booked (see AwayCheck) and saves it in a tap. Safarnaama never books or pays for anything.
  */
 import { ArrowUpRight, BedDouble, Plane, Ticket, UtensilsCrossed } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -26,10 +26,9 @@ const readFrom = () => {
   }
 }
 
-export function BookPanel({ trip, onSave }) {
+export function BookPanel({ trip }) {
   const [from, setFrom] = useState(readFrom)
   const [open, setOpen] = useState(null) // the link being handed off
-  const [back, setBack] = useState(null) // the link the traveller just left for: offer to save the booking
   const places = useMemo(() => stays(trip), [trip])
   const adults = trip.party?.travellers ?? (trip.party?.type === 'solo' ? 1 : 2)
   const saveFrom = (v) => {
@@ -56,16 +55,6 @@ export function BookPanel({ trip, onSave }) {
           <datalist id="safarnama-cities">{CITIES.map((c) => <option key={c} value={c} />)}</datalist>
         </label>
       </div>
-
-      {back && (
-        <div className="flex flex-wrap items-center gap-3 border-b border-white/[0.06] bg-[color:var(--pa-soft)] px-5 py-3 text-[13px] text-ink-100 sm:px-6">
-          Booked something on {back.label}? Keep the confirmation with the trip.
-          <button type="button" className="btn-primary pa-gradient ml-auto rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold text-on-accent" onClick={() => { onSave(back.prefill); setBack(null) }}>
-            Save the booking
-          </button>
-          <button type="button" className="text-[12.5px] text-ink-400 hover:text-white" onClick={() => setBack(null)}>Not now</button>
-        </div>
-      )}
 
       <ul className="divide-y divide-white/[0.06]">
         {places.map((p) => {
@@ -116,7 +105,7 @@ export function BookPanel({ trip, onSave }) {
       <p className="border-t border-white/[0.06] px-5 py-3 text-[11.5px] text-ink-500 sm:px-6">
         Prices, availability and cancellation terms come from the provider. Safarnaama doesn't see or store your payment details.
       </p>
-      {open && <Handoff link={open} onClose={() => setOpen(null)} onOpened={() => setBack(open)} />}
+      {open && <Handoff link={open} onClose={() => setOpen(null)} />}
     </Card>
   )
 }
