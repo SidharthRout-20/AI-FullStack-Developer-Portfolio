@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 Kind = Literal["stash", "parking", "loan", "expiry", "bill", "occasion", "appliance", "pantry", "care"]
 KINDS: tuple[str, ...] = Kind.__args__  # type: ignore[attr-defined]
 
-Action = Literal["add", "find", "done", "list", "brief", "help"]
+Action = Literal["add", "find", "done", "list", "brief", "help", "chat"]
 Recurrence = Literal["none", "weekly", "monthly", "yearly"]
 
 _TIME = r"^([01]\d|2[0-3]):[0-5]\d$"

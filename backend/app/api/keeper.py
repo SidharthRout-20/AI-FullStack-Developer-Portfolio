@@ -51,9 +51,24 @@ Keeper = Annotated[KeeperService, Depends(get_keeper)]
 Now = Annotated[dt.datetime, Depends(local_now)]
 
 
+class Turn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["user", "assistant"]
+    text: str = Field(max_length=700)
+
+
+class AssistantPrefs(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: str = Field("", max_length=40)
+    tone: Literal["warm", "professional", "cheerful"] = "warm"
+    length: Literal["short", "detailed"] = "short"
+
+
 class CommandIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(min_length=1, max_length=600)
+    history: list[Turn] = Field(default_factory=list, max_length=8)  # recent turns, for follow-ups
+    prefs: AssistantPrefs | None = None  # how the user has set Tijori up (kept on their device)
     photo_id: str | None = Field(None, pattern=r"^[0-9a-f]{32}$")
     lat: float | None = Field(None, ge=-90, le=90)
     lng: float | None = Field(None, ge=-180, le=180)
@@ -117,7 +132,9 @@ async def keeper_status(keeper: Keeper) -> dict[str, Any]:
 async def command(request: Request, body: CommandIn, keeper: Keeper, now: Now) -> dict[str, Any]:
     if body.photo_id and keeper.store.photo(body.photo_id) is None:
         raise HTTPException(404, "Photo not found.")
-    state = await keeper.agent.run(normalize(body.text), now, body.photo_id, body.lat, body.lng)
+    history = [t.model_dump() for t in body.history]
+    prefs = body.prefs.model_dump() if body.prefs else None
+    state = await keeper.agent.run(normalize(body.text), now, body.photo_id, body.lat, body.lng, history, prefs)
     cmd = state["command"]
     out: dict[str, Any] = {
         "reply": state["reply"],
@@ -214,6 +231,34 @@ async def send_brief(request: Request, keeper: Keeper, now: Now) -> dict[str, st
 
 
 # ── Photos ────────────────────────────────────────────────────────────────
+class AudioIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    audio: str = Field(max_length=4_000_000)  # base64 (≈3 MB of audio: a spoken command, not a recording)
+    mime: str = Field("audio/webm", pattern=r"^audio/[\w.+-]+(;.*)?$")
+
+
+AUDIO_EXT = {"webm": "webm", "ogg": "ogg", "mp4": "m4a", "mpeg": "mp3", "wav": "wav", "x-m4a": "m4a", "aac": "m4a"}
+
+
+@router.post("/transcribe")
+@limiter.limit("20/minute")
+async def transcribe(request: Request, body: AudioIn, keeper: Keeper) -> dict[str, str]:
+    """Speech to text for browsers without built-in voice recognition (Groq Whisper). Audio is not stored."""
+    raw = body.audio.split(",", 1)[1] if body.audio.startswith("data:") else body.audio
+    try:
+        blob = base64.b64decode(raw, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(422, "Audio must be base64 encoded.") from exc
+    if not blob:
+        raise HTTPException(422, "No audio received.")
+    ext = AUDIO_EXT.get(body.mime.split(";")[0].split("/")[1], "webm")
+    try:
+        text = await keeper.transcribe(blob, f"command.{ext}")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, user_facing_error(exc)) from None
+    return {"text": text.strip()[:600]}
+
+
 @router.post("/photos", status_code=201)
 @limiter.limit(rate_limit_value)
 def upload_photo(request: Request, body: PhotoIn, keeper: Keeper) -> dict[str, str]:

@@ -83,7 +83,7 @@ const REGISTRY = [
   {
     id: 'keeper',
     problem: 'Bills, warranties, renewals and to-dos slipping through the cracks?',
-    outcome: 'Tell Tijori in plain words or snap a bill: it keeps track, reminds you in time and answers “when does my…” questions.',
+    outcome: 'Just say it, on your laptop or phone: Tijori remembers, reminds you in time, tells you what’s on today and answers your questions out loud, like the assistant on your phone.',
     slug: 'tijori',
     aliases: ['keeper'],
     image: 'keeper',
@@ -94,9 +94,7 @@ const REGISTRY = [
     priority: 3,
     status: 'beta',
     lastVerified: VERIFIED,
-    statusNote:
-      'Approved and deferred until Jasoos. Purchase capture, deadline provenance, claim packs and claim tracking are not built yet. ' +
-      'The earlier Keeper memory assistant is still available as a prototype.',
+    statusNote: 'Voice-first assistant: speak or type; it saves reminders, bills, renewals, warranties, where things are and who has what, answers questions and plans your day, and reads replies aloud. Voice uses the browser where it can and server-side Whisper elsewhere. Not yet verified with a live model on the deployed backend.',
     tagline: 'Never lose money to a missed return window or warranty claim.',
     description:
       'Photograph a bill or warranty card: Tijori extracts the purchase facts with their source, tracks return and warranty ' +

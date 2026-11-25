@@ -30,10 +30,12 @@ from appcore.llm.structured import complete_json
 
 logger = logging.getLogger(__name__)
 
-ROUTER_SYSTEM = """You are the intent router of "Keeper", a personal assistant that remembers everyday things.
+ROUTER_SYSTEM = """You are the intent router of "Tijori", a personal assistant that remembers everyday things.
 Convert the user's message into ONE JSON object (no prose) with these keys (omit or null when unknown):
 
-action: "add" | "find" | "done" | "list" | "brief" | "help"
+action: "add" | "find" | "done" | "list" | "brief" | "help" | "chat"
+        ("chat": anything that is not about saving or finding the user's things: questions, advice,
+         general knowledge, planning help, the time or date, small talk, thanks)
 kind:   "stash"     – where an object is kept ("passport, top drawer")
         "parking"   – where the vehicle is parked
         "loan"      – something lent to / borrowed from a person (direction: "lent" | "borrowed")
@@ -52,13 +54,31 @@ Conventions:
 - Questions like "where is X / where did I put X" → action "find", query "X".
 - "where did I park" → find + kind parking.  "what's due / my day" → brief.  "shopping list" → list + pantry.
 - "X returned the Y" / "got Y back" → done + loan.  "bought milk" → done + pantry.  "AC was serviced" → done + appliance.
+- "remind me to X at/on T" → add + care (subject "other", title X, date/time) — a one-off reminder.
+- Questions that aren't about the user's saved things ("how long to boil an egg", "what's 15% of 840") → chat.
+- Use the earlier conversation (if given) to resolve "it", "that", "same time", "tomorrow too".
 - Titles are short nouns ("Passport", "Drill", "Car insurance"), never full sentences.
 Today is {today} ({weekday}); the user's local time is {time}."""
+
+
+ASSISTANT_SYSTEM = """You are Tijori, a {tone} personal assistant. Your reply will be read aloud, so:
+answer in {length} of plain speech (no markdown, lists, emojis or URLs), lead with the answer, and be
+specific.{name} Use the user's saved items and today's agenda below when relevant; never invent their data, bookings,
+messages or events, and never claim to have done something (calls, emails, purchases, web searches) you cannot do.
+If you need live information you don't have (weather, news, prices), say so briefly and suggest what you can do.
+Now: {now} ({weekday}).
+TODAY'S AGENDA: {agenda}"""
+
+
+TONES = {"warm": "warm, capable", "professional": "concise, professional", "cheerful": "upbeat, cheerful"}
+LENGTHS = {"short": "1-3 short sentences", "detailed": "up to 6 clear sentences"}
 
 
 class KeeperState(TypedDict, total=False):
     text: str
     photo_id: str | None
+    history: list[dict[str, str]]
+    prefs: dict[str, str]
     lat: float | None
     lng: float | None
     now: dt.datetime
@@ -99,10 +119,13 @@ class KeeperAgent:
         self.graph = g.compile()
 
     async def run(self, text: str, now: dt.datetime, photo_id: str | None = None,
-                  lat: float | None = None, lng: float | None = None) -> KeeperState:  # fmt: skip
+                  lat: float | None = None, lng: float | None = None,
+                  history: list[dict[str, str]] | None = None,
+                  prefs: dict[str, str] | None = None) -> KeeperState:  # fmt: skip
         return await self.graph.ainvoke(
-            {"text": text, "now": now, "photo_id": photo_id, "lat": lat, "lng": lng, "trace": []}
-        )
+            {"text": text, "now": now, "photo_id": photo_id, "lat": lat, "lng": lng, "trace": [],
+             "history": history or [], "prefs": prefs or {}}
+        )  # fmt: skip
 
     # ── understand ─────────────────────────────────────────────────────────
     async def _understand(self, state: KeeperState) -> KeeperState:
@@ -115,7 +138,7 @@ class KeeperAgent:
                 today=now.date().isoformat(), weekday=now.strftime("%A"), time=now.strftime("%H:%M")
             )
             llm_cmd = await asyncio.wait_for(
-                complete_json(for_task(self._get_llm(), "keeper.command"), system, state["text"], Command),
+                complete_json(for_task(self._get_llm(), "keeper.command"), system, _with_history(state), Command),
                 self._timeout,
             )
             if _plausible(llm_cmd):
@@ -270,8 +293,49 @@ class KeeperAgent:
     # ── respond ────────────────────────────────────────────────────────────
     async def _respond(self, state: KeeperState) -> KeeperState:
         start = time.perf_counter()
+        if state["command"].action == "chat":
+            reply = await self._chat(state)
+            return {"reply": reply, "trace": _trace(state, "respond", start, "answered as an assistant")}
         reply = compose_reply(state["command"], state.get("entries", []))
         return {"reply": reply, "trace": _trace(state, "respond", start, "confirmation composed")}
+
+    async def _chat(self, state: KeeperState) -> str:
+        """A spoken-style answer for anything that isn't a save/find chore, grounded in today's agenda."""
+        now = state["now"]
+        items = schedule.agenda(self.store.list(), now)[:8]
+        agenda = "; ".join(i.label for i in items) or "nothing due"
+        prefs = state.get("prefs") or {}
+        name = (prefs.get("name") or "").strip()
+        system = ASSISTANT_SYSTEM.format(
+            now=now.strftime("%Y-%m-%d %H:%M"), weekday=now.strftime("%A"), agenda=agenda,
+            tone=TONES.get(prefs.get("tone", ""), TONES["warm"]),
+            length=LENGTHS.get(prefs.get("length", ""), LENGTHS["short"]),
+            name=f" The user's name is {name}; use it now and then, not in every reply." if name else "",
+        )  # fmt: skip
+        try:
+            text = await asyncio.wait_for(
+                for_task(self._get_llm(), "keeper.chat").complete(
+                    system, [{"role": "user", "content": _with_history(state)}]
+                ),
+                self._timeout,
+            )
+            text = re.sub(r"[*_#`]+", "", str(text)).strip()
+            if text:
+                return text[:700]
+        except Exception as exc:  # noqa: BLE001 - offline: still answer something useful
+            logger.info("Tijori chat fell back: %s", type(exc).__name__)
+        if re.search(r"\btime\b", state["text"], re.I):
+            return f"It's {now.strftime('%H:%M')} on {now.strftime('%A, %d %B')}."
+        return "I can't answer that right now, but I can remember things, remind you, and tell you what's due."
+
+
+def _with_history(state: KeeperState) -> str:
+    """The message, with the last few turns so follow-ups ("remind me about that tomorrow") make sense."""
+    turns = [t for t in state.get("history") or [] if t.get("text")][-6:]
+    if not turns:
+        return state["text"]
+    lines = [f"{'User' if t.get('role') == 'user' else 'Tijori'}: {str(t['text'])[:300]}" for t in turns]
+    return "Earlier in this conversation:\n" + "\n".join(lines) + f"\n\nNow the user says: {state['text']}"
 
 
 _CURRENCY = {"INR": "₹", "RS": "₹", "RS.": "₹", "USD": "$", "EUR": "€", "GBP": "£"}

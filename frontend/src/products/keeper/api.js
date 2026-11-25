@@ -40,7 +40,9 @@ async function call(path, init = {}) {
       .json()
       .then((b) => (typeof b.detail === 'string' ? b.detail : null))
       .catch(() => null)
-    throw new Error(detail ?? (res.status === 429 ? 'Too many requests, please wait a moment.' : `Request failed (${res.status})`))
+    const err = new Error(detail ?? (res.status === 429 ? 'Too many requests, please wait a moment.' : `Request failed (${res.status})`))
+    err.status = res.status
+    throw err
   }
   return (res.status === 204 ? undefined : await res.json())
 }
@@ -50,8 +52,16 @@ const post = (path, body) =>
 
 export const keeperApi = {
   status: () => call('/status'),
-  command: (text, extra = {}) =>
-    post('/command', { text, ...extra }),
+  /** A spoken or typed request. Servers older than the conversation memory reject `history` and `prefs`: ask again without them. */
+  command: async (text, extra = {}) => {
+    try {
+      return await post('/command', { text, ...extra })
+    } catch (e) {
+      if (e?.status !== 422 || !(extra.history || extra.prefs)) throw e
+      const { history: _h, prefs: _p, ...rest } = extra
+      return post('/command', { text, ...rest })
+    }
+  },
   entries: (kind) => call(`/entries${kind ? `?kind=${kind}` : ''}`),
   create: (entry) => post('/entries', entry),
   update: (id, patch) => call(`/entries/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
@@ -62,6 +72,7 @@ export const keeperApi = {
   brief: () => call('/brief'),
   sendBrief: () => post('/brief/telegram'),
   uploadPhoto: (dataUrl) => post('/photos', { image: dataUrl }),
+  transcribe: (audio, mime) => post('/transcribe', { audio, mime }),
   scan: (photo_id, hint = 'auto') => post('/scan', { photo_id, hint }),
   dueAlerts: () => call('/reminders/due'),
   ack: (id, key) => post(`/entries/${id}/ack`, { key }),

@@ -15,7 +15,12 @@ import { errorText, get, post, streamPost } from '../shared/http'
 
 const ACCENT = 'from-amber-500 via-orange-500 to-rose-500'
 const BASE = '/codelens'
-const EXAMPLES = ['https://github.com/pallets/itsdangerous', 'https://github.com/expressjs/express', 'https://github.com/psf/requests']
+// Small, public and active, so a first try finishes in well under a minute on the free server.
+const EXAMPLES = [
+  { url: 'https://github.com/pallets/itsdangerous', lang: 'Python', what: 'signing data safely' },
+  { url: 'https://github.com/expressjs/morgan', lang: 'JavaScript', what: 'HTTP request logging' },
+  { url: 'https://github.com/pallets/markupsafe', lang: 'Python', what: 'safe HTML strings' },
+]
 const STAGES = {
   download: 'Downloading the code',
   read: 'Reading the files',
@@ -25,11 +30,11 @@ const STAGES = {
   pack: 'Writing the onboarding pack',
 }
 const CHAPTERS = [
-  { id: 'overview', title: 'What it is', icon: Sparkles },
-  { id: 'areas', title: "How it's organised", icon: FolderGit2 },
-  { id: 'path', title: 'What to read first', icon: RouteIcon },
-  { id: 'week', title: 'Your first week', icon: Check },
-  { id: 'ask', title: 'Ask anything', icon: MessageSquareCode },
+  { id: 'overview', title: 'What it is', icon: Sparkles, blurb: 'What the project does and how the parts fit together.' },
+  { id: 'areas', title: "How it's organised", icon: FolderGit2, blurb: 'The main parts of the code, and where each lives.' },
+  { id: 'path', title: 'What to read first', icon: RouteIcon, blurb: 'An ordered reading path: entry points first.' },
+  { id: 'week', title: 'Your first week', icon: Check, blurb: 'A five-day plan with checkpoints, from setup to first change.' },
+  { id: 'ask', title: 'Ask anything', icon: MessageSquareCode, blurb: 'Answers with the exact files and lines.' },
 ]
 
 const blobUrl = (r, path, start, end) => `${r.url}/blob/HEAD/${path}${start ? `#L${start}${end ? `-L${end}` : ''}` : ''}`
@@ -49,21 +54,26 @@ function Start() {
   const [url, setUrl] = useState('')
   const [repos, setRepos] = useState(null)
   const [stages, setStages] = useState(null) // [{ stage, detail, done }] while building
+  const [found, setFound] = useState({}) // what the repo turned out to contain, shown while it keeps working
   const [error, setError] = useState(null)
   useEffect(() => void get('/api/code/repos').then(setRepos).catch(() => setRepos([])), [])
 
   const build = async (target) => {
     setError(null)
     setStages([])
+    setFound({ repo: target.trim().replace(/^https:\/\/github\.com\//, '') })
     const step = (stage, detail = '') => setStages((s) => [...(s ?? []).map((x) => ({ ...x, done: true })), { stage, detail, done: false }])
     try {
       let repo = null
       await streamPost('/api/code/repos', { url: target.trim() }, (ev) => {
         if (ev.event === 'stage') step(String(ev.stage), String(ev.detail ?? ''))
+        else if (ev.event === 'preview' || ev.event === 'found') setFound((f) => ({ ...f, ...ev }))
+        else if (ev.event === 'progress') setFound((f) => ({ ...f, embedded: ev.done, total: ev.total }))
         else if (ev.event === 'done') repo = ev.repo
         else if (ev.event === 'error') throw new Error(String(ev.message))
       })
-      if (!repo) throw new Error("The repository couldn't be read. Please try again.")
+      // The stream can end without a result when the server runs out of time or memory on a big repo.
+      if (!repo) throw new Error('The server stopped before it finished reading this repository. It may be too big for the free server: try a smaller one, or one of the examples.')
       step('pack')
       await post(`/api/code/repos/${repo.id}/pack`).catch(() => null) // the pack page retries if this fails
       navigate(`${BASE}/${repo.id}`)
@@ -73,7 +83,7 @@ function Start() {
     }
   }
 
-  if (stages) return <Building stages={stages} />
+  if (stages) return <Building stages={stages} found={found} />
   return (
     <div className="mx-auto max-w-3xl space-y-8 py-4">
       <header className="text-center">
@@ -90,9 +100,11 @@ function Start() {
           </button>
         </form>
         <p className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-500">
-          Try one:
+          No repo handy? Try one:
           {EXAMPLES.map((x) => (
-            <button key={x} type="button" className="chip" onClick={() => { setUrl(x); void build(x) }}>{x.replace('https://github.com/', '')}</button>
+            <button key={x.url} type="button" className="chip" title={`${x.lang}: ${x.what}`} onClick={() => { setUrl(x.url); void build(x.url) }}>
+              {x.url.replace('https://github.com/', '')} <span className="text-ink-500">· {x.lang}</span>
+            </button>
           ))}
         </p>
         <ErrorNote message={error} />
@@ -113,30 +125,174 @@ function Start() {
           </ul>
         </section>
       )}
+      <WhatYouGet />
       <p className="text-center text-[12px] text-ink-500">Public repositories only, up to 40 MB. Nothing is pushed to the repo; CodeLens only reads it.</p>
     </div>
   )
 }
 
-function Building({ stages }) {
+/** The selling point, before anyone pastes a URL: what a new joiner gets out of it. */
+function WhatYouGet() {
   return (
-    <div className="mx-auto max-w-md py-10">
-      <p className="text-center text-[20px] font-semibold text-white">Reading the repository…</p>
-      <p className="mt-1 text-center text-[13px] text-ink-400">This takes up to a minute for a big repo.</p>
-      <ol className="mt-6 space-y-2">
-        {Object.entries(STAGES).map(([key, label]) => {
-          const s = stages.find((x) => x.stage === key)
+    <section>
+      <p className="mb-3 text-center text-[13px] font-semibold text-ink-300">What a new joiner gets, in about a minute</p>
+      <ol className="grid gap-2 sm:grid-cols-5">
+        {CHAPTERS.map((c, i) => {
+          const Icon = c.icon
           return (
-            <li key={key} className={`flex items-center gap-3 rounded-xl px-3 py-2 text-[14px] ${s ? 'text-white' : 'text-ink-600'}`}>
-              <span className="grid size-6 place-items-center">
-                {s?.done ? <Check className="size-4 text-emerald-300" /> : s ? <Spinner /> : <span className="size-1.5 rounded-full bg-ink-600" />}
-              </span>
-              <span className="flex-1">{label}</span>
-              {s?.detail && <span className="text-[12px] text-ink-500">{s.detail}</span>}
+            <li key={c.id} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3">
+              <span className="flex items-center gap-2 text-[12px] text-ink-500"><span className={`grid size-6 place-items-center rounded-lg bg-gradient-to-br ${ACCENT} text-on-accent`}><Icon className="size-3.5" /></span> {i + 1}</span>
+              <p className="mt-2 text-[13.5px] font-semibold text-white">{c.title}</p>
+              <p className="mt-0.5 text-[12px] leading-snug text-ink-400">{c.blurb}</p>
             </li>
           )
         })}
       </ol>
+      <p className="mt-3 text-center text-[12.5px] text-ink-500">One link per repo: share it with every new joiner on the team.</p>
+    </section>
+  )
+}
+
+/** Count up to a number, so facts arrive with a bit of life. */
+function CountUp({ to }) {
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    let raf = 0
+    const t0 = performance.now()
+    const tick = (t) => {
+      const k = Math.min(1, (t - t0) / 900)
+      setN(Math.round(to * (1 - (1 - k) ** 3)))
+      if (k < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [to])
+  return <>{n.toLocaleString()}</>
+}
+
+/**
+ * While the repo is read: a lens scanning the repo's real file names, facts appearing as they're found, the checklist
+ * of what's happening, and a reminder of what the pack will contain. Every number shown is real.
+ */
+function Building({ stages, found }) {
+  const [seconds, setSeconds] = useState(0)
+  const [tip, setTip] = useState(0)
+  const [file, setFile] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setSeconds((s) => s + 1), 1000)
+    const u = setInterval(() => setTip((i) => (i + 1) % CHAPTERS.length), 4200)
+    return () => { clearInterval(t); clearInterval(u) }
+  }, [])
+  const sample = found.sample ?? []
+  useEffect(() => {
+    if (!sample.length) return
+    const t = setInterval(() => setFile((i) => (i + 1) % sample.length), 450)
+    return () => clearInterval(t)
+  }, [sample.length])
+  const keys = Object.keys(STAGES)
+  const doneCount = stages.filter((s) => s.done).length
+  // Steps, with the long embedding step filled in as its pieces are done.
+  const within = current?.stage === 'embed' && found.total ? found.embedded / found.total : 0.5
+  const pct = Math.min(99, Math.round(((doneCount + within) / keys.length) * 100))
+  const current = stages.at(-1)
+  const nextUp = CHAPTERS[tip]
+
+  return (
+    <div className="mx-auto grid max-w-5xl gap-6 py-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      <div className="flex flex-col items-center">
+        {/* The lens */}
+        <div className="relative grid size-64 place-items-center sm:size-72">
+          <motion.div aria-hidden className="absolute inset-0 rounded-full" style={{ background: 'conic-gradient(from 0deg, transparent 0 70%, rgb(251 146 60 / 0.55) 85%, transparent 100%)' }} animate={{ rotate: 360 }} transition={{ duration: 2.6, repeat: Infinity, ease: 'linear' }} />
+          <div aria-hidden className="absolute inset-3 rounded-full border border-white/10 bg-ink-950" />
+          <div aria-hidden className="absolute inset-10 rounded-full border border-dashed border-white/10" />
+          <div className="relative w-[78%] text-center">
+            <Code2 className="mx-auto size-7 text-amber-300" />
+            <AnimatePresence mode="popLayout">
+              <motion.p key={sample[file] ?? current?.stage ?? 'start'} initial={{ opacity: 0, y: 14, filter: 'blur(4px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} exit={{ opacity: 0, y: -14, filter: 'blur(4px)' }} transition={{ duration: 0.3 }}
+                className="mt-3 truncate font-mono text-[12.5px] text-amber-100">
+                {sample[file] ?? found.repo ?? '…'}
+              </motion.p>
+            </AnimatePresence>
+            <p className="mt-2 text-[12px] text-ink-500">
+              {current?.stage === 'embed' && found.total ? `Indexed ${found.embedded} of ${found.total} pieces of code` : STAGES[current?.stage] ?? 'Starting…'}
+            </p>
+          </div>
+        </div>
+        <div className="mt-6 w-full max-w-sm">
+          <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><motion.div className={`h-full bg-gradient-to-r ${ACCENT}`} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} /></div>
+          <p className="mt-2 flex justify-between text-[12px] text-ink-500"><span>{doneCount} of {keys.length} steps</span><span>{seconds}s</span></p>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <p className="text-[12px] font-semibold tracking-[0.14em] text-ink-500 uppercase">Reading</p>
+          <p className="truncate text-[22px] font-semibold text-white">{found.title || found.repo}</p>
+        </div>
+        <AnimatePresence>
+          {found.files && (
+            <motion.div key="facts" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-2 gap-2">
+              <Fact label="files to learn"><CountUp to={found.files} /></Fact>
+              <Fact label="lines of code"><CountUp to={found.lines} /></Fact>
+              {found.symbols != null && <Fact label="functions & classes"><CountUp to={found.symbols} /></Fact>}
+              {found.edges != null && <Fact label="links between files"><CountUp to={found.edges} /></Fact>}
+            </motion.div>
+          )}
+          {found.languages?.length > 0 && (
+            <motion.div key="langs" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="space-y-1.5">
+              {found.languages.map((l) => (
+                <div key={l.name} className="flex items-center gap-2 text-[12.5px]">
+                  <span className="w-20 shrink-0 text-ink-300">{l.name}</span>
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[0.05]"><motion.div className={`h-full bg-gradient-to-r ${ACCENT}`} initial={{ width: 0 }} animate={{ width: `${Math.max(2, l.share)}%` }} transition={{ duration: 0.8 }} /></div>
+                  <span className="w-9 text-right text-ink-500">{l.share}%</span>
+                </div>
+              ))}
+            </motion.div>
+          )}
+          {found.folders?.length > 0 && (
+            <motion.p key="folders" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }} className="flex flex-wrap gap-1.5">
+              {found.folders.map((f) => <span key={f} className="rounded-lg bg-white/[0.05] px-2 py-0.5 font-mono text-[11.5px] text-ink-300">{f}/</span>)}
+            </motion.p>
+          )}
+        </AnimatePresence>
+        <ol className="space-y-1 border-t border-white/[0.06] pt-3">
+          {keys.map((key) => {
+            const s = stages.find((x) => x.stage === key)
+            return (
+              <li key={key} className={`flex items-center gap-2.5 text-[13px] ${s ? 'text-ink-100' : 'text-ink-600'}`}>
+                <span className="grid size-5 place-items-center">{s?.done ? <Check className="size-3.5 text-emerald-300" /> : s ? <motion.span className="size-2 rounded-full bg-amber-300" animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1, repeat: Infinity }} /> : <span className="size-1.5 rounded-full bg-ink-600" />}</span>
+                {STAGES[key]}
+              </li>
+            )
+          })}
+        </ol>
+        <AnimatePresence mode="wait">
+          <motion.div key={nextUp.id} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3">
+            <p className="text-[11.5px] text-ink-500">Coming up in your pack</p>
+            <p className="mt-0.5 text-[14px] font-semibold text-white">{nextUp.title}</p>
+            <p className="text-[12.5px] text-ink-400">{nextUp.blurb}</p>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    </div>
+  )
+}
+
+function CopyButton({ text }) {
+  const [done, setDone] = useState(false)
+  return (
+    <button type="button" onClick={() => void navigator.clipboard.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1500) })}
+      className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-lg bg-white/[0.08] px-2 py-1 text-[11.5px] text-ink-200 hover:bg-white/[0.14]">
+      {done ? <Check className="size-3" /> : <Copy className="size-3" />} {done ? 'Copied' : 'Copy'}
+    </button>
+  )
+}
+
+function Fact({ label, children }) {
+  return (
+    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] px-3 py-2.5">
+      <p className="text-[20px] font-semibold text-white tabular-nums">{children}</p>
+      <p className="text-[11.5px] text-ink-500">{label}</p>
     </div>
   )
 }
@@ -267,7 +423,10 @@ function Overview({ repo, pack }) {
       <div>
         <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-300"><Terminal className="size-3.5" /> Get it running</p>
         {pack.run.length ? (
-          <pre className="mt-2 overflow-x-auto rounded-xl bg-black/30 p-3 font-mono text-[12.5px] text-emerald-200">{pack.run.join('\n')}</pre>
+          <div className="relative mt-2">
+            <pre className="overflow-x-auto rounded-xl bg-black/30 p-3 pr-20 font-mono text-[12.5px] text-emerald-200">{pack.run.join('\n')}</pre>
+            <CopyButton text={pack.run.join('\n')} />
+          </div>
         ) : (
           <p className="mt-1 text-[13px] text-ink-400">The README doesn't list setup commands. Ask “How do I run this locally?” in the last chapter.</p>
         )}

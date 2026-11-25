@@ -75,3 +75,25 @@ describe('keeper modules', () => {
     )
   })
 })
+
+describe('Tijori with an older server', () => {
+  it('asks again without the conversation history when the server rejects it', async () => {
+    const { keeperApi } = await import('./api')
+    const bodies = []
+    const real = globalThis.fetch
+    globalThis.fetch = async (_url, init) => {
+      bodies.push(JSON.parse(init.body))
+      return bodies.length === 1
+        ? new Response(JSON.stringify({ detail: [{ type: 'extra_forbidden' }] }), { status: 422 })
+        : new Response(JSON.stringify({ reply: 'Saved.', action: 'add' }), { status: 200 })
+    }
+    try {
+      const res = await keeperApi.command('passport, top drawer', { history: [{ role: 'user', text: 'hi' }], prefs: { name: 'Sid', tone: 'warm', length: 'short' } })
+      expect(res.reply).toBe('Saved.')
+      expect(bodies[0].history).toHaveLength(1)
+      expect(bodies[1]).toEqual({ text: 'passport, top drawer' })
+    } finally {
+      globalThis.fetch = real
+    }
+  })
+})

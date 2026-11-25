@@ -28,7 +28,8 @@ class Embedder:
 
     def embed_documents(self, texts: Sequence[str]) -> np.ndarray:
         with self._lock:
-            return np.array(list(self._model.passage_embed(list(texts))), dtype=np.float32)
+            # Small batches: one batch of hundreds of long passages can exceed a serverless function's memory.
+            return np.array(list(self._model.passage_embed(list(texts), batch_size=16)), dtype=np.float32)
 
     def embed_query(self, text: str) -> np.ndarray:
         # query_embed adds the model-specific query instruction prefix for BGE.
