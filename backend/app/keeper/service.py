@@ -45,6 +45,7 @@ class KeeperService:
         self._get_llm = get_llm
         self._vision_factory = vision_factory
         self._vision: VisionLLM | None = None
+        self.transcriber = None  # injectable for tests: async (audio, filename) -> str
         self.agent = KeeperAgent(
             self.store, get_llm, caption=self._caption, llm_timeout_s=settings.keeper_llm_timeout_s
         )
@@ -95,6 +96,20 @@ class KeeperService:
             return None
 
     # ── agenda & brief ────────────────────────────────────────────────────
+    async def transcribe(self, audio: bytes, filename: str) -> str:
+        """A spoken command → text, through the router's free-tier Whisper model."""
+        if self.transcriber is not None:  # tests
+            return await self.transcriber(audio, filename)
+        if not (self.settings.groq_api_key and self.settings.groq_api_key.get_secret_value()):
+            raise RuntimeError("Voice needs GROQ_API_KEY on the server; type the command instead.")
+        from appcore.llm import LLMRequest, get_router
+
+        routed = await get_router(self.settings).transcribe(
+            LLMRequest(task="keeper.transcribe", audio=(filename, audio), prefer_model=self.settings.whisper_model,
+                       timeout_s=30, response_params={"response_format": "json", "temperature": 0.0})
+        )  # fmt: skip
+        return str(getattr(routed.raw, "text", "") or "")
+
     def agenda(self, now: dt.datetime) -> list[AgendaItem]:
         return schedule.agenda(self.store.list(), now)
 

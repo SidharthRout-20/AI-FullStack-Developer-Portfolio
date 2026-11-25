@@ -1,7 +1,7 @@
 {
-  "name": "Keeper · Personal assistant",
-  "short_name": "Keeper",
-  "description": "Remembers where things are, who has what, and what's due.",
+  "name": "Tijori · Personal assistant",
+  "short_name": "Tijori",
+  "description": "A voice-first personal assistant: reminders, bills, renewals, where things are, and answers.",
   "id": "/keeper",
   "start_url": "/keeper",
   "scope": "/",

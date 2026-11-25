@@ -113,7 +113,7 @@ function ProductRoute({ title, label, App, props }) {
 }
 
 function KeeperRoute() {
-  useTitle('Keeper · Personal assistant')
+  useTitle('Tijori · Personal assistant')
   return (
     <Suspense
       fallback={

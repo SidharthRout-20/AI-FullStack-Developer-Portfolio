@@ -1,4 +1,4 @@
-import { ArrowLeft, Cpu, Eye, KeyRound, LayoutGrid, Route as RouteIcon, ShieldCheck, Sparkles, WifiOff } from 'lucide-react'
+import { ArrowLeft, Cpu, Eye, KeyRound, LayoutGrid, Mic, Route as RouteIcon, ShieldCheck, Sparkles, WifiOff } from 'lucide-react'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Backdrop } from '../../components/shell/Backdrop'
@@ -9,6 +9,7 @@ import {
   KeyRequiredError,
   setAccessKey,
 } from './api'
+import { Assistant } from './Assistant'
 import { Capture } from './Capture'
 import { currentPosition, notify, registerServiceWorker } from '@appcore/web/device'
 import { EntryCard } from './EntryCard'
@@ -25,6 +26,7 @@ export default function KeeperApp() {
   const [agenda, setAgenda] = useState([])
   const [brief, setBrief] = useState(null)
   const [briefLoading, setBriefLoading] = useState(false)
+  const [view, setView] = useState('assistant') // 'assistant' (talk to Tijori) | 'stuff' (everything it remembers)
   const [module, setModule] = useState('today')
   const [busy, setBusy] = useState(false)
   const [turn, setTurn] = useState(null)
@@ -106,7 +108,7 @@ export default function KeeperApp() {
         if (a.bucket !== 'today' && a.bucket !== 'overdue') continue
         if (a.entry.due_time) continue
         if (sent[a.entry.id] === today) continue
-        void notify('Keeper', a.label, a.entry.id)
+        void notify('Tijori', a.label, a.entry.id)
         sent[a.entry.id] = today
       }
       try {
@@ -229,9 +231,17 @@ export default function KeeperApp() {
                 <Sparkles className="size-4" />
               </span>
               <div className="leading-tight">
-                <p className="text-[15px] font-semibold tracking-tight text-white">Keeper</p>
-                <p className="hidden text-[11px] text-ink-400 sm:block">remembers the small stuff</p>
+                <p className="text-[15px] font-semibold tracking-tight text-white">Tijori</p>
+                <p className="hidden text-[11px] text-ink-400 sm:block">your personal assistant</p>
               </div>
+            </div>
+            <div role="tablist" aria-label="Tijori views" className="ml-2 inline-flex rounded-full border border-white/[0.07] bg-white/[0.03] p-0.5 text-[12.5px]">
+              {[['assistant', 'Assistant', Mic], ['stuff', 'Your stuff', LayoutGrid]].map(([id, label, Icon]) => (
+                <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition ${view === id ? 'bg-white/[0.1] text-white' : 'text-ink-400 hover:text-white'}`}>
+                  <Icon className="size-3.5" /> <span className="hidden sm:inline">{label}</span>
+                </button>
+              ))}
             </div>
             <div className="ml-auto flex items-center gap-2">
               {status && (
@@ -253,6 +263,16 @@ export default function KeeperApp() {
 
         {needKey ? (
           <KeyGate onUnlock={boot} />
+        ) : view === 'assistant' ? (
+          <div className="w-full flex-1 px-4 py-6 lg:py-10">
+            <Assistant
+              agenda={agenda}
+              onChanged={() => void refresh()}
+              onOpen={(kind) => { setModule(kind); setView('stuff') }}
+              onScan={(p) => void startScan(p)}
+              onError={handle}
+            />
+          </div>
         ) : (
           <div className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-[minmax(0,1fr)] gap-6 px-4 py-5 lg:grid-cols-[230px_minmax(0,1fr)] lg:py-8">
             {/* Module rail (desktop) / chip strip (mobile) */}

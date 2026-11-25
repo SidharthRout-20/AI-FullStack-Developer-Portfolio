@@ -22,6 +22,8 @@ register_tasks(
         "documind.match": TaskProfile(C, "multi_document_analysis", "json"),
         # Keeper
         "keeper.command": TaskProfile(S, "intent_classification", "json", signals=False),
+        "keeper.chat": TaskProfile(S, "conversation"),
+        "keeper.transcribe": TaskProfile(S, "transcription"),
         "keeper.brief": TaskProfile(S, "summarisation", background=True),
         "keeper.photo": TaskProfile(S, "image_extraction", "json"),
         # Follow-through prototype (MeetingMind)

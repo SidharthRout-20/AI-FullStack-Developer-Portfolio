@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import itertools
 import json
@@ -268,3 +269,77 @@ def test_access_key_and_llm_router(settings):
         body = r.json()
         assert body["routed_by"] == "llm" and body["entries"][0]["data"]["direction"] == "borrowed"
         assert c.get("/api/health").status_code == 200  # other products unaffected
+
+
+# ── Tijori as a personal assistant ─────────────────────────────────────────
+class _Seen:
+    """A scripted model that records what it was asked."""
+
+    def __init__(self, replies):
+        self.replies, self.prompts = iter(replies), []
+
+    def __call__(self):
+        outer = self
+
+        class _LLM:
+            async def complete(self, system, messages, **_):
+                outer.prompts.append((system, messages[-1]["content"]))
+                return next(outer.replies)
+
+            async def stream(self, system, messages):
+                yield await self.complete(system, messages)
+
+        return _LLM()
+
+
+def test_tijori_answers_questions_and_follows_the_conversation(tmp_path):
+    asyncio.run(_answers(tmp_path))
+
+
+async def _answers(tmp_path):
+    from app.keeper.agent import KeeperAgent
+
+    llm = _Seen(['{"action": "chat"}', "Boil it for **9 minutes**, then cool it in cold water."])
+    agent = KeeperAgent(KeeperStore(tmp_path), llm)
+    history = [{"role": "user", "text": "I want a hard-boiled egg"}, {"role": "assistant", "text": "Sure."}]
+    out = await agent.run("how long should I boil it?", dt.datetime(2030, 5, 1, 8, 0), history=history)
+    assert out["command"].action == "chat"
+    assert out["reply"] == "Boil it for 9 minutes, then cool it in cold water."  # no markdown: it's read aloud
+    router_msg, chat_msg = llm.prompts[0][1], llm.prompts[1][1]
+    assert "I want a hard-boiled egg" in router_msg and "Now the user says: how long should I boil it?" in chat_msg
+    assert "TODAY'S AGENDA: nothing due" in llm.prompts[1][0]
+
+
+def test_tijori_still_answers_the_time_without_a_model(tmp_path):
+    asyncio.run(_offline_time(tmp_path))
+
+
+async def _offline_time(tmp_path):
+    from app.keeper.agent import KeeperAgent
+
+    class Down:
+        async def complete(self, *a, **k):
+            raise RuntimeError("offline")
+
+    agent = KeeperAgent(KeeperStore(tmp_path), lambda: Down())
+    state = {"text": "what time is it", "now": dt.datetime(2030, 5, 1, 14, 5), "history": []}
+    assert await agent._chat(state) == "It's 14:05 on Wednesday, 01 May."
+
+
+def test_voice_commands_are_transcribed_without_storing_audio(client):
+    async def fake(audio, filename):
+        assert audio == b"RIFFdata" and filename == "command.webm"
+        return "  remind me to call mom at 6 pm "
+
+    client.app.state.keeper.transcriber = fake
+    import base64
+
+    r = client.post(
+        "/api/keeper/transcribe",
+        json={"audio": base64.b64encode(b"RIFFdata").decode(), "mime": "audio/webm;codecs=opus"},
+    )
+    assert r.json() == {"text": "remind me to call mom at 6 pm"}
+    assert client.post("/api/keeper/transcribe", json={"audio": "!!", "mime": "audio/webm"}).status_code == 422
+    assert client.post("/api/keeper/transcribe", json={"audio": "AA==", "mime": "text/html"}).status_code == 422
+    # history is accepted with commands, for follow-ups
+    assert say(client, "where is my passport", history=[{"role": "user", "text": "hi"}])["action"] == "find"
