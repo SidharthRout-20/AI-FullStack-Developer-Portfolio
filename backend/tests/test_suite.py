@@ -35,6 +35,12 @@ ANALYSIS = {"title": "Sprint planning", "summary": "We planned the sprint.", "de
             "topics": ["release"], "sentiment": "positive"}  # fmt: skip
 TOUR = {"overview": "A tiny demo app.", "steps": [{"title": "Entry", "path": "app/main.py", "explanation": "Start here."},
         {"title": "Utils", "path": "app/utils.py", "explanation": "Helpers."}, {"title": "UI", "path": "web/index.ts", "explanation": "Front."}]}  # fmt: skip
+PACK = {"purpose": "A tiny demo app.", "architecture": "main calls utils; the web client calls the API.",
+        "areas": [{"name": "Backend", "what": "The app.", "paths": ["app/main.py", "app/ghost.py"]}],
+        "run": ["make deploy"],
+        "week": [{"day": 2, "goal": "Read the core", "tasks": [{"text": "Read slugify", "paths": ["app/utils.py"]}]},
+                 {"day": 1, "goal": "Run it", "tasks": [{"text": "Open the entry point", "paths": ["app/main.py"]}], "checkpoint": "It runs"}],
+        "faq": ["Where does slugify live?"]}  # fmt: skip
 
 
 class ScriptedLLM:
@@ -42,7 +48,7 @@ class ScriptedLLM:
 
     RULES = [
         ("resume writer", TAILOR), ("senior interviewer", QUESTIONS), ("interview coach", ASSESS),
-        ("analyse meeting", ANALYSIS), ("onboarding tours", TOUR),
+        ("analyse meeting", ANALYSIS), ("onboarding tours", TOUR), ("onboarding pack", PACK),
         ("extract structured data", {"topic": "bill", "urgency": "high", "due_date": "15th", "amount": "1840"}),
     ]  # fmt: skip
 
@@ -204,6 +210,12 @@ def test_codelens_index_ask_tour(app_client):
     assert any(s["path"] == "app/utils.py" for s in ans["sources"])
     tour = c.post(f"/api/code/repos/{repo['id']}/tour").json()
     assert [s["path"] for s in tour["steps"]] == ["app/main.py", "app/utils.py", "web/index.ts"]
+    pack = c.post(f"/api/code/repos/{repo['id']}/pack").json()
+    assert pack["areas"][0]["paths"] == ["app/main.py"]  # invented paths dropped
+    assert pack["run"] == []  # commands not in the README are never shown
+    assert [d["day"] for d in pack["week_plan"]] == [1, 2] and pack["reading_path"][0]["path"] == "app/main.py"
+    assert pack["questions"] == ["Where does slugify live?"]
+    assert c.post(f"/api/code/repos/{repo['id']}/pack").json() == pack  # generated once, then kept
     snip = c.get(f"/api/code/repos/{repo['id']}/file", params={"path": "app/utils.py", "start": 1, "end": 5}).json()
     assert "def slugify" in snip["text"]
     assert c.get(f"/api/code/repos/{repo['id']}/file", params={"path": "../../.env"}).status_code == 404

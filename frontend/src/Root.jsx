@@ -19,7 +19,7 @@ const KeeperApp = lazy(() => import('./products/keeper/KeeperApp'))
 const APPS = [
   { prefix: '/careerpilot', title: 'CareerPilot · Job-hunt copilot', label: 'CareerPilot', App: lazy(() => import('./products/careerpilot/CareerPilotApp')) },
   { prefix: '/meetingmind', title: 'MeetingMind · Meeting intelligence', label: 'MeetingMind', App: lazy(() => import('./products/meetingmind/MeetingMindApp')) },
-  { prefix: '/codelens', title: 'CodeLens · Codebase explorer', label: 'CodeLens', App: lazy(() => import('./products/codelens/CodeLensApp')) },
+  { prefix: '/codelens', title: 'CodeLens · Onboard onto any codebase', label: 'CodeLens', App: lazy(() => import('./products/codelens/CodeLensApp')) },
   { prefix: '/flowforge', title: 'FlowForge · AI automation builder', label: 'FlowForge', App: lazy(() => import('./products/flowforge/FlowForgeApp')) },
   { prefix: '/evolve', title: 'Evolve · Self-improving prompts', label: 'Evolve', App: lazy(() => import('./products/evolve/EvolveApp')) },
   { prefix: '/jasoos', title: 'Jasoos · Build-failure detective', label: 'Jasoos', App: lazy(() => import('./products/efi/EFIApp')) },
