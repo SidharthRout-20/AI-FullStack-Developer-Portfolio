@@ -76,7 +76,7 @@ describe('keeper modules', () => {
   })
 })
 
-describe('Tijori with an older server', () => {
+describe('Tara with an older server', () => {
   it('asks again without the conversation history when the server rejects it', async () => {
     const { keeperApi } = await import('./api')
     const bodies = []
@@ -95,5 +95,84 @@ describe('Tijori with an older server', () => {
     } finally {
       globalThis.fetch = real
     }
+  })
+})
+
+describe('"Hey Tara"', () => {
+  it('hears the wake phrase the ways recognisers write it, and keeps what follows', async () => {
+    const { afterWake } = await import('./voice')
+    expect(afterWake('hey Tara')).toBe('')
+    expect(afterWake("Hey Tara, what's the weather?")).toBe("what's the weather?")
+    expect(afterWake('ok tarah set a timer for 5 minutes')).toBe('set a timer for 5 minutes')
+    expect(afterWake('hey terra')).toBe('')
+    expect(afterWake('I was talking to Tara yesterday')).toBeNull() // the name alone isn't a wake-up
+    expect(afterWake('what a day')).toBeNull()
+  })
+})
+
+describe('"Hey Tara" listener (simulated speech recogniser)', () => {
+  const setup = async () => {
+    const { startWakeListener } = await import('./voice')
+    const made = []
+    class FakeRec {
+      constructor() {
+        made.push(this)
+      }
+      start() {
+        this.started = true
+        this.onstart?.()
+      }
+      abort() {
+        this.aborted = true
+      }
+    }
+    const timers = []
+    const woke = []
+    const states = []
+    const stop = startWakeListener(FakeRec, {
+      onWake: (rest) => woke.push(rest),
+      onState: (s) => states.push(s),
+      schedule: (fn) => timers.push(fn),
+      cancel: () => {},
+    })
+    const say = (text, isFinal) => made.at(-1).onresult({ resultIndex: 0, results: [Object.assign([{ transcript: text }], { isFinal })] })
+    const runTimers = () => timers.splice(0).forEach((fn) => fn())
+    return { made, woke, states, stop, say, runTimers }
+  }
+
+  it('answers "Hey Tara" on its own, even if the browser never finalises the sentence', async () => {
+    const t = await setup()
+    expect(t.states).toEqual(['listening'])
+    t.say('hey Tara', false)
+    expect(t.woke).toEqual([]) // waits a moment for the rest…
+    t.runTimers()
+    expect(t.woke).toEqual(['']) // …then answers
+    expect(t.made.at(-1).aborted).toBe(true)
+  })
+
+  it('takes a request said in the same breath', async () => {
+    const t = await setup()
+    t.say("Hey Tara, what's the weather today", false) // 3+ words after the phrase: no need to wait
+    expect(t.woke).toEqual(["what's the weather today"])
+  })
+
+  it('ignores other speech and keeps listening when the browser ends the session', async () => {
+    const t = await setup()
+    t.say('I was talking to Tara yesterday', true)
+    t.made.at(-1).onend()
+    t.runTimers()
+    expect(t.woke).toEqual([])
+    expect(t.made).toHaveLength(2) // restarted
+    t.say('hetara', true) // glued together, as some recognisers write it
+    expect(t.woke).toEqual([''])
+  })
+
+  it('says so when the microphone is blocked, instead of silently doing nothing', async () => {
+    const t = await setup()
+    t.made.at(-1).onerror({ error: 'not-allowed' })
+    t.made.at(-1).onend()
+    t.runTimers()
+    expect(t.states.at(-1)).toBe('blocked')
+    expect(t.made).toHaveLength(1) // no restart loop
   })
 })

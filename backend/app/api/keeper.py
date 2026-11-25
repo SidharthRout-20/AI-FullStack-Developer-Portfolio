@@ -62,6 +62,8 @@ class AssistantPrefs(BaseModel):
     name: str = Field("", max_length=40)
     tone: Literal["warm", "professional", "cheerful"] = "warm"
     length: Literal["short", "detailed"] = "short"
+    city: str = Field("", max_length=80)  # home city, for weather when location isn't shared
+    lang: str = Field("", max_length=12)  # e.g. en-IN, for regional news
 
 
 class CommandIn(BaseModel):
@@ -88,6 +90,9 @@ class CommandOut(BaseModel):
     entries: list[Entry]
     trace: list[TraceStep]
     brief: dict[str, Any] | None = None
+    card: dict[str, Any] | None = None  # a look-up to show (weather, news, a fact, a rate, the time)
+    client_action: dict[str, Any] | None = None  # something for the device to do (open, call, timer…)
+    emotion: str | None = None  # how the user seemed to feel; the reply adapted to it
 
 
 class PhotoIn(BaseModel):
@@ -143,6 +148,9 @@ async def command(request: Request, body: CommandIn, keeper: Keeper, now: Now) -
         "routed_by": state["routed_by"],
         "entries": state.get("entries", []),
         "trace": state["trace"],
+        "card": state.get("card"),
+        "client_action": state.get("client_action"),
+        "emotion": cmd.emotion,
     }
     if cmd.action == "brief":
         brief = await keeper.brief(now)
@@ -209,6 +217,25 @@ def delete_entry(entry_id: str, keeper: Keeper) -> None:
 @router.get("/agenda", response_model=list[AgendaItem])
 def get_agenda(keeper: Keeper, now: Now) -> list[AgendaItem]:
     return keeper.agenda(now)
+
+
+@router.get("/glance")
+@limiter.limit("30/minute")
+async def glance(
+    request: Request,
+    keeper: Keeper,
+    city: Annotated[str, Query(max_length=80)] = "",
+    lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
+    lng: Annotated[float | None, Query(ge=-180, le=180)] = None,
+) -> dict[str, Any]:
+    """The home screen's weather glance: a direct look-up, no model call. Empty when there's no place to use."""
+    if not city.strip() and (lat is None or lng is None):
+        return {"weather": None}
+    try:
+        res = await keeper.agent.tools.weather({"place": city}, lat, lng, "")
+    except Exception:  # noqa: BLE001 - the glance is optional; the assistant still works without it
+        return {"weather": None}
+    return {"weather": res["card"]}
 
 
 @router.get("/brief", response_model=BriefOut)

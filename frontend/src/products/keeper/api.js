@@ -73,6 +73,15 @@ export const keeperApi = {
   sendBrief: () => post('/brief/telegram'),
   uploadPhoto: (dataUrl) => post('/photos', { image: dataUrl }),
   transcribe: (audio, mime) => post('/transcribe', { audio, mime }),
+  glance: ({ city, lat, lng } = {}) => {
+    const q = new URLSearchParams()
+    if (city) q.set('city', city)
+    if (lat != null && lng != null) {
+      q.set('lat', String(lat))
+      q.set('lng', String(lng))
+    }
+    return call(`/glance?${q}`)
+  },
   scan: (photo_id, hint = 'auto') => post('/scan', { photo_id, hint }),
   dueAlerts: () => call('/reminders/due'),
   ack: (id, key) => post(`/entries/${id}/ack`, { key }),

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ai-full-stack-developer-portfolio-p-ruby.vercel.app/sitemap.xml

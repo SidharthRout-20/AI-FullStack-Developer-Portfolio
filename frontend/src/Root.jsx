@@ -7,6 +7,7 @@ import { ShellProvider } from '@appcore/web/ui'
 import { SITE } from './site/config'
 import { HubPage } from './site/HubPage'
 import { ProductPage } from './site/ProductPage'
+import { QualityPage } from './site/QualityPage'
 import { productBySlug } from './site/products'
 import { SkinWelcome } from './theme/SkinWelcome'
 import { ThemeToggle } from './theme/ThemeToggle'
@@ -27,7 +28,7 @@ const APPS = [
   { prefix: '/safarnaama', title: 'Safarnaama · Travel companion', label: 'Safarnaama', App: lazy(() => import('@safarnama/web/App')), props: { basePath: '/safarnaama' } },
 ]
 /** Apps that were renamed: old links (including shared trip links) keep working and land on the new address. */
-const RENAMED = { '/efi': '/jasoos', '/tripweaver': '/safarnaama', '/safarnama': '/safarnaama' }
+const RENAMED = { '/efi': '/jasoos', '/tripweaver': '/safarnaama', '/safarnama': '/safarnaama', '/tara': '/keeper', '/tijori': '/keeper' }
 
 function useTitle(title) {
   useEffect(() => {
@@ -66,7 +67,7 @@ function Routes() {
   return (
     <MotionConfig reducedMotion="user">
       <Backdrop />
-      {path === '/' ? <Hub /> : product ? <Preview slug={product.slug} /> : <NotFound />}
+      {path === '/' ? <Hub /> : path === '/quality' || path === '/quality/' ? <Quality /> : product ? <Preview slug={product.slug} /> : <NotFound />}
     </MotionConfig>
   )
 }
@@ -74,6 +75,11 @@ function Routes() {
 function Hub() {
   useTitle(`${SITE.owner} · AI Product Portfolio`)
   return <HubPage />
+}
+
+function Quality() {
+  useTitle(`Quality · ${SITE.owner}`)
+  return <QualityPage />
 }
 
 function Preview({ slug }) {
@@ -113,7 +119,7 @@ function ProductRoute({ title, label, App, props }) {
 }
 
 function KeeperRoute() {
-  useTitle('Tijori · Personal assistant')
+  useTitle('Tara · Personal assistant')
   return (
     <Suspense
       fallback={

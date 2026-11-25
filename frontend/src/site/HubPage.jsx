@@ -640,6 +640,11 @@ function ProjectsSection() {
             </motion.li>
           ))}
         </ul>
+        <p className="mt-6 text-center">
+          <Link to="/quality" className="inline-flex items-center gap-1.5 text-[14px] font-medium text-cyan-300 underline-offset-4 hover:underline">
+            See how each product is measured: live evals and quality checks <ArrowUpRight className="size-4" />
+          </Link>
+        </p>
         <FrozenSection />
         <Stack />
       </div>

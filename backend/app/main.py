@@ -27,6 +27,7 @@ from app.api.products import router as products_router
 from app.api.routes import router
 from app.config import Settings, get_settings
 from app.efi.service import EFIService
+from app.evals import router as evals_router
 from app.keeper.service import KeeperService
 from app.products import careerpilot, codelens, contact, evolve, flowforge, meetingmind
 from app.products.suite import Suite
@@ -138,6 +139,7 @@ def create_app(
     app.include_router(cron_router)
     app.include_router(efi_router)
     app.include_router(llm_router)
+    app.include_router(evals_router)
     for product in (careerpilot, meetingmind, codelens, flowforge, trip_api, evolve, contact):
         app.include_router(product.router)
     app.include_router(flowforge.hooks)

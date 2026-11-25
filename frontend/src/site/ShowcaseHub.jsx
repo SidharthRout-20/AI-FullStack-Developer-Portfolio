@@ -373,6 +373,7 @@ function Products() {
         title="Got one of these problems?"
         text={`${inWords(PORTFOLIO.length)} products, each solving one problem end to end. Find yours, then try it: no sign-up needed.`}
       />
+      <p className="mt-3 text-center"><Link to="/quality" className="sc-link inline-flex items-center text-[16px]">See how each product is measured <ChevronRight className="size-4" /></Link></p>
       <div className="mx-auto mt-10 grid max-w-6xl gap-x-16 px-5 lg:mt-4 lg:grid-cols-[0.95fr_1.05fr]">
         <ol>
           {PORTFOLIO.map((x, i) => (

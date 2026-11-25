@@ -1,5 +1,5 @@
 /**
- * Tijori's voice: hear a command and speak the reply, on laptops and phones.
+ * Tara's voice: hear a command and speak the reply, on laptops and phones.
  *
  * Hearing uses the browser's own speech recognition where it exists (Chrome, Edge, Safari on Mac and iPhone,
  * Android), with words appearing as you speak. Elsewhere (Firefox, some in-app browsers) it records a short clip and
@@ -53,7 +53,7 @@ export function useHearing(transcribe) {
           setInterim(text)
         }
         rec.onerror = (e) => {
-          if (e.error === 'not-allowed' || e.error === 'service-not-allowed') setError('Allow the microphone to talk to Tijori.')
+          if (e.error === 'not-allowed' || e.error === 'service-not-allowed') setError('Allow the microphone to talk to Tara.')
           else if (e.error !== 'no-speech' && e.error !== 'aborted') setError("I couldn't hear that. Try again, or type it.")
         }
         rec.onend = () => {
@@ -78,7 +78,7 @@ export function useHearing(transcribe) {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       } catch {
-        setError('Allow the microphone to talk to Tijori.')
+        setError('Allow the microphone to talk to Tara.')
         return
       }
       const rec = new MediaRecorder(stream)
@@ -180,7 +180,7 @@ export function primeSpeech() {
   speechSynthesis.speak(u)
 }
 
-/** A soft two-note chime when Tijori starts (up) or stops (down) listening. */
+/** A soft two-note chime when Tara starts (up) or stops (down) listening. */
 export function chime(up = true) {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext
@@ -202,4 +202,155 @@ export function chime(up = true) {
   } catch {
     /* no audio: silent */
   }
+}
+
+// "Hey Tara" (and how speech recognisers tend to hear it).
+const WAKE = /\b(?:hey|hi|hello|ok|okay|hay|a|he)[\s,.!-]*(?:tara|tarah|tarra|terra|tera|thara|dara|dhara|sarah|tora|tera)\b[\s,.!?]*/i
+// Some recognisers glue the two words together ("Hetara", "heytara").
+const GLUED = /\b(?:hey|hi|he)(?:tara|tera|terra)\b[\s,.!?]*/i
+export const wakeSupported = () => !!recognizer()
+
+/** Split a transcript at the wake phrase: null if it isn't there, else whatever was said after it (maybe ''). */
+export function afterWake(text) {
+  const m = WAKE.exec(text || '') ?? GLUED.exec(text || '')
+  return m ? text.slice(m.index + m[0].length).trim() : null
+}
+
+const SETTLE_MS = 900 // after "Hey Tara", wait this long for the rest of the sentence, then answer anyway
+
+/**
+ * Listen continuously for "Hey Tara" with a browser speech recogniser (`Ctor`). Calls `onWake(rest)` once when it's
+ * heard (rest = anything said after it, maybe '') and `onState(state)` as it goes: 'listening' | 'blocked' (microphone
+ * not allowed) | 'error' | 'off'. Restarts itself when the browser ends the session (they do, every minute or so).
+ * Returns stop(). Exported separately from the hook so it can be tested with a fake recogniser.
+ */
+export function startWakeListener(Ctor, { lang, onWake, onState, now = () => Date.now(), schedule = setTimeout, cancel = clearTimeout }) {
+  let rec = null
+  let stopped = false
+  let restart = null
+  let settle = null
+  let pending = null // { rest } heard in an interim result, waiting for the sentence to finish
+  let failures = 0
+
+  const fire = (rest) => {
+    if (stopped) return
+    stopped = true
+    cancel(settle)
+    cancel(restart)
+    if (rec) {
+      rec.onend = null
+      try {
+        rec.abort()
+      } catch {
+        /* already ended */
+      }
+    }
+    onState?.('off')
+    onWake(rest)
+  }
+
+  const begin = () => {
+    if (stopped) return
+    rec = new Ctor()
+    rec.lang = lang || (typeof navigator !== 'undefined' && navigator.language) || 'en-IN'
+    rec.continuous = true
+    rec.interimResults = true
+    rec.onstart = () => {
+      failures = 0
+      onState?.('listening')
+    }
+    rec.onresult = (e) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const rest = afterWake(e.results[i][0]?.transcript ?? '')
+        if (rest === null) continue
+        if (e.results[i].isFinal || rest.split(/\s+/).filter(Boolean).length >= 3) return fire(rest)
+        // Interim "Hey Tara…": answer once the speaker pauses, even if the browser never finalises the sentence.
+        pending = { rest, at: now() }
+        cancel(settle)
+        settle = schedule(() => pending && fire(pending.rest), SETTLE_MS)
+        return
+      }
+    }
+    rec.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        stopped = true
+        onState?.('blocked')
+      } else if (e.error !== 'no-speech' && e.error !== 'aborted') failures += 1
+    }
+    rec.onend = () => {
+      if (stopped) return
+      if (failures >= 5) {
+        stopped = true
+        onState?.('error')
+        return
+      }
+      restart = schedule(begin, failures ? 1500 : 300) // browsers end continuous sessions now and then
+    }
+    try {
+      rec.start()
+    } catch {
+      failures += 1
+      restart = schedule(begin, 1500)
+    }
+  }
+
+  begin()
+  return () => {
+    stopped = true
+    cancel(settle)
+    cancel(restart)
+    if (rec) {
+      rec.onend = null
+      try {
+        rec.abort()
+      } catch {
+        /* already ended */
+      }
+    }
+  }
+}
+
+/**
+ * "Hey Tara" while the page is open and visible. Browsers only let a page use the microphone after the user has
+ * interacted with it, so listening starts after the first tap or key press. Returns the state for the screen:
+ * 'off' | 'waiting' (for that first tap) | 'listening' | 'blocked' | 'error' | 'unsupported'.
+ */
+export function useWakeWord({ enabled, lang, onWake }) {
+  const [state, setState] = useState('off')
+  const [touched, setTouched] = useState(false)
+  const wakeRef = useRef(onWake)
+  useEffect(() => {
+    wakeRef.current = onWake
+  }, [onWake])
+
+  useEffect(() => {
+    if (touched) return
+    const go = () => setTouched(true)
+    window.addEventListener('pointerdown', go, { once: true })
+    window.addEventListener('keydown', go, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', go)
+      window.removeEventListener('keydown', go)
+    }
+  }, [touched])
+
+  const [visible, setVisible] = useState(() => typeof document === 'undefined' || document.visibilityState === 'visible')
+  useEffect(() => {
+    const on = () => setVisible(document.visibilityState === 'visible')
+    document.addEventListener('visibilitychange', on)
+    return () => document.removeEventListener('visibilitychange', on)
+  }, [])
+
+  const Ctor = recognizer()
+  const active = enabled && !!Ctor && touched && visible
+  useEffect(() => {
+    if (!active) return
+    const stop = startWakeListener(Ctor, { lang, onWake: (rest) => wakeRef.current?.(rest), onState: setState })
+    return stop
+  }, [active, Ctor, lang])
+
+  if (!enabled) return 'off'
+  if (!Ctor) return 'unsupported'
+  if (!touched) return 'waiting'
+  return active ? state : 'off'
 }

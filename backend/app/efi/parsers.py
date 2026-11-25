@@ -248,6 +248,10 @@ SOURCE_REF = re.compile(
 )
 PYTEST_SUMMARY = re.compile(r"^=+ (?P<m>.*\b\d+ (?:failed|errors?)\b.*) =+$")
 JEST_FAIL = re.compile(r"^\s*● (?P<m>.+ › .+)$")
+# pytest's short summary ("FAILED tests/test_x.py::test_name - Error") and verbose lines ("tests/x.py::name FAILED")
+PYTEST_FAIL = re.compile(  # noqa: E501
+    r"^(?:FAILED|ERROR) (?P<m>[\w./\-]+::[\w\[\].:-]+)(?: - .*)?$|^(?P<v>[\w./\-]+::[\w\[\].:-]+) (?:FAILED|ERROR)"
+)
 PYTEST_E = re.compile(r"^E\s{2,}")
 LIBRARY = re.compile(r"(?:site-packages|dist-packages|node_modules|/usr/lib/|/lib/python\d|<frozen |internal/)")
 MAX_ERRORS = 60
@@ -263,11 +267,12 @@ def _strip_ts(line: str) -> tuple[str | None, str]:
     return (m["ts"], line[m.end() :]) if m else (None, line)
 
 
-def parse_log(idx: int, content: str) -> list[Item]:  # noqa: C901 - one pass over the lines, one rule per shape
+def parse_log(idx: int, content: str) -> list[Item]:  # noqa: C901, PLR0912, PLR0915 - one pass over the lines, one rule per shape
     items: list[Item] = []
     stage: str | None = None
     errors = frames = 0
     seen_errors: set[str] = set()
+    seen_tests: set[str] = set()
     for n, raw in enumerate(clean_lines(content), start=1):
         ts, line = _strip_ts(raw)
         text = PYTEST_E.sub("", line.strip())  # pytest prints assertion details as "E   AssertionError: …"
@@ -340,6 +345,14 @@ def parse_log(idx: int, content: str) -> list[Item]:  # noqa: C901 - one pass ov
             continue
         if m := PYTEST_SUMMARY.match(text):
             items.append(Item("test_summary", idx, n, clip(m["m"]), base))
+            continue
+        if m := PYTEST_FAIL.match(text):
+            name = m["m"] or m["v"]
+            if name not in seen_tests:  # the verbose line and the summary name the same test
+                seen_tests.add(name)
+                items.append(
+                    Item("test_failure", idx, n, clip(text), {**base, "test": clip(name, 200), "source": "log"})
+                )
             continue
         if m := JEST_FAIL.match(text):
             items.append(
