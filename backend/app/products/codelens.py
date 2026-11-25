@@ -1,4 +1,8 @@
-"""CodeLens: index a public GitHub repository and answer questions with file-and-line citations.
+"""CodeLens: onboard onto a public GitHub repository without a KT session.
+
+It indexes the repo, then builds an onboarding pack (what the project is, how it's put together, how to run it, a
+reading path and a week-one plan, every file reference checked against the repo) and answers questions with
+file-and-line citations.
 
 Pipeline (streamed as SSE progress events):
   download (zip over HTTPS, size-capped, read in memory: no extraction, no zip-slip)
@@ -83,6 +87,34 @@ class Tour(Lenient):
     steps: list[TourStep] = Field(min_length=3, max_length=10)
 
 
+class Area(Lenient):
+    name: str = Field(max_length=80)
+    what: str = Field(max_length=400)
+    paths: list[str] = Field(default_factory=list, max_length=6)
+
+
+class Task(Lenient):
+    text: str = Field(max_length=300)
+    paths: list[str] = Field(default_factory=list, max_length=4)
+
+
+class PlanDay(Lenient):
+    day: int = Field(ge=1, le=5)
+    goal: str = Field(max_length=160)
+    tasks: list[Task] = Field(default_factory=list, max_length=5)
+    checkpoint: str = Field("", max_length=240)
+
+
+class Pack(Lenient):
+    _aliases = {"week": "week_plan", "plan": "week_plan", "modules": "areas", "faq": "questions"}
+    purpose: str = Field(max_length=600)
+    architecture: str = Field(max_length=1200)
+    areas: list[Area] = Field(default_factory=list, max_length=8)
+    run: list[str] = Field(default_factory=list, max_length=8)
+    week_plan: list[PlanDay] = Field(default_factory=list, max_length=5)
+    questions: list[str] = Field(default_factory=list, max_length=6)
+
+
 ASK_SYSTEM = """You are a senior engineer explaining a codebase. Answer using ONLY the numbered code excerpts.
 Cite every claim with [n] (the excerpt number). Mention file paths and function names. Use short paragraphs or
 bullets and fenced code only when quoting. If the excerpts don't answer the question, say what's missing."""
@@ -91,6 +123,19 @@ TOUR_SYSTEM = """You create onboarding tours for engineers new to a repository.
 Reply with ONE JSON object: {"overview": str (what the project is, its architecture, 4-6 sentences),
  "steps": [{"title": str, "path": str (an existing file path from the list), "explanation": str}] (5-8 steps,
  ordered as a newcomer should read the code: entry points first, then core modules, then supporting code)}"""
+
+
+PACK_SYSTEM = """You write the onboarding pack a new engineer gets on their first day, replacing a KT session.
+Use ONLY the README, file list and connections given. Reply with ONE JSON object:
+{"purpose": str (2-3 plain sentences: what the project does and for whom),
+ "architecture": str (4-6 sentences: the main parts and how a request or data flows through them),
+ "areas": [{"name": str, "what": str (one sentence), "paths": [existing file paths]}] (3-7 areas of the code),
+ "run": [str] (setup / run / test commands that appear in the README, copied exactly; [] if it has none),
+ "week_plan": [{"day": 1-5, "goal": str, "tasks": [{"text": str, "paths": [existing file paths]}] (2-4 tasks),
+   "checkpoint": str (how they know the day went well)}] (exactly 5 days: day 1 set up and run it, then read the
+   core flow, then the main areas, then make a small safe change, day 5 review and own a starter task),
+ "questions": [str] (5 questions a newcomer would ask about THIS codebase)}
+Only use file paths from the list. Never invent commands, services or people."""
 
 
 # ── Chunking ─────────────────────────────────────────────────────────────
@@ -287,7 +332,7 @@ class CodeService:
                 "owner": owner, "name": name, "ref": ref, "url": f"https://github.com/{owner}/{name}",
                 "files": sorted(files), "file_lines": {p: t.count("\n") + 1 for p, t in files.items()},
                 "edges": edges, "languages": dict(sorted(langs.items(), key=lambda kv: -kv[1])),
-                "chunks": len(chunks), "readme": readme[:6000], "tour": None,
+                "chunks": len(chunks), "readme": readme[:6000], "tour": None, "pack": None,
             },
             id=repo_id,
         )  # fmt: skip
@@ -346,6 +391,45 @@ class CodeService:
         self.db.patch("repos", repo["id"], {"tour": result})
         return result
 
+    async def pack(self, repo: dict[str, Any]) -> dict[str, Any]:
+        """The onboarding pack: generated once per repo, every file path checked against the index."""
+        if repo.get("pack"):
+            return repo["pack"]
+        tour = await self.tour(repo)
+        files = repo["files"]
+        degree: dict[str, int] = {}
+        for a, b in repo["edges"]:
+            degree[a] = degree.get(a, 0) + 1
+            degree[b] = degree.get(b, 0) + 2
+        central = sorted(files, key=lambda f: -degree.get(f, 0))[:30]
+        prompt = (
+            f"REPO: {repo['owner']}/{repo['name']}  LANGUAGES: {repo['languages']}\n\n"
+            f"README:\n{clip(repo.get('readme') or '(none)', 5000)}\n\n"
+            f"FILES ({len(files)}):\n" + "\n".join(files[:300]) + "\n\nMOST CONNECTED FILES:\n" + "\n".join(central)
+        )
+        raw = await ask_json(self.get_llm, PACK_SYSTEM, prompt, Pack, task="codelens.pack")
+        known = set(files)
+        readme = repo.get("readme") or ""
+
+        def real(paths: list[str]) -> list[str]:
+            return [x for x in paths if x in known]
+
+        result = {
+            "purpose": raw.purpose,
+            "architecture": raw.architecture,
+            "areas": [{**a.model_dump(), "paths": real(a.paths)} for a in raw.areas],
+            # Commands are shown only when they really appear in the README (never invented).
+            "run": [c for c in raw.run if c.strip() and c.strip() in readme],
+            "reading_path": tour["steps"],
+            "week_plan": [
+                {**d.model_dump(), "tasks": [{**t.model_dump(), "paths": real(t.paths)} for t in d.tasks]}
+                for d in sorted(raw.week_plan, key=lambda d: d.day)
+            ],
+            "questions": raw.questions,
+        }
+        self.db.patch("repos", repo["id"], {"pack": result})
+        return result
+
     def snippet(self, repo_id: str, path: str, start: int, end: int) -> dict[str, Any]:
         chunks, _, _ = self._load(repo_id)
         parts = sorted((c for c in chunks if c["path"] == path), key=lambda c: c["start"])
@@ -360,7 +444,7 @@ class CodeService:
 
 
 def public(doc: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in doc.items() if k not in ("readme", "file_lines")}
+    return {k: v for k, v in doc.items() if k not in ("readme", "file_lines", "pack")}
 
 
 # ── API ───────────────────────────────────────────────────────────────────
@@ -432,6 +516,16 @@ async def tour(request: Request, repo_id: str, svc: Code) -> dict[str, Any]:
     repo = _repo(svc, repo_id)
     try:
         return await svc.tour(repo)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, llm_failure(exc)) from None
+
+
+@router.post("/repos/{repo_id}/pack")
+@limiter.limit(rate_limit_value)
+async def pack(request: Request, repo_id: str, svc: Code) -> dict[str, Any]:
+    repo = _repo(svc, repo_id)
+    try:
+        return await svc.pack(repo)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(503, llm_failure(exc)) from None
 

@@ -34,6 +34,7 @@ register_tasks(
         "careerpilot.assess": TaskProfile(M, "evaluation", "json"),
         "codelens.ask": TaskProfile(M, "rag_answer"),
         "codelens.tour": TaskProfile(C, "multi_document_analysis", "json"),
+        "codelens.pack": TaskProfile(C, "multi_document_analysis", "json"),
         "flowforge.prompt": TaskProfile(M, "automation_step", background=True),
         "flowforge.extract": TaskProfile(S, "extraction", "json", background=True),
         "evolve.run": TaskProfile(M, "prompt_execution"),

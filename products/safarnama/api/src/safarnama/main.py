@@ -17,6 +17,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from appcore import security
+from appcore.accounts import accounts_from
 from appcore.docstore import DocStore
 from appcore.errors import ErrorsAsJSON
 from appcore.llm.chat import ChatLLM, build_llm
@@ -48,6 +49,7 @@ def create_app(
     store = DocStore(settings.data_dir / "tripweaver.sqlite3", settings.db_url)
     app.state.settings = settings
     app.state.trips = TripService(store, get_llm, tools)
+    app.state.accounts = accounts_from(settings.neon_auth_base_url)  # None: sign-in off
 
     app.add_middleware(ErrorsAsJSON)  # inside CORS: even a crash answers with CORS headers
     app.add_middleware(
@@ -55,7 +57,7 @@ def create_app(
         allow_origins=settings.allowed_origins,
         allow_origin_regex=settings.cors_origin_regex or None,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Content-Type", "X-Trip-Owner", "X-Trip-Share", "X-TZ-Offset"],
+        allow_headers=["Content-Type", "Authorization", "X-Trip-Owner", "X-Trip-Share", "X-TZ-Offset"],
         max_age=600,
     )
     app.add_middleware(SecurityHeadersMiddleware, settings=settings)

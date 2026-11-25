@@ -15,7 +15,7 @@ export default defineConfig({
       "@appcore/web": here("../packages/web-core/src"),
       "@safarnama/web": here("../products/safarnama/web/src"),
     },
-    dedupe: ["react", "react-dom", "lucide-react", "motion", "leaflet", "react-markdown", "remark-gfm", "@fontsource-variable/fraunces"],
+    dedupe: ["react", "react-dom", "lucide-react", "motion", "leaflet", "react-markdown", "remark-gfm", "@fontsource-variable/fraunces", "@neon/auth"],
   },
   server: {
     port: 5173,

@@ -6,7 +6,7 @@
  * Same content as Off the clock: config.js and the product registry. Every effect is decorative, and with
  * prefers-reduced-motion the page renders static (scroll-linked styles are skipped, sticky stages collapse).
  */
-import { BrainCircuit, ChevronLeft, ChevronRight, Download, Mail, Menu, PanelsTopLeft, Search, ServerCog, X } from 'lucide-react'
+import { BrainCircuit, ChevronLeft, ChevronRight, Download, Lock, Mail, Menu, PanelsTopLeft, Search, ServerCog, X } from 'lucide-react'
 import { AnimatePresence, motion, useInView, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useMediaQuery } from '../hooks/useMediaQuery'
@@ -18,14 +18,14 @@ import { openPalette } from './CommandPalette'
 import { EXPERTISE, SITE, TIMELINE } from './config'
 import { ContactForm } from './HubPage'
 import { MiniPortrait } from './Portrait'
-import { LABS, PORTFOLIO, productHref, STATUSES } from './products'
+import { FROZEN, PORTFOLIO, productHref, STATUSES } from './products'
 import { CountUp, Reveal } from './scrollFx'
 
 const EASE = [0.25, 0.1, 0.25, 1]
 const NAV = [
   { id: 'overview', label: 'Overview' },
   { id: 'projects', label: 'Products' },
-  { id: 'labs', label: 'Labs' },
+  { id: 'labs', label: 'In development' },
   { id: 'expertise', label: 'Skills' },
   { id: 'experience', label: 'Experience' },
 ]
@@ -370,8 +370,8 @@ function Products() {
     <section id="projects" className="scroll-mt-12 py-24 sm:py-32">
       <SectionHead
         eyebrow="The products"
-        title={`${inWords(PORTFOLIO.length)} products. One at a time.`}
-        text="Each is built end to end, and each shows exactly where it stands today: what works, and what is still planned."
+        title="Got one of these problems?"
+        text={`${inWords(PORTFOLIO.length)} products, each solving one problem end to end. Find yours, then try it: no sign-up needed.`}
       />
       <div className="mx-auto mt-10 grid max-w-6xl gap-x-16 px-5 lg:mt-4 lg:grid-cols-[0.95fr_1.05fr]">
         <ol>
@@ -429,7 +429,7 @@ function Chapter({ p, index, wide, onActive, active }) {
     if (inView) onActive(index)
   }, [inView, index, onActive])
   const status = STATUSES[p.status]?.label ?? p.status
-  const isNew = p.status === 'in_development'
+  const isNew = p.status === 'beta'
   return (
     <li ref={ref} className="flex flex-col justify-center border-t border-[color:var(--hairline)] py-12 first:border-t-0 lg:min-h-[72svh] lg:border-t-0 lg:py-0">
       <motion.div animate={{ opacity: !wide || active ? 1 : 0.28 }} transition={{ duration: 0.4 }}>
@@ -437,17 +437,14 @@ function Chapter({ p, index, wide, onActive, active }) {
           <span className="text-ink-500 tabular-nums">0{index + 1}</span>
           <span className={isNew ? 'sc-new' : 'text-ink-500'}>{status}</span>
         </p>
-        <h3 className="sc-headline mt-2 text-[44px] text-white sm:text-[56px]">{p.name}</h3>
-        {p.meaning && <p className="mt-1 text-[14px] text-ink-500 italic">{p.meaning}</p>}
-        <p className="mt-5 text-[21px] leading-snug font-semibold text-white sm:text-[24px]">{p.tagline}</p>
-        <p className="mt-2 text-[15px] text-ink-400">{p.tags.join(' · ')}</p>
+        <p className="mt-3 text-[24px] leading-snug font-semibold text-white sm:text-[30px]">{p.problem}</p>
+        <p className="mt-4 text-[17px] leading-relaxed text-ink-400">{p.outcome}</p>
+        <h3 className="mt-5 text-[15px] font-semibold text-ink-200">That's <span className="text-white">{p.name}</span>{p.meaning && <span className="font-normal text-ink-500 italic"> · {p.meaning}</span>}</h3>
         <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-[17px]">
-          <Link to={productHref(p)} className="sc-link inline-flex items-center">Learn more <ChevronRight className="size-4" /></Link>
           {p.app && (
-            <Link to={p.app.route} className="sc-link inline-flex items-center">
-              {p.app.kind === 'product' ? `Open ${p.name}` : 'Try the prototype'} <ChevronRight className="size-4" />
-            </Link>
+            <Link to={p.app.route} className="sc-link inline-flex items-center">Try {p.name} <ChevronRight className="size-4" /></Link>
           )}
+          <Link to={productHref(p)} className="sc-link inline-flex items-center">How it works <ChevronRight className="size-4" /></Link>
         </div>
         <div className="mt-8 lg:hidden">
           <ProductVisual p={p} small />
@@ -467,9 +464,9 @@ function Labs() {
   }
   return (
     <section id="labs" className="sc-band scroll-mt-12 py-24 sm:py-32">
-      <SectionHead eyebrow="Labs" title="Experiments that still run." text="Earlier apps you can open today. The products reuse them as building blocks." />
+      <SectionHead eyebrow="In development" title="Frozen for now." text="These open once the four above are finished and they work end to end." />
       <ul ref={shelf} className="sc-shelf mt-12 flex gap-5 overflow-x-auto px-5 pb-4 sm:px-[max(1.25rem,calc((100vw-72rem)/2+1.25rem))]">
-        {LABS.map((p, i) => {
+        {FROZEN.map((p, i) => {
           const shot = shotOf(p)
           return (
             <motion.li
@@ -480,26 +477,26 @@ function Labs() {
               transition={{ delay: i * 0.07, duration: 0.6, ease: EASE }}
               className="w-[280px] shrink-0 sm:w-[360px]"
             >
-              <Link to={productHref(p)} className="sc-tile sc-lift group flex h-full flex-col overflow-hidden">
+              <div aria-disabled="true" className="sc-tile group flex h-full flex-col overflow-hidden opacity-70 grayscale">
                 <div className="px-7 pt-7">
                   <p className="text-[12px] font-semibold text-ink-500">{p.category.replace('Labs · ', '')}</p>
                   <h3 className="mt-1 text-[24px] font-semibold tracking-tight text-white">{p.name}</h3>
                   <p className="mt-1 text-[15px] leading-snug text-ink-400">{p.tagline}</p>
-                  <span className="sc-link mt-3 inline-flex items-center text-[15px]">Open <ChevronRight className="size-4" /></span>
+                  <span className="mt-3 inline-flex items-center gap-1 text-[14px] text-ink-500"><Lock className="size-3.5" /> In development</span>
                 </div>
                 {shot && (
                   <div className="mt-6 ml-7 overflow-hidden rounded-tl-[12px]">
                     <img src={shot} alt="" loading="lazy" className="aspect-[16/10] w-full object-cover object-left-top transition duration-700 ease-out group-hover:scale-[1.04]" />
                   </div>
                 )}
-              </Link>
+              </div>
             </motion.li>
           )
         })}
       </ul>
       <div className="mx-auto mt-4 flex max-w-6xl justify-end gap-3 px-5">
-        <button type="button" onClick={() => page(-1)} aria-label="Previous Labs apps" className="sc-paddle"><ChevronLeft className="size-5" /></button>
-        <button type="button" onClick={() => page(1)} aria-label="Next Labs apps" className="sc-paddle"><ChevronRight className="size-5" /></button>
+        <button type="button" onClick={() => page(-1)} aria-label="Previous products in development" className="sc-paddle"><ChevronLeft className="size-5" /></button>
+        <button type="button" onClick={() => page(1)} aria-label="Next products in development" className="sc-paddle"><ChevronRight className="size-5" /></button>
       </div>
     </section>
   )
@@ -616,8 +613,8 @@ function Footer() {
             {PORTFOLIO.map((p) => <Link key={p.slug} to={productHref(p)} className={`block ${link}`}>{p.name}</Link>)}
           </div>
           <div className={col}>
-            <p className="font-semibold text-ink-200">Labs</p>
-            {LABS.map((p) => <Link key={p.slug} to={productHref(p)} className={`block ${link}`}>{p.name}</Link>)}
+            <p className="font-semibold text-ink-200">In development</p>
+            {FROZEN.map((p) => <span key={p.slug} className="block text-ink-500">{p.name}</span>)}
           </div>
           <div className={col}>
             <p className="font-semibold text-ink-200">Elsewhere</p>

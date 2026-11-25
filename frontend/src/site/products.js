@@ -14,7 +14,9 @@ import {
  * THE product registry: the single source of truth for every product identity, status and visibility on the site
  * (hub, product pages, command palette, counts). The backend has no product records; it only serves the apps.
  *
- * visibility: 'portfolio' = one of the approved products · 'labs' = experiments / reusable capabilities
+ * visibility: 'portfolio' = one of the four featured products, each working end to end · 'frozen' = in development,
+ *             shown as a locked tile (its code and route stay, but the catalogue doesn't send people there)
+ * problem:    the question the catalogue leads with ("Have this problem?"); outcome: what the product does about it
  * status:     see STATUSES. "live" only when the principal workflow works end to end, persists, is access-
  *             controlled where needed and is tested; approval is NOT completion.
  * meaning:    one line on what the product's name means (shown on the product page and the Studio home).
@@ -23,6 +25,8 @@ import {
  */
 export const STATUSES = {
   live: { label: 'Live', tone: 'good' },
+  beta: { label: 'Beta', tone: 'good' },
+  frozen: { label: 'In development', tone: 'neutral' },
   in_development: { label: 'In development', tone: 'info' },
   planned: { label: 'Planned', tone: 'neutral' },
   gated: { label: 'Gated', tone: 'warn' },
@@ -38,17 +42,19 @@ export const MODULE_STATUSES = {
 const VERIFIED = '2026-11-14'
 
 const REGISTRY = [
-  // ── Approved portfolio (exactly five) ─────────────────────────────────────
+  // ── Entries in registry order; PORTFOLIO below sorts the four featured ones by priority ──
   {
     id: 'efi',
+    problem: 'A build, test or deploy failed and the log is thousands of lines long?',
+    outcome: 'Paste the log: Jasoos finds the failing step, the likely cause and a fix, quoting the exact lines it relied on.',
     slug: 'jasoos',
     aliases: ['efi'],
     name: 'Jasoos',
     meaning: 'Hindi for detective: it investigates why something failed, and shows its evidence.',
     fullName: 'Jasoos: the build-failure detective',
     visibility: 'portfolio',
-    priority: 2,
-    status: 'in_development',
+    priority: 4,
+    status: 'beta',
     lastVerified: VERIFIED,
     statusNote:
       'The full workflow is implemented and covered by automated tests with a mocked model. It is not yet verified with a ' +
@@ -76,6 +82,8 @@ const REGISTRY = [
   },
   {
     id: 'keeper',
+    problem: 'Bills, warranties, renewals and to-dos slipping through the cracks?',
+    outcome: 'Tell Tijori in plain words or snap a bill: it keeps track, reminds you in time and answers “when does my…” questions.',
     slug: 'tijori',
     aliases: ['keeper'],
     image: 'keeper',
@@ -84,7 +92,7 @@ const REGISTRY = [
     fullName: 'Tijori: purchase & warranty recovery',
     visibility: 'portfolio',
     priority: 3,
-    status: 'planned',
+    status: 'beta',
     lastVerified: VERIFIED,
     statusNote:
       'Approved and deferred until Jasoos. Purchase capture, deadline provenance, claim packs and claim tracking are not built yet. ' +
@@ -98,7 +106,7 @@ const REGISTRY = [
     icon: HandHelping,
     accent: 'from-fuchsia-500 via-pink-500 to-orange-400',
     tags: ['Receipt extraction', 'Deadline provenance', 'Claim packs'],
-    app: { label: 'Open the earlier Keeper memory assistant', route: '/keeper', kind: 'prototype' },
+    app: { label: 'Open Tijori', route: '/keeper', kind: 'product' },
     available: ['Prototype: natural-language memory (stash, loans, bills, care), photo scanning, timed reminders via ntfy / Telegram'],
     planned: [
       'Purchase capture with field-level provenance',
@@ -116,9 +124,9 @@ const REGISTRY = [
     name: 'Pramaan',
     meaning: 'Sanskrit and Hindi for proof: every answer is backed by approved evidence.',
     fullName: 'Pramaan: questionnaires answered from evidence',
-    visibility: 'portfolio',
+    visibility: 'frozen',
     priority: 4,
-    status: 'gated',
+    status: 'frozen',
     lastVerified: VERIFIED,
     statusNote:
       'Approved, gated on validation: building starts only when two design partners commit to using it on live ' +
@@ -150,9 +158,9 @@ const REGISTRY = [
     name: 'Vaada',
     meaning: 'Hindi and Urdu for a promise: commitments made in a meeting are kept.',
     fullName: 'Vaada: every commitment, followed through',
-    visibility: 'portfolio',
+    visibility: 'frozen',
     priority: 5,
-    status: 'planned',
+    status: 'frozen',
     lastVerified: VERIFIED,
     statusNote:
       'Approved and deferred. Commitment normalisation, member identity, reliable notification delivery and escalation are ' +
@@ -177,6 +185,8 @@ const REGISTRY = [
   },
   {
     id: 'tripweaver',
+    problem: 'Planning a trip means juggling a dozen tabs and apps?',
+    outcome: 'Get a day-by-day plan with real places, weather and routes in four taps, then book, budget and keep your documents in one place.',
     slug: 'safarnaama',
     aliases: ['tripweaver', 'safarnama'],
     image: 'tripweaver',
@@ -185,7 +195,7 @@ const REGISTRY = [
     fullName: 'Safarnaama: your complete travel companion',
     visibility: 'portfolio',
     priority: 1,
-    status: 'in_development',
+    status: 'beta',
     lastVerified: VERIFIED,
     statusNote:
       'Implemented end to end and covered by automated tests: trips with several destinations, an editable itinerary with ' +
@@ -237,12 +247,12 @@ const REGISTRY = [
     stack: ['React 19', 'Leaflet + OSM', 'FastAPI', 'Open-Meteo', 'OSRM', 'Overpass / Nominatim', 'Frankfurter', 'Groq LLM router'],
   },
 
-  // ── Labs: experiments and reusable capabilities (outside the approved portfolio) ─
+  // ── Earlier experiments (frozen: in development) ──
   {
     id: 'careerpilot',
     name: 'CareerPilot',
-    visibility: 'labs',
-    status: 'labs',
+    visibility: 'frozen',
+    status: 'frozen',
     lastVerified: VERIFIED,
     statusNote: 'Archived to Labs: replaced in the portfolio by Jasoos. Note: its match score uses the documents indexed in DocuMind, not the resume you save.',
     tagline: 'Job-hunt copilot: tailored resume and cover letter, voice mock interviews, application board.',
@@ -256,8 +266,8 @@ const REGISTRY = [
   {
     id: 'flowforge',
     name: 'FlowForge',
-    visibility: 'labs',
-    status: 'labs',
+    visibility: 'frozen',
+    status: 'frozen',
     lastVerified: VERIFIED,
     statusNote: 'Labs. Its validated DAG runtime is the basis for future automation inside the portfolio products.',
     tagline: 'Drag AI, HTTP, condition and Keeper steps onto a canvas; run them live, as webhooks or on a schedule.',
@@ -271,8 +281,8 @@ const REGISTRY = [
   {
     id: 'evolve',
     name: 'Evolve',
-    visibility: 'labs',
-    status: 'labs',
+    visibility: 'frozen',
+    status: 'frozen',
     lastVerified: VERIFIED,
     statusNote: 'Labs. Its checks, judge and regression gate are a reusable quality capability for the portfolio products.',
     tagline: 'Prompts that learn from their own mistakes, promoted only after beating the old version.',
@@ -285,37 +295,46 @@ const REGISTRY = [
   },
   {
     id: 'codelens',
+    meaning: 'A lens on a codebase: see what it does and where, before you change it.',
+    description:
+      'Point CodeLens at a GitHub repository. It reads the code, maps its modules and imports, and answers questions about it ' +
+      'with the files and lines it relied on, so a new joiner can find their way around without waiting for a KT session.',
+    problem: 'Joining a new codebase and waiting days for KT sessions?',
+    outcome: 'Paste the GitHub repo: get an onboarding pack with what it does, how it fits together, what to read first and a week-one plan, then ask anything, with answers that cite the exact files and lines.',
     name: 'CodeLens',
-    visibility: 'labs',
-    status: 'labs',
+    visibility: 'portfolio',
+    priority: 2,
+    status: 'beta',
     lastVerified: VERIFIED,
-    statusNote: 'Labs. Its chunkers and import graph are reusable code-analysis capabilities for Jasoos.',
-    tagline: 'Index a public GitHub repo and ask architecture questions with file-and-line citations.',
-    category: 'Labs · Developer tools',
+    statusNote: 'Builds an onboarding pack for any public GitHub repo (what it is, how it is organised, what to read first, a week-one plan with progress ticks, setup commands taken from the README) and answers questions with file-and-line citations. Every file path is checked against the repo. Not yet verified with a live model on the deployed backend.',
+    tagline: 'An onboarding pack and a code-aware Q&A for any GitHub repo: new joiners productive in a week, no KT sessions.',
+    category: 'Developer onboarding',
     icon: Code2,
     accent: 'from-amber-500 via-orange-500 to-rose-500',
-    tags: ['Code RAG', 'AST parsing', 'Import graph'],
-    app: { label: 'Open CodeLens', route: '/codelens', kind: 'labs' },
+    tags: ['Onboarding pack', 'Code Q&A with citations', 'Week-one plan'],
+    app: { label: 'Open CodeLens', route: '/codelens', kind: 'product' },
     stack: ['React Flow', 'FastAPI', 'Python ast', 'BM25 + RRF'],
   },
 ].map((p) => ({ ...p, slug: p.slug ?? p.id, features: p.features ?? [], aliases: p.aliases ?? [] }))
 
 /** The approved portfolio, in priority order. Its length is THE product count shown anywhere on the site. */
 export const PORTFOLIO = REGISTRY.filter((p) => p.visibility === 'portfolio').sort((a, b) => a.priority - b.priority)
-export const LABS = REGISTRY.filter((p) => p.visibility === 'labs')
-/** Everything with an identity (portfolio first, then Labs). */
-export const PRODUCTS = [...PORTFOLIO, ...LABS]
+export const FROZEN = REGISTRY.filter((p) => p.visibility === 'frozen')
+/** @deprecated the in-development tiles: use FROZEN */
+export const LABS = FROZEN
+/** Everything with an identity (featured first, then the frozen ones). */
+export const PRODUCTS = [...PORTFOLIO, ...FROZEN]
 
 export const LIVE_COUNT = PORTFOLIO.filter((p) => p.status === 'live').length
 
 export const productBySlug = (slug) => PRODUCTS.find((p) => p.slug === slug || p.aliases.includes(slug))
 
-/** Where a product card leads: portfolio products → their product page; Labs → straight into the app. */
-export const productHref = (p) => (p.visibility === 'labs' && p.app ? p.app.route : `/products/${p.slug}`)
+/** Where a product link leads: its product page (frozen products have one too, saying they're in development). */
+export const productHref = (p) => `/products/${p.slug}`
 
 /** Fills {products} (portfolio size), {labs} and {live} placeholders in site copy from the registry. */
 export const fillCounts = (text) =>
   text
     .replaceAll('{products}', String(PORTFOLIO.length))
-    .replaceAll('{labs}', String(LABS.length))
+    .replaceAll('{labs}', String(FROZEN.length))
     .replaceAll('{live}', String(LIVE_COUNT))

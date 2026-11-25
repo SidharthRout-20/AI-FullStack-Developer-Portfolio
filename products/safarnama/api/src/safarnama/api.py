@@ -1,9 +1,11 @@
 """TripWeaver HTTP API (/api/trips).
 
-Identity (same convention as EFI, no accounts in this portfolio): `POST /api/trips/owner` issues an unguessable owner
-token that the browser keeps and sends as `X-Trip-Owner`; the server stores only `sha256(token)`. Roles per trip:
+Identity: `POST /api/trips/owner` issues an unguessable owner token that the browser keeps and sends as
+`X-Trip-Owner`; the server stores only `sha256(token)`. When sign-in is on (NEON_AUTH_BASE_URL), a signed-in traveller
+also sends `Authorization: Bearer <Neon Auth JWT>` and owns trips as their account instead, on every device;
+`POST /api/trips/claim` moves the trips this browser made into the account. Roles per trip:
 
-* owner  – the token that created it: everything (documents, bookings, budget, companion, delete).
+* owner  – the account or token that created it: everything (documents, bookings, budget, companion, delete).
 * member – anyone holding the trip's share key (`X-Trip-Share` header, or `?share=` for the live stream):
            view the itinerary, vote, see and add shared expenses, see saved places.
 * legacy – trips created before ownership existed: viewable by link and votable as before, never editable;
@@ -27,6 +29,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, R
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from appcore.accounts import Accounts, SignInError
 from appcore.ai import llm_failure, sse
 from appcore.guardrails import normalize
 from appcore.security import limiter, rate_limit_value
@@ -50,21 +53,37 @@ Trips = Annotated[TripService, Depends(get_trips)]
 
 @dataclass
 class Who:
-    owner: str | None
+    owner: str | None  # the account when signed in, else this browser
     share: str | None
+    browser: str | None = None  # this browser's owner hash (trips it made before signing in)
+    user: str | None = None  # the signed-in account's owner hash
 
 
 def owner_hash(token: str) -> str:
     return hashlib.sha256(b"trip-owner|" + token.encode()).hexdigest()
 
 
+def user_hash(user_id: str) -> str:
+    return hashlib.sha256(b"trip-user|" + user_id.encode()).hexdigest()
+
+
 def who(
+    request: Request,
     x_trip_owner: Annotated[str | None, Header()] = None,
     x_trip_share: Annotated[str | None, Header()] = None,
     share: Annotated[str | None, Query(max_length=64)] = None,
+    authorization: Annotated[str | None, Header()] = None,
 ) -> Who:
     token = x_trip_owner if x_trip_owner and _TOKEN.match(x_trip_owner) else None
-    return Who(owner_hash(token) if token else None, (x_trip_share or share or None))
+    browser = owner_hash(token) if token else None
+    user = None
+    accounts: Accounts | None = getattr(request.app.state, "accounts", None)
+    if accounts and authorization and authorization.lower().startswith("bearer "):
+        try:
+            user = user_hash(accounts.user_id(authorization[7:].strip()))
+        except SignInError as exc:  # a stale sign-in shouldn't quietly show another set of trips
+            raise HTTPException(401, f"{exc} Sign in again.") from exc
+    return Who(user or browser, (x_trip_share or share or None), browser, user)
 
 
 Caller = Annotated[Who, Depends(who)]
@@ -84,7 +103,8 @@ def access(
         raise HTTPException(404, "Trip not found.")
     role: Role
     if trip.get("owner"):
-        if w.owner and secrets.compare_digest(trip["owner"], w.owner):
+        # Signed in, the browser's own not-yet-claimed trips stay editable too.
+        if any(o and secrets.compare_digest(trip["owner"], o) for o in (w.owner, w.browser)):
             role = "owner"
         elif w.share and trip.get("share_key") and secrets.compare_digest(str(trip["share_key"]), w.share):
             role = "member"
@@ -371,6 +391,21 @@ async def create_trip(request: Request, body: ManualIn, svc: Trips, w: Caller) -
 @router.get("")
 def list_trips(svc: Trips, w: Caller) -> list[dict[str, Any]]:
     return svc.my_trips(w.owner) if w.owner else []
+
+
+@router.get("/account")
+def account(request: Request, w: Caller) -> dict[str, bool]:
+    """Whether sign-in is on for this server, and whether this request is signed in."""
+    return {"enabled": getattr(request.app.state, "accounts", None) is not None, "signed_in": w.user is not None}
+
+
+@router.post("/claim")
+@limiter.limit("10/minute")
+def claim(request: Request, svc: Trips, w: Caller) -> dict[str, int]:
+    """Move the trips this browser made into the signed-in account (they then show on every device)."""
+    if not w.user:
+        raise HTTPException(401, "Sign in first.")
+    return {"moved": svc.claim_trips(w.browser, w.user) if w.browser else 0}
 
 
 @router.get("/{trip_id}")

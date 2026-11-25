@@ -50,7 +50,7 @@ export function BackToTop() {
       animate={show ? { opacity: 1, scale: 1, y: 0 } : { opacity: 0, scale: 0.6, y: 16 }}
       transition={{ type: 'spring', stiffness: 320, damping: 24 }}
       style={{ pointerEvents: show ? 'auto' : 'none' }}
-      className="glass fixed right-5 bottom-5 z-40 grid size-12 place-items-center rounded-full text-ink-100 transition-colors hover:text-white"
+      className="glass fixed right-5 bottom-20 z-40 grid size-12 place-items-center rounded-full text-ink-100 transition-colors hover:text-white"
     >
       <svg viewBox="0 0 36 36" className="absolute inset-0 size-full -rotate-90" aria-hidden>
         <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--hairline)" strokeWidth="2" />

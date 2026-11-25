@@ -2,19 +2,20 @@
 import { Bookmark, BookmarkCheck, ExternalLink, Leaf, MapPin, Phone, Plus, ShieldCheck, X } from 'lucide-react'
 import { useState } from 'react'
 import { Button, inputClass, Pill } from '@appcore/web/ui'
+import { noteAway } from './away'
 import { hostOf, LABEL_TONE, safeLink } from './logic'
 
 /**
  * Every external action (order, book, reserve, call) is a hand-off to the provider's own site. TripWeaver never
  * places an order or booking itself, and says so before the traveller leaves.
  */
-export function Handoff({ link, place, onClose, onSave, onOpened }) {
+export function Handoff({ link, place, onClose, onSave }) {
   const [save, setSave] = useState(!!onSave)
   if (!link || !safeLink(link.url)) return null
   const host = hostOf(link.url)
   const go = () => {
     if (save && onSave) onSave()
-    onOpened?.()
+    noteAway(link, place) // so we can ask "did you book it?" when they come back
     onClose()
   }
   return (
@@ -32,7 +33,7 @@ export function Handoff({ link, place, onClose, onSave, onOpened }) {
                 : `You're leaving Safarnaama for ${host}${link.source ? ` (link from ${link.source})` : ''}. Safarnaama hasn't ordered, booked or paid for anything, and can't confirm availability.`}
             </p>
             {link.kind !== 'phone' && (
-              <p className="mt-1.5 text-[12.5px] text-ink-400">After you book or order there, save the confirmation under Bookings so it sits with this trip.</p>
+              <p className="mt-1.5 text-[12.5px] text-ink-400">{link.kind === 'booking' ? "When you come back, we'll ask if you booked, so it's saved with this trip in a tap." : 'After you book or order there, save the confirmation under Bookings so it sits with this trip.'}</p>
             )}
             {onSave && (
               <label className="mt-3 flex items-center gap-2 text-[13px] text-ink-200">

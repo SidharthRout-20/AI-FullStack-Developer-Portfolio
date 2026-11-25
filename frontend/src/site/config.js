@@ -41,7 +41,7 @@ export const SITE = {
   intro:
     "6 years of software development for global clients: I started on COBOL, moved into React UI development, and " +
     "today deliver Generative-AI proofs of concept at Deloitte as an LLM Engineer, with React frontends and Python " +
-    "(Flask) backends. This site is my product lab: a portfolio of {products} AI products, built end to end with React 19 and Python, plus {labs} Labs experiments.",
+    "(Flask) backends. This site is my product lab: {products} AI products that each solve one real problem end to end, built with React 19 and Python (more in development).",
   links: {
     github: "https://github.com/SidharthRout-20",
     linkedin: "https://www.linkedin.com/in/sidharth-rout-072696119/",
@@ -73,7 +73,7 @@ export const EXPERTISE = [
     icon: "ai",
     text:
       "LLM Engineer on Deloitte client POCs (prompt design, API orchestration, LLM responses in React apps), and " +
-      "the products and Labs apps on this site: RAG with citations, tool-using agents, structured outputs, speech and vision.",
+      "the products on this site: RAG with citations, tool-using agents, structured outputs, speech and vision.",
     stack: [
       "LLMs",
       "RAG",

@@ -1,37 +1,40 @@
 import { describe, expect, it } from 'vitest'
 import { forecastFreshness } from '@safarnama/web/freshness'
-import { fillCounts, LABS, LIVE_COUNT, MODULE_STATUSES, PORTFOLIO, PRODUCTS, productBySlug, productHref, STATUSES } from './products'
+import { fillCounts, FROZEN, LABS, LIVE_COUNT, MODULE_STATUSES, PORTFOLIO, PRODUCTS, productBySlug, productHref, STATUSES } from './products'
 
 const ids = (list) => list.map((p) => p.id)
-const APPROVED = ['tripweaver', 'efi', 'keeper', 'documind-respond', 'follow-through']
+const FEATURED = ['tripweaver', 'codelens', 'keeper', 'efi']
 
-describe('approved portfolio', () => {
-  it('contains exactly the five approved products, in priority order, each once', () => {
-    expect(ids(PORTFOLIO)).toEqual(APPROVED)
-    expect(PORTFOLIO.map((p) => p.priority)).toEqual([1, 2, 3, 4, 5])
-    expect(PORTFOLIO.map((p) => p.name)).toEqual(['Safarnaama', 'Jasoos', 'Tijori', 'Pramaan', 'Vaada'])
-    expect(PORTFOLIO.every((p) => p.meaning)).toBe(true) // every name says what it means
+describe('catalogue', () => {
+  it('features exactly four products, problem first, in priority order', () => {
+    expect(ids(PORTFOLIO)).toEqual(FEATURED)
+    expect(PORTFOLIO.map((p) => p.priority)).toEqual([1, 2, 3, 4])
+    expect(PORTFOLIO.map((p) => p.name)).toEqual(['Safarnaama', 'CodeLens', 'Tijori', 'Jasoos'])
+    for (const p of PORTFOLIO) {
+      expect(p.problem, p.id).toMatch(/\?$/) // leads with the traveller's / developer's problem, as a question
+      expect(p.outcome, p.id).toBeTruthy()
+      expect(p.meaning, p.id).toBeTruthy()
+      expect(p.app?.kind, p.id).toBe('product') // every featured product opens and works
+    }
   })
 
-  it('keeps CareerPilot, FlowForge, Evolve and CodeLens in Labs, and TripWeaver out of Labs', () => {
-    expect(ids(LABS).sort()).toEqual(['careerpilot', 'codelens', 'evolve', 'flowforge'])
-    for (const id of ['careerpilot', 'flowforge', 'evolve', 'codelens']) expect(ids(PORTFOLIO)).not.toContain(id)
-    expect(ids(LABS)).not.toContain('tripweaver')
-    expect(LABS.every((p) => p.status === 'labs' && p.app?.route)).toBe(true) // still openable
+  it('freezes everything else as in development', () => {
+    expect(ids(FROZEN).sort()).toEqual(['careerpilot', 'documind-respond', 'evolve', 'flowforge', 'follow-through'])
+    expect(FROZEN.every((p) => p.status === 'frozen' && STATUSES[p.status].label === 'In development')).toBe(true)
+    expect(LABS).toBe(FROZEN)
   })
 
   it('has no duplicate identities, slugs or aliases', () => {
     const keys = PRODUCTS.flatMap((p) => [p.slug, ...p.aliases])
     expect(new Set(keys).size).toBe(keys.length)
-    expect(PRODUCTS).toHaveLength(PORTFOLIO.length + LABS.length)
-    expect(PRODUCTS.some((p) => p.id === 'documind' || p.id === 'meetingmind')).toBe(false) // folded into Respond / Follow-through
+    expect(PRODUCTS).toHaveLength(PORTFOLIO.length + FROZEN.length)
   })
 
   it('derives counts in site copy from the registry', () => {
-    expect(fillCounts('{products} products · {labs} labs · {live} live')).toBe(`5 products · 4 labs · ${LIVE_COUNT} live`)
+    expect(fillCounts('{products} products · {labs} frozen · {live} live')).toBe(`4 products · 5 frozen · ${LIVE_COUNT} live`)
   })
 
-  it('gives every approved product the required registry fields', () => {
+  it('gives every featured product the required registry fields', () => {
     for (const p of PORTFOLIO) {
       for (const f of ['id', 'name', 'description', 'category', 'status', 'visibility', 'priority', 'lastVerified', 'statusNote'])
         expect(p[f], `${p.id}.${f}`).toBeTruthy()
@@ -43,32 +46,18 @@ describe('approved portfolio', () => {
   it('resolves old URLs to the product that replaced them', () => {
     expect(productBySlug('documind').id).toBe('documind-respond')
     expect(productBySlug('meetingmind').id).toBe('follow-through')
-    // renamed products keep their old addresses
     for (const [old, id] of [['efi', 'efi'], ['keeper', 'keeper'], ['documind-respond', 'documind-respond'], ['follow-through', 'follow-through'], ['tripweaver', 'tripweaver']])
       expect(productBySlug(old).id).toBe(id)
     expect(productBySlug('safarnama').app.route).toBe('/safarnaama')
     expect(productBySlug('jasoos').app.route).toBe('/jasoos')
-    expect(productHref(productBySlug('careerpilot'))).toBe('/careerpilot')
+    expect(productHref(productBySlug('careerpilot'))).toBe('/products/careerpilot') // frozen: its page, not the app
   })
 })
 
 describe('statuses reflect implementation', () => {
-  const status = (id) => PORTFOLIO.find((p) => p.id === id).status
-  it('uses the expected statuses', () => {
-    expect(status('efi')).toBe('in_development') // tested with a mocked model; not live-verified, no Postgres on the deployed backend
-    expect(status('keeper')).toBe('planned')
-    expect(status('documind-respond')).toBe('gated')
-    expect(status('follow-through')).toBe('planned')
-    expect(status('tripweaver')).toBe('in_development') // implemented and tested; not browser-verified, no Postgres in production
+  it('calls the featured products Beta until they are verified live', () => {
+    expect(PORTFOLIO.every((p) => p.status === 'beta')).toBe(true)
     expect(LIVE_COUNT).toBe(0)
-  })
-  it('never presents a planned or gated product as live, and labels prototypes as prototypes', () => {
-    for (const p of PORTFOLIO.filter((x) => ['planned', 'gated'].includes(x.status))) {
-      expect(p.status).not.toBe('live')
-      if (p.app) expect(p.app.kind).toBe('prototype')
-    }
-    expect(PORTFOLIO.find((p) => p.id === 'efi').app.kind).toBe('product')
-    expect(PORTFOLIO.find((p) => p.id === 'tripweaver').app.kind).toBe('product')
   })
 })
 

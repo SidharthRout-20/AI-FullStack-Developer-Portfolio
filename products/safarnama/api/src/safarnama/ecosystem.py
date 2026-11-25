@@ -145,6 +145,15 @@ class TripEcosystem:
             out["destinations"] = [{**trip["city"], "id": None, "start_day": 1, "end_day": len(trip.get("days", []))}]
         return out
 
+    def claim_trips(self, browser: str, user: str) -> int:
+        """Hand every trip owned by this browser's token to the account. Returns how many moved."""
+        moved = 0
+        for t in self.db.list("trips", limit=500):
+            if t.get("owner") == browser:
+                self.db.patch("trips", t["id"], {"owner": user})
+                moved += 1
+        return moved
+
     def my_trips(self, owner: str) -> list[dict[str, Any]]:
         today = dt.date.today()
         out = []
