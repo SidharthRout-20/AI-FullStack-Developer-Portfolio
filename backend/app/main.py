@@ -32,6 +32,7 @@ from app.products import careerpilot, codelens, contact, evolve, flowforge, meet
 from app.products.suite import Suite
 from app.rag.service import RAGService
 from app.rag.watcher import DocumentWatcher
+from appcore.accounts import accounts_from
 from appcore.errors import ErrorsAsJSON
 from appcore.logs import configure_logging
 from appcore.security import SecurityHeadersMiddleware, limiter
@@ -96,6 +97,7 @@ def create_app(
         redoc_url=None,
         openapi_url=None if settings.is_production else "/openapi.json",
     )
+    app.state.accounts = accounts_from(settings.neon_auth_base_url)  # Safarnaama sign-in; None = off
 
     # Middleware order: last added = outermost.
     # Inside CORS (added before it), so even an unexpected crash answers with CORS headers and the browser shows a
@@ -114,6 +116,7 @@ def create_app(
             "X-EFI-Owner",
             "X-Trip-Owner",
             "X-Trip-Share",
+            "Authorization",
         ],
         allow_credentials=False,
         max_age=600,

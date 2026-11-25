@@ -1,11 +1,12 @@
 /**
- * Client for /api/trips. There are no user accounts in this portfolio, so (like EFI) the server issues this browser
- * an unguessable owner token, kept in localStorage and sent as X-Trip-Owner. Trips shared with you are opened with
+ * Client for /api/trips. The server issues this browser an unguessable owner token, kept in localStorage and sent as
+ * X-Trip-Owner; a signed-in traveller also sends their Neon Auth token (see account.js), so trips follow the account. Trips shared with you are opened with
  * their share key (from the share link), sent as X-Trip-Share. The server only ever stores a hash of the owner token.
  */
 import { API_BASE as BASE } from './config'
 import { createSSEParser } from '@appcore/web/sse'
 import { ApiError, sessionError } from '@appcore/web/http'
+import { accountToken } from './account'
 
 const KEY = 'tripweaver-owner-token'
 const SHARE = 'tripweaver-share-'
@@ -41,7 +42,9 @@ async function ownerToken() {
 }
 
 async function headers(tripId, extra = {}) {
-  const h = { Accept: 'application/json', 'X-Trip-Owner': await ownerToken(), ...extra }
+  const [owner, signedIn] = await Promise.all([ownerToken(), accountToken()])
+  const h = { Accept: 'application/json', 'X-Trip-Owner': owner, ...extra }
+  if (signedIn) h.Authorization = `Bearer ${signedIn}`
   const share = tripId ? shareKeyFor(tripId) : ''
   if (share) h['X-Trip-Share'] = share
   return h
@@ -137,6 +140,8 @@ export function tripApi(id) {
 
 export const trips = {
   list: () => call('GET', ''),
+  account: () => call('GET', '/account'),
+  claim: () => call('POST', '/claim'),
   create: (body) => call('POST', '', body),
   /** Plan with the AI planner: streams step events, then done/error. */
   async plan(prompt, choices, onEvent) {

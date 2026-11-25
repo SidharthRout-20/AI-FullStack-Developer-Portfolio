@@ -70,6 +70,11 @@ class CoreSettings(BaseSettings):
     # Vision model for reading photos (receipts, labels, warranty cards).
     groq_vision_model: str = "qwen/qwen3.8-27b"
 
+    # ── Sign-in ────────────────────────────────────────────────────────────
+    # Neon Auth (managed Better Auth) for this project, e.g. https://ep-….neonauth.<region>.aws.neon.tech/neondb/auth.
+    # Not a secret: tokens are checked against the public keys it publishes. Empty = sign-in off (browser tokens only).
+    neon_auth_base_url: str = ""
+
     # ── Security ───────────────────────────────────────────────────────────
     rate_limit: str = "20/minute"
     # Admin endpoints are disabled entirely unless a key is configured.

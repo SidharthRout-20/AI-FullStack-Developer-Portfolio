@@ -28,3 +28,5 @@ psycopg[binary]==3.3.2
 
 # Use the OS certificate store for outbound TLS (works behind corporate/antivirus HTTPS inspection)
 truststore==0.10.5
+# Sign-in: checks Neon Auth tokens (Ed25519) against the project's public keys
+pynacl==1.6.2

@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { download, errorText } from '../shared/http'
 import { Button, Card, Empty, ErrorNote, Field, inputClass, Pill, ProductShell, Spinner, Tabs } from '@appcore/web/ui'
 import { efi } from './api'
+import { SAMPLE } from './sample'
 import {
   buildArtifacts,
   checkFile,
@@ -85,7 +86,7 @@ export default function EFIApp() {
   }
 
   return (
-    <ProductShell name="Jasoos" tagline="The build-failure detective: evidence-backed answers to why a build, test or deploy failed" icon={Bug} accent={ACCENT}>
+    <ProductShell name="Jasoos" tagline="Paste a failing build, test or deploy log. Get the likely cause and a fix, with the exact lines as proof." icon={Bug} accent={ACCENT}>
       <Tabs
         value={tab === 'investigation' ? 'investigation' : tab}
         onChange={(t) => {
@@ -150,6 +151,7 @@ function Intake({ limits, onCreated }) {
   const [log, setLog] = useState('')
   const [diff, setDiff] = useState('')
   const [notes, setNotes] = useState('')
+  const [more, setMore] = useState(false) // diff, notes and title: optional context, folded away
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const input = useRef(null)
@@ -189,16 +191,42 @@ function Intake({ limits, onCreated }) {
     }
   }
 
+  const useSample = () => {
+    setTitle(SAMPLE.title)
+    setLog(SAMPLE.log)
+    setDiff(SAMPLE.diff)
+    setNotes(SAMPLE.notes)
+    setMore(true)
+  }
+
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="space-y-5">
+      <Card className="!p-5 sm:!p-6">
+        <h2 className="text-[22px] leading-tight font-semibold text-white sm:text-[26px]">Your build failed. Find out why in a minute.</h2>
+        <ol className="mt-4 grid gap-3 text-[13px] sm:grid-cols-3">
+          {[
+            ['1', 'Paste the failing log', 'From your CI, test run or deploy. Secrets are removed before anything is saved.'],
+            ['2', 'Check what Jasoos found', 'The errors, failed tests and changed lines, pulled out with plain parsing (no AI yet).'],
+            ['3', 'Get the cause and the fix', 'Ranked likely causes, each quoting the exact lines it relies on, and what to try next.'],
+          ].map(([n, t, d]) => (
+            <li key={n} className="flex gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3">
+              <span className={`grid size-7 shrink-0 place-items-center rounded-full bg-gradient-to-br ${ACCENT} text-[12px] font-bold text-on-accent`}>{n}</span>
+              <span><span className="block font-semibold text-white">{t}</span><span className="text-ink-400">{d}</span></span>
+            </li>
+          ))}
+        </ol>
+      </Card>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
       <Card className="space-y-4">
-        <Field label="Title" hint="optional: defaults to the first error">
-          <input className={inputClass} value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. main branch CI red after dependency bump" />
-        </Field>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <p className="text-[14px] font-semibold text-white">Paste the failing log</p>
+          <button type="button" onClick={useSample} className="text-[12.5px] text-ink-400 underline-offset-2 hover:text-white hover:underline">No log to hand? Try a sample</button>
+        </div>
+        <textarea aria-label="Failing log or stack trace" className={`${inputClass} h-44 font-mono text-[12px]`} value={log} onChange={(e) => setLog(e.target.value)} placeholder={'Paste the end of the CI output, e.g.\nFAILED tests/test_tax.py::test_gst - TypeError …\n##[error]Process completed with exit code 1.'} />
         <div>
-          <p className="text-[12px] font-medium text-ink-300">Artifacts</p>
+          <p className="text-[12px] font-medium text-ink-300">Or drop the files <span className="font-normal text-ink-500">(logs, JUnit .xml, .diff, configs)</span></p>
           <div
-            className="mt-1.5 grid place-items-center rounded-xl border border-dashed border-white/15 px-4 py-6 text-center"
+            className="mt-1.5 grid place-items-center rounded-xl border border-dashed border-white/15 px-4 py-4 text-center"
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault()
@@ -206,8 +234,7 @@ function Intake({ limits, onCreated }) {
             }}
           >
             <Upload className="size-5 text-ink-400" />
-            <p className="mt-2 text-[13px] text-ink-300">Drop CI / build logs, stack traces, .diff / .patch, JUnit .xml, manifests or config files</p>
-            <Button variant="ghost" className="mt-3" onClick={() => input.current?.click()}>
+                        <Button variant="ghost" className="mt-3" onClick={() => input.current?.click()}>
               Choose files
             </Button>
             <input
@@ -238,26 +265,33 @@ function Intake({ limits, onCreated }) {
           )}
           {fileErrors.length > 0 && <div className="mt-2"><ErrorNote message="Some files were not added:" items={fileErrors} /></div>}
         </div>
-        <Field label="Paste a log or stack trace" hint="optional">
-          <textarea className={`${inputClass} h-36 font-mono text-[12px]`} value={log} onChange={(e) => setLog(e.target.value)} placeholder="##[error]Process completed with exit code 1." />
+        <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more} className="text-[12.5px] font-medium text-ink-300 hover:text-white">
+          {more ? '− Hide' : '+ Add'} more context (optional): the diff that broke it, notes, a title
+        </button>
+        {more && (
+          <div className="space-y-4">
+        <Field label="Title" hint="optional: defaults to the first error">
+          <input className={inputClass} value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. main branch CI red after dependency bump" />
         </Field>
-        <Field label="Paste a git diff" hint="optional: git diff / git show output">
+        <Field label="The git diff that broke it" hint="optional: git diff / git show output">
           <textarea className={`${inputClass} h-28 font-mono text-[12px]`} value={diff} onChange={(e) => setDiff(e.target.value)} placeholder="diff --git a/src/app.py b/src/app.py" />
         </Field>
         <Field label="Investigation notes" hint="optional: what changed, when it started">
           <textarea className={`${inputClass} h-20`} maxLength={4000} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Started failing after merging the tax refactor; passes locally." />
         </Field>
+          </div>
+        )}
         <ErrorNote message={error} />
         <div className="flex flex-wrap items-center gap-3">
           <Button accent={ACCENT} busy={busy} disabled={!!problem} onClick={() => void submit()}>
-            <ScanSearch className="size-4" /> Extract evidence
+            <ScanSearch className="size-4" /> Investigate
           </Button>
           {problem && artifacts.length > 0 && <span className="text-[12px] text-amber-300">{problem}</span>}
         </div>
       </Card>
       <aside className="space-y-4">
         <Card>
-          <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><ShieldCheck className="size-4 text-emerald-300" /> How it works</p>
+          <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><ShieldCheck className="size-4 text-emerald-300" /> Why you can trust the answer</p>
           <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-[12.5px] text-ink-300">
             <li>Secrets (API keys, tokens, passwords, private keys, connection strings) are redacted on the server before anything is stored.</li>
             <li>Errors, stack frames, failed tests, changed lines and dependency changes are extracted with plain parsing and given IDs (EV-001…).</li>
@@ -281,6 +315,7 @@ function Intake({ limits, onCreated }) {
           <p className="mt-3 text-[11.5px] text-ink-500">Your history is tied to this browser (no account). Clearing site data removes access to it.</p>
         </Card>
       </aside>
+      </div>
     </div>
   )
 }

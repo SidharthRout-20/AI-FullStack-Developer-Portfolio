@@ -13,8 +13,8 @@ function buildActions() {
     ...PRODUCTS.map((p) => ({
       id: `p-${p.slug}`,
       label: p.name,
-      hint: p.visibility === 'labs' ? 'Labs · open app' : `${STATUSES[p.status].label} · product page`,
-      group: p.visibility === 'labs' ? 'Labs' : 'Products',
+      hint: `${STATUSES[p.status].label} · product page`,
+      group: p.visibility === 'frozen' ? 'In development' : 'Products',
       icon: p.icon,
       run: () => navigate(productHref(p)),
     })),

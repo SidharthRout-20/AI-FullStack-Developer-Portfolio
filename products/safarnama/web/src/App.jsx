@@ -28,6 +28,7 @@ import { ACCENT, QuickPlan, usePlanStream } from './QuickPlan'
 import { Handoff, LabelChips } from './parts'
 import { setAwayTrip } from './away'
 import { AwayCheck } from './AwayCheck'
+import { AccountBar } from './AccountBar'
 import { fmtMin, NearbyPanel } from './Travel'
 
 const TripMap = lazy(() => import('./TripMap').then((m) => ({ default: m.TripMap })))
@@ -94,6 +95,7 @@ function MyTrips() {
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-[15px] text-ink-400">Four taps to a day-by-day plan with real places, weather and routes. Then book, budget and keep your documents in one place.</p>
       </header>
+      <AccountBar onTrips={load} />
       <DestinationStrip />
       {storageWarning && (
         <p className="mx-auto flex max-w-3xl items-start gap-2 rounded-2xl border border-amber-400/30 bg-amber-400/[0.08] px-4 py-3 text-[13px] text-ink-200">
@@ -111,7 +113,7 @@ function MyTrips() {
         <ErrorNote message={error} />
       </div>
       {trips === null ? <Spinner label="Loading your trips…" /> : trips.length === 0 ? (
-        <p className="text-center text-[12.5px] text-ink-500">Your trips appear here. They're tied to this browser (no account needed); share a trip with its link.</p>
+        <p className="text-center text-[12.5px] text-ink-500">Your trips appear here. Without signing in they're tied to this browser; share a trip with its link.</p>
       ) : (
         groups.map((g) => (
           <section key={g.phase}>

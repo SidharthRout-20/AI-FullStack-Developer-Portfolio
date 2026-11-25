@@ -6,6 +6,7 @@ import {
   CircleCheck,
   GraduationCap,
   LoaderCircle,
+  Lock,
   Mail,
   MapPin,
   Menu,
@@ -15,7 +16,7 @@ import {
   X,
 } from 'lucide-react'
 import { AnimatePresence, motion, useInView, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { API_BASE } from '../lib/apiBase'
 import { Link } from '@appcore/web/router'
 import { greeting, timeIn } from '../theme/skin'
@@ -23,9 +24,10 @@ import { originOf, setSkin, useSkin } from '../theme/theme'
 import { ThemeToggle } from '../theme/ThemeToggle'
 import { PaletteButton } from './CommandPalette'
 import { EXPERTISE, SITE, TIMELINE } from './config'
-import { fillCounts, LABS, PORTFOLIO, productHref } from './products'
+import { fillCounts, FROZEN, PORTFOLIO, productHref } from './products'
 import { MiniPortrait, Polaroid } from './Portrait'
 import { ShowcaseHub, ShowcaseNav } from './ShowcaseHub'
+import { SkillsChat } from './SkillsChat'
 import { StatusBadge } from './StatusBadge'
 import {
   BackToTop,
@@ -270,7 +272,12 @@ function PersonalHeader({ home }) {
 
 // ── Page ───────────────────────────────────────────────────────────────────
 export function HubPage() {
-  return useSkin() === 'showcase' ? <ShowcaseHub /> : <PersonalHub />
+  return (
+    <>
+      {useSkin() === 'showcase' ? <ShowcaseHub /> : <PersonalHub />}
+      <SkillsChat />
+    </>
+  )
 }
 
 function PersonalHub() {
@@ -592,8 +599,6 @@ function TimelineNode({ icon }) {
   )
 }
 
-const PERSONAL = new Set(['tijori', 'safarnaama'])
-
 function useBackendOnline() {
   const [online, setOnline] = useState(null)
   useEffect(() => {
@@ -606,180 +611,97 @@ function useBackendOnline() {
   return online
 }
 
+/**
+ * The catalogue leads with problems, not product names: "Have this problem? This solves it." Four products that work
+ * end to end; everything else is a frozen tile until those are finished.
+ */
 function ProjectsSection() {
-  const [filter, setFilter] = useState('all')
   const online = useBackendOnline()
-  const shown = useMemo(
-    () => PORTFOLIO.filter((p) => filter === 'all' || (filter === 'personal') === PERSONAL.has(p.slug)),
-    [filter],
-  )
   return (
     <section id="projects" className="scroll-mt-20 px-5 py-20">
       <div className="mx-auto max-w-6xl">
-        <div className="flex flex-wrap items-end justify-between gap-x-4">
-          <SectionTitle
-            kicker="Projects"
-            title={`${PORTFOLIO.length} products, built one at a time`}
-            text="The approved portfolio, in priority order. Each card shows its real status: Safarnaama is being taken end to end first and Jasoos is in active development; the others are approved and scheduled, some with an earlier prototype you can already open."
-          />
-          <HandNote className="-mt-6 mb-10 hidden -rotate-3 lg:block">Safarnaama: on my desk right now ↓</HandNote>
-          <Reveal className="mb-10">
-            <div role="tablist" aria-label="Filter projects" className="inline-flex rounded-full border border-white/[0.07] bg-ink-900/50 p-1">
-              {['all', 'personal', 'work'].map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  role="tab"
-                  aria-selected={filter === f}
-                  onClick={() => setFilter(f)}
-                  className={`relative rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors ${filter === f ? 'text-white' : 'text-ink-400 hover:text-white'}`}
-                >
-                  {filter === f && <motion.span layoutId="project-filter" className="absolute inset-0 rounded-full bg-white/[0.08] ring-1 ring-white/10" />}
-                  <span className="relative">{f === 'all' ? 'All' : f === 'personal' ? 'Personal life' : 'Work & dev'}</span>
-                </button>
-              ))}
-            </div>
-          </Reveal>
-        </div>
-        <motion.ul layout className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          <AnimatePresence mode="popLayout">
-            {shown.map((p, i) => (
-              <motion.li
-                key={p.slug}
-                layout
-                initial={{ opacity: 0, y: 60, scale: 0.94, filter: 'blur(10px)' }}
-                whileInView={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                viewport={{ once: true, margin: '-60px' }}
-                transition={{ duration: 0.7, delay: (i % 3) * 0.1, ease: [0.2, 0.8, 0.2, 1] }}
-              >
-                <TiltCard max={5}>
-                  <ProjectCard p={p} online={online} />
-                </TiltCard>
-              </motion.li>
-            ))}
-          </AnimatePresence>
-        </motion.ul>
-        <LabsSection />
+        <SectionTitle
+          kicker="Products"
+          title="Got one of these problems?"
+          text="Pick the one that sounds like you. Each is solved by a product that works end to end today, one click away, no sign-up needed."
+        />
+        <ul className="grid gap-5 md:grid-cols-2">
+          {PORTFOLIO.map((p, i) => (
+            <motion.li
+              key={p.slug}
+              initial={{ opacity: 0, y: 40, filter: 'blur(8px)' }}
+              whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              viewport={{ once: true, margin: '-60px' }}
+              transition={{ duration: 0.6, delay: (i % 2) * 0.1, ease: [0.2, 0.8, 0.2, 1] }}
+            >
+              <TiltCard max={4}>
+                <ProblemCard p={p} online={online} />
+              </TiltCard>
+            </motion.li>
+          ))}
+        </ul>
+        <FrozenSection />
         <Stack />
       </div>
     </section>
   )
 }
 
-function ProjectCard({ p, online }) {
+function ProblemCard({ p, online }) {
   const Icon = p.icon
-  const to = productHref(p)
   return (
-    <article className="spotlight group relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/[0.07] bg-ink-900/60 transition-colors duration-300 hover:border-white/15 hover:shadow-2xl hover:shadow-black/20">
-      <Link to={to} className="relative block aspect-[16/10] overflow-hidden border-b border-white/[0.06] bg-ink-800" aria-label={`${p.name} product page`}>
-        <ParallaxImage src={`/projects/${p.image ?? p.slug}.webp`} alt={`${p.name} screenshot`} fallback={<ShotFallback p={p} />} />
-        <span className={`absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r ${p.accent}`} />
-        <span className="absolute top-3 left-3 flex items-center gap-1.5">
-          <StatusBadge status={p.status} className="glass" />
-          {p.app && online === false && <span className="glass rounded-md px-2 py-0.5 text-[11px] text-rose-200">Backend offline</span>}
-        </span>
-      </Link>
-      <div className="flex flex-1 flex-col p-5">
-        <div className="flex items-center gap-2.5">
-          <span className={`grid size-9 place-items-center rounded-xl bg-gradient-to-br ${p.accent} text-on-accent shadow-md`}>
-            <Icon className="size-4.5" />
+    <article className="spotlight group relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/[0.07] bg-ink-900/60 p-6 transition-colors duration-300 hover:border-white/15 hover:shadow-2xl hover:shadow-black/20">
+      <span aria-hidden className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${p.accent}`} />
+      <p className="text-[12px] font-semibold tracking-[0.14em] text-ink-500 uppercase">If this sounds like you</p>
+      <h3 className="mt-2 text-[21px] leading-snug font-semibold text-white">{p.problem}</h3>
+      <p className="mt-3 text-[14px] leading-relaxed text-ink-300">{p.outcome}</p>
+      <div className="mt-auto pt-6">
+        <div className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3">
+          <span className={`grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${p.accent} text-on-accent shadow-md`}>
+            <Icon className="size-5" />
           </span>
-          <div className="min-w-0">
-            <h3 className="text-[16px] font-semibold text-white">{p.name}</h3>
-            <p className="text-[11.5px] text-ink-400">{p.category}</p>
+          <div className="min-w-0 flex-1">
+            <p className="flex flex-wrap items-center gap-x-2 text-[15px] font-semibold text-white">
+              {p.name} <StatusBadge status={p.status} />
+              {p.app && online === false && <span className="text-[11px] font-normal text-rose-300">backend offline</span>}
+            </p>
+            <p className="truncate text-[12px] text-ink-400">{p.category}</p>
           </div>
         </div>
-        <p className="mt-3 text-[13.5px] leading-relaxed text-ink-300">{p.tagline}</p>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {p.tags.slice(0, 3).map((t) => (
-            <Chip key={t}>{t}</Chip>
-          ))}
-        </div>
-        <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 pt-5">
-          <Link to={to} className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-white">
-            View product <ArrowUpRight className="size-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          </Link>
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
           {p.app && (
-            <Link to={p.app.route} className="text-[12.5px] text-ink-400 underline-offset-2 hover:text-white hover:underline">
-              {p.app.kind === 'product' ? 'Open app' : 'Open prototype'}
+            <Link to={p.app.route} className={`inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r ${p.accent} px-4 py-2 text-[13.5px] font-semibold text-on-accent shadow-lg`}>
+              Try {p.name} <ArrowUpRight className="size-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
             </Link>
           )}
+          <Link to={productHref(p)} className="text-[13px] text-ink-400 underline-offset-2 hover:text-white hover:underline">How it works</Link>
         </div>
       </div>
     </article>
   )
 }
 
-/** Labs: experiments and reusable capabilities. Still usable, never counted as portfolio products. */
-function LabsSection() {
+/** Everything else: visible, honest about it, and not clickable until it's finished. */
+function FrozenSection() {
   return (
     <div className="mt-16">
-      <p className="text-[12px] font-semibold tracking-[0.18em] text-cyan-300 uppercase">Labs</p>
-      <p className="mt-2 max-w-2xl text-[14px] text-ink-300">
-        Earlier experiments, kept working and reused as capabilities by the portfolio products. They are not part of the approved portfolio.
-      </p>
-      <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {LABS.map((p) => {
+      <p className="text-[12px] font-semibold tracking-[0.18em] text-ink-400 uppercase">In development</p>
+      <p className="mt-2 max-w-2xl text-[14px] text-ink-400">Frozen until the four above are finished. They'll open here once they work end to end.</p>
+      <ul className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {FROZEN.map((p) => {
           const Icon = p.icon
           return (
-            <li key={p.slug}>
-              <Link to={productHref(p)} className="glass flex h-full flex-col rounded-2xl p-4 transition hover:border-white/20">
-                <span className="flex items-center gap-2">
-                  <span className={`grid size-7 place-items-center rounded-lg bg-gradient-to-br ${p.accent} text-on-accent`}>
-                    <Icon className="size-3.5" />
-                  </span>
-                  <span className="text-[14px] font-semibold text-white">{p.name}</span>
-                  <StatusBadge status={p.status} className="ml-auto" />
-                </span>
-                <span className="mt-2 text-[12.5px] text-ink-300">{p.tagline}</span>
-              </Link>
+            <li key={p.slug} aria-disabled="true" className="relative flex h-full flex-col rounded-2xl border border-dashed border-white/10 bg-white/[0.015] p-4 opacity-70 grayscale">
+              <span className="flex items-center gap-2">
+                <span className="grid size-7 place-items-center rounded-lg bg-white/[0.06] text-ink-300"><Icon className="size-3.5" /></span>
+                <span className="text-[14px] font-semibold text-ink-200">{p.name}</span>
+                <Lock className="ml-auto size-3.5 text-ink-500" aria-label="Frozen" />
+              </span>
+              <span className="mt-2 text-[12.5px] text-ink-400">{p.tagline}</span>
             </li>
           )
         })}
       </ul>
-    </div>
-  )
-}
-
-/** Shown when a project has no screenshot yet: the product's gradient with its icon. */
-function ShotFallback({ p }) {
-  const Icon = p.icon
-  return (
-    <div className="relative grid size-full place-items-center overflow-hidden bg-ink-850">
-      <div aria-hidden className={`absolute inset-0 bg-gradient-to-br opacity-25 ${p.accent}`} />
-      <div aria-hidden className="bg-grid absolute inset-0 opacity-60" />
-      <span className={`relative grid size-16 place-items-center rounded-2xl bg-gradient-to-br text-on-accent shadow-xl transition-transform duration-500 group-hover:scale-110 ${p.accent}`}>
-        <Icon className="size-8" />
-      </span>
-    </div>
-  )
-}
-
-/** Screenshot that drifts inside its frame as the card scrolls past. */
-function ParallaxImage({ src, alt, fallback }) {
-  const ref = useRef(null)
-  const reduce = useReducedMotion()
-  const [broken, setBroken] = useState(false)
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] })
-  const y = useTransform(scrollYProgress, [0, 1], ['-7%', '7%'])
-  return (
-    <div ref={ref} className="size-full">
-      {broken ? (
-        fallback
-      ) : (
-        <motion.img
-          src={src}
-          alt={alt}
-          loading="lazy"
-          width={960}
-          height={600}
-          onError={() => setBroken(true)}
-          style={reduce ? undefined : { y, scale: 1.16 }}
-          className="size-full object-cover object-top"
-        />
-      )}
-      <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-ink-950/40 via-transparent to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
     </div>
   )
 }

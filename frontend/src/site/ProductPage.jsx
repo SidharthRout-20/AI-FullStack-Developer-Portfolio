@@ -37,7 +37,7 @@ export function ProductPage({ product: p }) {
             <p className="mt-1 text-[16px] text-ink-200">{p.tagline}</p>
             {p.meaning && <p className="mt-1.5 text-[13px] text-ink-400 italic">{p.name}: {p.meaning}</p>}
             <p className="mt-1 text-[12px] text-ink-500">
-              {p.visibility === 'portfolio' ? `Portfolio priority ${p.priority}` : 'Labs'} · {p.category} · status last verified {p.lastVerified}
+              {p.visibility === 'portfolio' ? `Featured product ${p.priority} of 4` : 'In development (frozen)'} · {p.category} · status last verified {p.lastVerified}
             </p>
           </div>
         </motion.div>
@@ -47,7 +47,7 @@ export function ProductPage({ product: p }) {
         <div className="glass mt-6 rounded-2xl p-4 text-[13.5px] text-ink-200">
           <p className="font-semibold text-white">Why it is “{STATUSES[p.status]?.label ?? p.status}”</p>
           <p className="mt-1 text-ink-300">{p.statusNote}</p>
-          {p.app && (
+          {p.app && p.visibility !== 'frozen' && (
             <Link
               to={p.app.route}
               className="btn-primary mt-3 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-[13.5px] font-semibold text-ink-950 transition hover:bg-ink-100"
