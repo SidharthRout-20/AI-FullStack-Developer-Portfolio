@@ -302,12 +302,15 @@ async def _answers(tmp_path):
     llm = _Seen(['{"action": "chat"}', "Boil it for **9 minutes**, then cool it in cold water."])
     agent = KeeperAgent(KeeperStore(tmp_path), llm)
     history = [{"role": "user", "text": "I want a hard-boiled egg"}, {"role": "assistant", "text": "Sure."}]
-    out = await agent.run("how long should I boil it?", dt.datetime(2030, 5, 1, 8, 0), history=history)
+    prefs = {"name": "Sid", "tone": "professional", "length": "detailed"}
+    out = await agent.run("how long should I boil it?", dt.datetime(2030, 5, 1, 8, 0), history=history, prefs=prefs)
     assert out["command"].action == "chat"
     assert out["reply"] == "Boil it for 9 minutes, then cool it in cold water."  # no markdown: it's read aloud
     router_msg, chat_msg = llm.prompts[0][1], llm.prompts[1][1]
     assert "I want a hard-boiled egg" in router_msg and "Now the user says: how long should I boil it?" in chat_msg
     assert "TODAY'S AGENDA: nothing due" in llm.prompts[1][0]
+    system = llm.prompts[1][0]
+    assert "concise, professional" in system and "up to 6 clear sentences" in system and "name is Sid" in system
 
 
 def test_tijori_still_answers_the_time_without_a_model(tmp_path):

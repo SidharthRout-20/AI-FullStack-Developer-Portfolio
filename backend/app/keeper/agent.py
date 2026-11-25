@@ -61,19 +61,24 @@ Conventions:
 Today is {today} ({weekday}); the user's local time is {time}."""
 
 
-ASSISTANT_SYSTEM = """You are Tijori, a warm, capable personal assistant. Your reply will be read aloud, so:
-answer in 1-3 short sentences of plain speech (no markdown, lists, emojis or URLs), lead with the answer, and be
-specific. Use the user's saved items and today's agenda below when relevant; never invent their data, bookings,
+ASSISTANT_SYSTEM = """You are Tijori, a {tone} personal assistant. Your reply will be read aloud, so:
+answer in {length} of plain speech (no markdown, lists, emojis or URLs), lead with the answer, and be
+specific.{name} Use the user's saved items and today's agenda below when relevant; never invent their data, bookings,
 messages or events, and never claim to have done something (calls, emails, purchases, web searches) you cannot do.
 If you need live information you don't have (weather, news, prices), say so briefly and suggest what you can do.
 Now: {now} ({weekday}).
 TODAY'S AGENDA: {agenda}"""
 
 
+TONES = {"warm": "warm, capable", "professional": "concise, professional", "cheerful": "upbeat, cheerful"}
+LENGTHS = {"short": "1-3 short sentences", "detailed": "up to 6 clear sentences"}
+
+
 class KeeperState(TypedDict, total=False):
     text: str
     photo_id: str | None
     history: list[dict[str, str]]
+    prefs: dict[str, str]
     lat: float | None
     lng: float | None
     now: dt.datetime
@@ -115,10 +120,11 @@ class KeeperAgent:
 
     async def run(self, text: str, now: dt.datetime, photo_id: str | None = None,
                   lat: float | None = None, lng: float | None = None,
-                  history: list[dict[str, str]] | None = None) -> KeeperState:  # fmt: skip
+                  history: list[dict[str, str]] | None = None,
+                  prefs: dict[str, str] | None = None) -> KeeperState:  # fmt: skip
         return await self.graph.ainvoke(
             {"text": text, "now": now, "photo_id": photo_id, "lat": lat, "lng": lng, "trace": [],
-             "history": history or []}
+             "history": history or [], "prefs": prefs or {}}
         )  # fmt: skip
 
     # ── understand ─────────────────────────────────────────────────────────
@@ -298,7 +304,14 @@ class KeeperAgent:
         now = state["now"]
         items = schedule.agenda(self.store.list(), now)[:8]
         agenda = "; ".join(i.label for i in items) or "nothing due"
-        system = ASSISTANT_SYSTEM.format(now=now.strftime("%Y-%m-%d %H:%M"), weekday=now.strftime("%A"), agenda=agenda)
+        prefs = state.get("prefs") or {}
+        name = (prefs.get("name") or "").strip()
+        system = ASSISTANT_SYSTEM.format(
+            now=now.strftime("%Y-%m-%d %H:%M"), weekday=now.strftime("%A"), agenda=agenda,
+            tone=TONES.get(prefs.get("tone", ""), TONES["warm"]),
+            length=LENGTHS.get(prefs.get("length", ""), LENGTHS["short"]),
+            name=f" The user's name is {name}; use it now and then, not in every reply." if name else "",
+        )  # fmt: skip
         try:
             text = await asyncio.wait_for(
                 for_task(self._get_llm(), "keeper.chat").complete(

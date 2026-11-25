@@ -57,10 +57,18 @@ class Turn(BaseModel):
     text: str = Field(max_length=700)
 
 
+class AssistantPrefs(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: str = Field("", max_length=40)
+    tone: Literal["warm", "professional", "cheerful"] = "warm"
+    length: Literal["short", "detailed"] = "short"
+
+
 class CommandIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(min_length=1, max_length=600)
     history: list[Turn] = Field(default_factory=list, max_length=8)  # recent turns, for follow-ups
+    prefs: AssistantPrefs | None = None  # how the user has set Tijori up (kept on their device)
     photo_id: str | None = Field(None, pattern=r"^[0-9a-f]{32}$")
     lat: float | None = Field(None, ge=-90, le=90)
     lng: float | None = Field(None, ge=-180, le=180)
@@ -125,7 +133,8 @@ async def command(request: Request, body: CommandIn, keeper: Keeper, now: Now) -
     if body.photo_id and keeper.store.photo(body.photo_id) is None:
         raise HTTPException(404, "Photo not found.")
     history = [t.model_dump() for t in body.history]
-    state = await keeper.agent.run(normalize(body.text), now, body.photo_id, body.lat, body.lng, history)
+    prefs = body.prefs.model_dump() if body.prefs else None
+    state = await keeper.agent.run(normalize(body.text), now, body.photo_id, body.lat, body.lng, history, prefs)
     cmd = state["command"]
     out: dict[str, Any] = {
         "reply": state["reply"],

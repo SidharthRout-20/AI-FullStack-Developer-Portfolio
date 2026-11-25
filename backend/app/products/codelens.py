@@ -49,6 +49,7 @@ MAX_FILES = 1500
 MAX_FILE_KB = 160
 MAX_CHUNKS = 2500
 WINDOW_LINES = 60
+EMBED_SLICE = 48  # chunks embedded per step while indexing
 CODE_EXT = {
     ".py": "python", ".js": "javascript", ".jsx": "javascript", ".ts": "typescript", ".tsx": "typescript",
     ".mjs": "javascript", ".go": "go", ".java": "java", ".kt": "kotlin", ".rs": "rust", ".rb": "ruby",
@@ -301,6 +302,11 @@ class CodeService:
         files, readme = await asyncio.to_thread(read_zip, blob)
         if not files:
             raise HTTPException(422, "No supported source files found in this repository.")
+        langs: dict[str, int] = {}
+        for p, t in files.items():
+            lang = CODE_EXT[Path(p).suffix.lower()]
+            langs[lang] = langs.get(lang, 0) + t.count("\n") + 1
+        yield {"event": "preview", **preview_of(files, langs, readme)}
         yield {"event": "stage", "stage": "chunk", "detail": f"{len(files)} files"}
         chunks: list[dict[str, Any]] = []
         for path, text in files.items():
@@ -310,16 +316,16 @@ class CodeService:
                 chunks += chunk_generic(path, text)
         chunks = [c for c in chunks if c["text"].strip()][:MAX_CHUNKS]
         yield {"event": "stage", "stage": "embed", "detail": f"{len(chunks)} chunks"}
-        vectors = await asyncio.to_thread(
-            self.embedder.embed_documents, [f"{c['path']} {c['symbol'] or ''}\n{c['text'][:1500]}" for c in chunks]
-        )
+        texts = [f"{c['path']} {c['symbol'] or ''}\n{c['text'][:1500]}" for c in chunks]
+        parts = []
+        for i in range(0, len(texts), EMBED_SLICE):  # in slices: bounded memory, and progress the reader can see
+            parts.append(np.asarray(await asyncio.to_thread(self.embedder.embed_documents, texts[i : i + EMBED_SLICE])))
+            yield {"event": "progress", "done": min(i + EMBED_SLICE, len(texts)), "total": len(texts)}
+        vectors = np.concatenate(parts) if parts else np.zeros((0, 0), dtype=np.float32)
         yield {"event": "stage", "stage": "graph", "detail": "import edges"}
         file_set = set(files)
         edges = sorted({(src, dst) for src, text in files.items() for dst in imports_of(src, text, file_set)})
-        langs: dict[str, int] = {}
-        for p, t in files.items():
-            lang = CODE_EXT[Path(p).suffix.lower()]
-            langs[lang] = langs.get(lang, 0) + t.count("\n") + 1
+        yield {"event": "found", "edges": len(edges), "symbols": sum(1 for c in chunks if c.get("symbol"))}
 
         repo_id = new_id()
         buf = io.BytesIO()
@@ -441,6 +447,28 @@ class CodeService:
             self.db.delete_blob(f"{repo_id}.{ext}")
         self._cache.pop(repo_id, None)
         self.db.delete("repos", repo_id)
+
+
+def preview_of(files: dict[str, str], langs: dict[str, int], readme: str) -> dict[str, Any]:
+    """What CodeLens has found so far, shown while it keeps working: real numbers, never placeholders."""
+    total = sum(langs.values()) or 1
+    folders: dict[str, int] = {}
+    for p in files:
+        top = p.split("/", 1)[0] if "/" in p else "(root)"
+        folders[top] = folders.get(top, 0) + 1
+    heading = (ln.lstrip("# ").strip() for ln in readme.splitlines() if ln.startswith("#"))
+    title = next((h for h in heading if h), "")
+    step = max(1, len(files) // 40)
+    return {
+        "files": len(files),
+        "lines": total,
+        "languages": [
+            {"name": k, "share": round(v * 100 / total)} for k, v in sorted(langs.items(), key=lambda kv: -kv[1])[:5]
+        ],
+        "folders": [k for k, _ in sorted(folders.items(), key=lambda kv: -kv[1])[:6]],
+        "sample": sorted(files)[::step][:40],
+        "title": title[:120],
+    }
 
 
 def public(doc: dict[str, Any]) -> dict[str, Any]:

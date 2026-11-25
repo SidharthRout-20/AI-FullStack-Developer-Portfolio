@@ -204,6 +204,10 @@ def test_codelens_index_ask_tour(app_client):
     assert bad[-1][0] == "error"
     events = parse_sse(c.post("/api/code/repos", json={"url": "https://github.com/acme/demo"}).text)
     assert [e for e, _ in events if e == "stage"] and events[-1][0] == "done"
+    preview = next(d for e, d in events if e == "preview")  # what it found, shown while it works
+    assert preview["files"] == 6 and preview["title"] == "Demo" and "app" in preview["folders"]
+    assert preview["languages"][0]["name"] == "python" and "app/main.py" in preview["sample"]
+    assert next(d for e, d in events if e == "found")["edges"] >= 1
     repo = events[-1][1]["repo"]
     assert ["app/main.py", "app/utils.py"] in repo["edges"] and repo["languages"]
     ans = c.post(f"/api/code/repos/{repo['id']}/ask", json={"question": "how is slugify implemented?"}).json()

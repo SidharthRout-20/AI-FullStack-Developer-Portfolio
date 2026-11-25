@@ -38,13 +38,13 @@ export function useHearing(transcribe) {
   const stop = useCallback(() => stopRef.current?.(), [])
 
   const start = useCallback(
-    async (onFinal) => {
+    async (onFinal, { lang } = {}) => {
       setError(null)
       setInterim('')
       const Ctor = recognizer()
       if (Ctor) {
         const rec = new Ctor()
-        rec.lang = navigator.language || 'en-IN'
+        rec.lang = lang || navigator.language || 'en-IN'
         rec.interimResults = true
         rec.continuous = false
         let text = ''
@@ -137,14 +137,32 @@ export function useHearing(transcribe) {
   return { state, interim, error, start, stop }
 }
 
-/** Read a reply aloud; resolves when it has been spoken (or straight away when speech isn't available). */
-export function say(text) {
+/** The voices this device offers (they load asynchronously, so this updates when they arrive). */
+export function useVoices() {
+  const [voices, setVoices] = useState(() => (canSpeak() ? speechSynthesis.getVoices() : []))
+  useEffect(() => {
+    if (!canSpeak()) return
+    const update = () => setVoices(speechSynthesis.getVoices())
+    speechSynthesis.addEventListener('voiceschanged', update)
+    return () => speechSynthesis.removeEventListener('voiceschanged', update)
+  }, [])
+  return voices
+}
+
+/**
+ * Read a reply aloud with the traveller's chosen voice, speed, pitch and language; resolves when it has been spoken
+ * (or straight away when speech isn't available).
+ */
+export function say(text, { voice, rate = 1.03, pitch = 1, lang } = {}) {
   return new Promise((resolve) => {
     if (!canSpeak() || !text) return resolve()
     speechSynthesis.cancel()
     const u = new SpeechSynthesisUtterance(text.replace(/[*_#`]/g, ''))
-    u.rate = 1.03
-    u.lang = navigator.language || 'en-IN'
+    const chosen = voice && speechSynthesis.getVoices().find((v) => v.voiceURI === voice)
+    if (chosen) u.voice = chosen
+    u.rate = rate
+    u.pitch = pitch
+    u.lang = chosen?.lang || lang || navigator.language || 'en-IN'
     u.onend = () => resolve()
     u.onerror = () => resolve()
     speechSynthesis.speak(u)
@@ -160,4 +178,28 @@ export function primeSpeech() {
   const u = new SpeechSynthesisUtterance(' ')
   u.volume = 0
   speechSynthesis.speak(u)
+}
+
+/** A soft two-note chime when Tijori starts (up) or stops (down) listening. */
+export function chime(up = true) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    const ctx = new Ctx()
+    const notes = up ? [660, 880] : [880, 660]
+    notes.forEach((f, i) => {
+      const o = ctx.createOscillator()
+      const g = ctx.createGain()
+      o.frequency.value = f
+      o.connect(g).connect(ctx.destination)
+      const t = ctx.currentTime + i * 0.09
+      g.gain.setValueAtTime(0.0001, t)
+      g.gain.exponentialRampToValueAtTime(0.08, t + 0.02)
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16)
+      o.start(t)
+      o.stop(t + 0.18)
+    })
+    setTimeout(() => void ctx.close(), 600)
+  } catch {
+    /* no audio: silent */
+  }
 }

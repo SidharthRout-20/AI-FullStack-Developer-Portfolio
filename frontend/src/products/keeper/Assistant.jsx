@@ -3,24 +3,57 @@
  * and does it: saves, finds, reminds, ticks off, plans your day, or just answers the question. "Keep listening"
  * turns it into a back-and-forth conversation, like the assistants on your phone.
  */
-import { Camera, Keyboard, Mic, Send, Square, Volume2, VolumeX } from 'lucide-react'
+import { Camera, Keyboard, Mic, Send, Settings2, Square, Volume2, VolumeX } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { compressImage } from '@appcore/web/device'
 import { keeperApi } from './api'
 import { moduleOf } from './modules'
-import { canSpeak, hearingMode, hush, primeSpeech, say, useHearing } from './voice'
+import { AssistantSettings } from './AssistantSettings'
+import { readPrefs, replyPrefs, writePrefs } from './prefs'
+import { canSpeak, chime, hearingMode, hush, primeSpeech, say, useHearing } from './voice'
 
-const PREFS = 'tijori-voice'
-const SUGGESTIONS = ["What's on today?", 'Remind me to call Mom at 6 pm', 'I parked on level 2, B14', 'Where did I keep my passport?', 'My car insurance renews on 3 March']
-
-const readPrefs = () => {
-  try {
-    return { speak: true, keep: false, ...JSON.parse(localStorage.getItem(PREFS) ?? '{}') }
-  } catch {
-    return { speak: true, keep: false }
-  }
+// Things to try, a few at a time and always changing, picked for the time of day.
+const IDEAS = {
+  any: ['Where did I keep my passport?', 'My car insurance renews on 3 March', 'I lent my drill to Ravi', 'Add milk, eggs and bread to my shopping list',
+    'The AC needs servicing every 6 months', "Mom's birthday is on 12 August", "What's 18% of 2,450?", 'Netflix is 649 rupees a month, due on the 5th',
+    'My laptop warranty ends next June', 'Water the plants every 3 days', 'What can you do?', 'Where did I park?'],
+  morning: ["What's on today?", 'Remind me to take my vitamins at 9 am', 'Plan my day', 'I parked on level 2, B14'],
+  evening: ['What do I have tomorrow?', 'Remind me to call Mom at 8 pm', 'Remind me to pay the electricity bill on Friday', 'What did I lend to people?'],
 }
+const ideasNow = () => {
+  const h = new Date().getHours()
+  const timed = h < 12 ? IDEAS.morning : h >= 17 ? IDEAS.evening : []
+  return [...timed, ...IDEAS.any]
+}
+
+/** Four suggestions at a time, changing every few seconds (paused while you're pointing at them). */
+function Suggestions({ onPick }) {
+  const pool = useMemo(() => ideasNow(), [])
+  const [page, setPage] = useState(0)
+  const [paused, setPaused] = useState(false)
+  useEffect(() => {
+    if (paused) return
+    const t = setInterval(() => setPage((n) => n + 1), 6000)
+    return () => clearInterval(t)
+  }, [paused])
+  const shown = Array.from({ length: 4 }, (_, i) => pool[(page * 4 + i) % pool.length])
+  return (
+    <div onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onFocus={() => setPaused(true)} onBlur={() => setPaused(false)}>
+      <p className="mb-2 text-center text-[12px] text-ink-500">Try saying</p>
+      <AnimatePresence mode="wait">
+        <motion.div key={page % Math.ceil(pool.length / 4)} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.35 }} className="flex flex-wrap justify-center gap-2">
+          {shown.map((s) => (
+            <button key={s} type="button" onClick={() => onPick(s)} className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3.5 py-1.5 text-[13px] text-ink-200 hover:border-white/20 hover:text-white">
+              “{s}”
+            </button>
+          ))}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  )
+}
+
 const greeting = (h) => (h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening')
 
 export function Assistant({ agenda, onChanged, onOpen, onScan, onError }) {
@@ -30,6 +63,7 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError }) {
   const [typed, setTyped] = useState('')
   const [typing, setTyping] = useState(() => !hearingMode())
   const [prefs, setPrefs] = useState(readPrefs)
+  const [settings, setSettings] = useState(false)
   const hearing = useHearing(keeperApi.transcribe)
   const camera = useRef(null)
   const endRef = useRef(null)
@@ -39,16 +73,11 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError }) {
     threadRef.current = thread
   }, [thread])
 
-  const setPref = (k, v) =>
-    setPrefs((p) => {
-      const next = { ...p, [k]: v }
-      try {
-        localStorage.setItem(PREFS, JSON.stringify(next))
-      } catch {
-        /* private mode */
-      }
-      return next
-    })
+  const savePrefs = (next) => {
+    setPrefs(next)
+    writePrefs(next)
+  }
+  const setPref = (k, v) => savePrefs({ ...prefs, [k]: v })
 
   // Braces matter: newer browsers return a Promise from scrollIntoView, and an effect may only return a cleanup.
   useEffect(() => {
@@ -63,14 +92,14 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError }) {
       setThread((t) => [...t, { id: crypto.randomUUID(), role: 'user', text: q }])
       setThinking(true)
       try {
-        const res = await keeperApi.command(q, { history })
+        const res = await keeperApi.command(q, { history, prefs: replyPrefs(prefs) })
         const reply = res.reply || 'Done.'
-        setThread((t) => [...t, { id: crypto.randomUUID(), role: 'assistant', text: reply, entries: res.action === 'add' || res.action === 'done' ? res.entries : [], kind: res.kind }])
+        setThread((t) => [...t, { id: crypto.randomUUID(), role: 'assistant', text: reply, entries: res.action === 'add' || res.action === 'done' ? res.entries : [], kind: res.kind, saved: res.action === 'add' && res.entries?.length > 0 && res.entries.every((e) => e.created_at === e.updated_at) }])
         if (res.action !== 'chat' && res.action !== 'help') onChanged()
         setThinking(false)
         if (prefs.speak && canSpeak()) {
           setSpeaking(true)
-          await say(reply)
+          await say(reply, prefs)
           setSpeaking(false)
         }
         if (spoken && prefs.keep) listenRef.current?.() // back-and-forth: listen for the follow-up
@@ -80,16 +109,32 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError }) {
         setThread((t) => [...t, { id: crypto.randomUUID(), role: 'assistant', text: msg || "Sorry, I couldn't do that. Please try again.", error: true }])
       }
     },
-    [onChanged, onError, prefs.keep, prefs.speak],
+    [onChanged, onError, prefs],
   )
+
+  /** Take back something just saved (only what this reply created). */
+  const undo = async (turn) => {
+    try {
+      await Promise.all((turn.entries ?? []).map((e) => keeperApi.remove(e.id)))
+      setThread((t) => t.map((x) => (x.id === turn.id ? { ...x, undone: true } : x)))
+      onChanged()
+    } catch (e) {
+      onError(e)
+    }
+  }
 
   const listen = useCallback(() => {
     hush()
     setSpeaking(false)
-    void hearing.start((text) => {
-      if (text.trim()) void ask(text, { spoken: true })
-    })
-  }, [ask, hearing])
+    if (prefs.sounds) chime(true)
+    void hearing.start(
+      (text) => {
+        if (prefs.sounds) chime(false)
+        if (text.trim()) void ask(text, { spoken: true })
+      },
+      { lang: prefs.lang || undefined },
+    )
+  }, [ask, hearing, prefs.lang, prefs.sounds])
   useEffect(() => {
     listenRef.current = listen
   }, [listen])
@@ -135,7 +180,7 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError }) {
   return (
     <div className="mx-auto flex max-w-2xl flex-col">
       <header className="pt-2 text-center">
-        <p className="text-[26px] font-semibold tracking-tight text-white sm:text-[30px]">{greeting(new Date().getHours())}.</p>
+        <p className="text-[26px] font-semibold tracking-tight text-white sm:text-[30px]">{greeting(new Date().getHours())}{prefs.name.trim() ? `, ${prefs.name.trim()}` : ''}.</p>
         <p className="mt-1 text-[14px] text-ink-400">
           {due ? `You have ${due} thing${due === 1 ? '' : 's'} due today. Ask me "what's on today?"` : "Nothing due today. What can I do for you?"}
         </p>
@@ -168,15 +213,12 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError }) {
 
       {/* Conversation */}
       {thread.length === 0 ? (
-        <div className="flex flex-wrap justify-center gap-2">
-          {SUGGESTIONS.map((s) => (
-            <button key={s} type="button" onClick={() => { primeSpeech(); void ask(s) }} className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3.5 py-1.5 text-[13px] text-ink-200 hover:border-white/20 hover:text-white">
-              “{s}”
-            </button>
-          ))}
-        </div>
+        <Suggestions onPick={(s) => { primeSpeech(); void ask(s) }} />
       ) : (
         <ol className="space-y-3">
+          <li className="flex justify-end">
+            <button type="button" onClick={() => { hush(); setSpeaking(false); setThread([]) }} className="text-[12px] text-ink-500 hover:text-white">Clear conversation</button>
+          </li>
           <AnimatePresence initial={false}>
             {thread.slice(-12).map((t) => (
               <motion.li key={t.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={t.role === 'user' ? 'flex justify-end' : ''}>
@@ -186,9 +228,11 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError }) {
                   <div className="max-w-[92%]">
                     <p className={`text-[15px] leading-relaxed whitespace-pre-line ${t.error ? 'text-rose-300' : 'text-ink-100'}`}>{t.text}</p>
                     {t.entries?.length > 0 && t.kind && (
-                      <button type="button" onClick={() => onOpen(t.kind)} className="mt-1.5 text-[12.5px] text-ink-400 underline-offset-2 hover:text-white hover:underline">
-                        See it in {moduleOf(t.kind).label} →
-                      </button>
+                      <span className="mt-1.5 flex flex-wrap gap-x-4 text-[12.5px] text-ink-400">
+                        <button type="button" onClick={() => onOpen(t.kind)} className="underline-offset-2 hover:text-white hover:underline">See it in {moduleOf(t.kind).label} →</button>
+                        {t.saved && !t.undone && <button type="button" onClick={() => void undo(t)} className="underline-offset-2 hover:text-white hover:underline">Undo</button>}
+                        {t.undone && <span className="text-ink-500">Undone</span>}
+                      </span>
                     )}
                   </div>
                 )}
@@ -219,11 +263,7 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError }) {
               {prefs.speak ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />} {prefs.speak ? 'Speaking replies' : 'Replies muted'}
             </button>
           )}
-          {mode && (
-            <label className="inline-flex cursor-pointer items-center gap-1.5 hover:text-white">
-              <input type="checkbox" checked={prefs.keep} onChange={(e) => setPref('keep', e.target.checked)} /> Keep listening (conversation)
-            </label>
-          )}
+          <button type="button" onClick={() => setSettings(true)} className="inline-flex items-center gap-1.5 hover:text-white"><Settings2 className="size-3.5" /> Voice & personality</button>
         </div>
         <input
           ref={camera}
@@ -238,6 +278,25 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError }) {
           }}
         />
       </div>
+      {settings && <AssistantSettings prefs={prefs} onChange={savePrefs} onClose={() => setSettings(false)} />}
     </div>
   )
+}
+
+/** If something unexpected breaks the assistant, say so and offer a way back instead of a blank screen. */
+export class AssistantBoundary extends Component {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  render() {
+    if (!this.state.failed) return this.props.children
+    return (
+      <div className="mx-auto max-w-md py-16 text-center">
+        <p className="text-[18px] font-semibold text-white">Something went wrong on this screen.</p>
+        <p className="mt-1 text-[14px] text-ink-400">Your saved things are safe. Start a fresh conversation to carry on.</p>
+        <button type="button" onClick={() => this.setState({ failed: false })} className="mt-5 rounded-full bg-gradient-to-r from-fuchsia-500 to-orange-400 px-5 py-2 text-[14px] font-semibold text-on-accent">Start again</button>
+      </div>
+    )
+  }
 }

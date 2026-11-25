@@ -9,7 +9,7 @@ import {
   KeyRequiredError,
   setAccessKey,
 } from './api'
-import { Assistant } from './Assistant'
+import { Assistant, AssistantBoundary } from './Assistant'
 import { Capture } from './Capture'
 import { currentPosition, notify, registerServiceWorker } from '@appcore/web/device'
 import { EntryCard } from './EntryCard'
@@ -265,6 +265,7 @@ export default function KeeperApp() {
           <KeyGate onUnlock={boot} />
         ) : view === 'assistant' ? (
           <div className="w-full flex-1 px-4 py-6 lg:py-10">
+            <AssistantBoundary>
             <Assistant
               agenda={agenda}
               onChanged={() => void refresh()}
@@ -272,6 +273,7 @@ export default function KeeperApp() {
               onScan={(p) => void startScan(p)}
               onError={handle}
             />
+            </AssistantBoundary>
           </div>
         ) : (
           <div className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-[minmax(0,1fr)] gap-6 px-4 py-5 lg:grid-cols-[230px_minmax(0,1fr)] lg:py-8">

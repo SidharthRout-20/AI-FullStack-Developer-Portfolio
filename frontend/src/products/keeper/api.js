@@ -52,13 +52,13 @@ const post = (path, body) =>
 
 export const keeperApi = {
   status: () => call('/status'),
-  /** A spoken or typed request. Servers older than the conversation memory reject `history`: ask again without it. */
+  /** A spoken or typed request. Servers older than the conversation memory reject `history` and `prefs`: ask again without them. */
   command: async (text, extra = {}) => {
     try {
       return await post('/command', { text, ...extra })
     } catch (e) {
-      if (e?.status !== 422 || !extra.history) throw e
-      const { history: _ignored, ...rest } = extra
+      if (e?.status !== 422 || !(extra.history || extra.prefs)) throw e
+      const { history: _h, prefs: _p, ...rest } = extra
       return post('/command', { text, ...rest })
     }
   },

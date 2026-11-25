@@ -88,7 +88,7 @@ describe('Tijori with an older server', () => {
         : new Response(JSON.stringify({ reply: 'Saved.', action: 'add' }), { status: 200 })
     }
     try {
-      const res = await keeperApi.command('passport, top drawer', { history: [{ role: 'user', text: 'hi' }] })
+      const res = await keeperApi.command('passport, top drawer', { history: [{ role: 'user', text: 'hi' }], prefs: { name: 'Sid', tone: 'warm', length: 'short' } })
       expect(res.reply).toBe('Saved.')
       expect(bodies[0].history).toHaveLength(1)
       expect(bodies[1]).toEqual({ text: 'passport, top drawer' })
