@@ -219,3 +219,30 @@ describe('Tara listening (simulated speech recogniser)', () => {
     for (const s of ['stop the timer', 'no I meant Pune', 'thanks for the weather, now the news']) expect(isGoodbye(s)).toBe(false)
   })
 })
+
+describe('Changing Tara by asking ("speak slower", "use a female voice", "call me Sid")', () => {
+  const voices = [
+    { name: 'Microsoft David - English (United States)', voiceURI: 'david', lang: 'en-US' },
+    { name: 'Microsoft Zira - English (United States)', voiceURI: 'zira', lang: 'en-US' },
+    { name: 'Google UK English Female', voiceURI: 'uk-f', lang: 'en-GB' },
+  ]
+  it('applies the change on this device, no owner needed', async () => {
+    const { applySetting, DEFAULTS } = await import('./prefs')
+    const base = { ...DEFAULTS, lang: 'en-US' }
+    expect(applySetting({ setting: 'speed', value: 'slower' }, base).rate).toBeLessThan(base.rate)
+    expect(applySetting({ setting: 'pitch', value: 'deeper' }, base).pitch).toBeLessThan(base.pitch)
+    expect(applySetting({ setting: 'name', value: 'Sid' }, base).name).toBe('Sid')
+    expect(applySetting({ setting: 'tone', value: 'more professional' }, base).tone).toBe('professional')
+    expect(applySetting({ setting: 'language', value: 'Hindi' }, base).lang).toBe('hi-IN')
+    expect(applySetting({ setting: 'wake', value: 'off' }, base).wake).toBe(false)
+    expect(applySetting({ setting: 'voice', value: 'female' }, base, voices).voice).toBe('zira')
+    expect(applySetting({ setting: 'voice', value: 'male' }, base, voices).voice).toBe('david')
+    const once = applySetting({ setting: 'voice', value: 'different' }, base, voices)
+    expect(applySetting({ setting: 'voice', value: 'different' }, once, voices).voice).not.toBe(once.voice) // a new one each time
+  })
+  it("hands over to the settings panel when it can't", async () => {
+    const { applySetting, DEFAULTS } = await import('./prefs')
+    expect(applySetting({ setting: 'voice', value: 'female' }, DEFAULTS, [])).toBeNull() // no voices on this device
+    expect(applySetting({ setting: 'tone', value: 'sarcastic' }, DEFAULTS)).toBeNull()
+  })
+})

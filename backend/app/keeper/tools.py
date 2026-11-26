@@ -32,7 +32,7 @@ from app.keeper.repo import RepoIndex
 logger = logging.getLogger(__name__)
 
 LOOKUPS = ("weather", "news", "wiki", "web", "currency", "time", "code", "portfolio")
-ACTIONS = ("open", "search", "play", "directions", "call", "message", "email", "timer", "calendar", "edit")
+ACTIONS = ("open", "search", "play", "directions", "call", "message", "email", "timer", "calendar", "edit", "settings")
 TOOLS = LOOKUPS + ACTIONS
 UA = {"User-Agent": "TaraAssistant/1.0 (personal-assistant demo)"}
 
@@ -306,6 +306,23 @@ class ToolBox:
                 if url
                 else (None, "What should I open?")
             )
+        if tool == "settings":  # how Tara talks and behaves for this user: applied on their device, no owner needed
+            setting = str(a.get("setting") or "open").lower().strip()
+            value = str(a.get("value") or "").strip()[:60]
+            if setting not in SETTINGS:
+                setting = "open"
+            said = SETTINGS[setting](value.lower()) if setting != "name" else (
+                f"Nice to meet you, {value}. I'll call you that." if value else "What should I call you?")  # fmt: skip
+            return (
+                {
+                    "type": "settings",
+                    "setting": setting,
+                    "value": value,
+                    "label": "Voice & personality",
+                    "confirm": True,
+                },
+                said,
+            )
         if tool == "edit":  # a change to this site's code: planned and proposed as a pull request, owner only
             req = str(a.get("request") or "").strip()
             if len(req) < 8:
@@ -445,8 +462,65 @@ _RULES: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
+# What Tara says after changing one of the user's own settings (the device applies the change).
+def _onoff(v: str) -> bool:
+    return not re.search(r"\b(off|no|stop|disable|don'?t|never|mute|quiet)\b", v)
+
+
+SETTINGS: dict[str, Callable[[str], str]] = {
+    "voice": lambda v: "Here's my new voice. How does this sound?",
+    "speed": lambda v: "Okay, I'll speak a little slower." if "slow" in v else "Okay, I'll speak a little faster.",
+    "pitch": lambda v: "Okay, a lower voice." if re.search(r"low|deep", v) else "Okay, a higher voice.",
+    "tone": lambda v: f"Got it, I'll be more {v or 'warm'}.",
+    "length": lambda v: (
+        "Sure, short answers from now on."
+        if re.search(r"short|brief|concise", v)
+        else "Sure, I'll give you more detail."
+    ),
+    "language": lambda v: f"Okay, switching to {v or 'that language'}.",
+    "wake": lambda v: "Hey Tara is on." if _onoff(v) else "Okay, I won't listen for Hey Tara.",
+    "speak": lambda v: "I'll read my answers aloud." if _onoff(v) else "Okay, I'll answer quietly, on screen only.",
+    "sounds": lambda v: "Chimes are on." if _onoff(v) else "Chimes off.",
+    "keep": lambda v: "I'll keep listening after each answer." if _onoff(v) else "Okay, one question at a time.",
+    "city": lambda v: f"Got it, {v.title()} is your home city now." if v else "Which city?",
+    "open": lambda v: "Here are my voice and personality settings.",
+    "name": lambda v: "",
+}
+
+_SETTING_RULES: list[tuple[re.Pattern[str], str, Callable[[re.Match[str]], str]]] = [
+    (
+        re.compile(
+            r"\b(?:change|switch|new|different|another)\b.*\bvoice\b|\bvoice\b.*\b(?:female|male|woman|man)\b", re.I
+        ),
+        "voice",
+        lambda m: (
+            "female"
+            if re.search(r"female|woman|girl", m.string, re.I)
+            else "male"
+            if re.search(r"\bmale\b|\bman\b", m.string, re.I)
+            else "different"
+        ),
+    ),
+    (
+        re.compile(r"\b(?:speak|talk)\b.*\b(faster|slower|quicker|slowly|quickly)\b", re.I),
+        "speed",
+        lambda m: m.group(1),
+    ),
+    (re.compile(r"\bcall me ([A-Z][\w'-]{1,30})", re.I), "name", lambda m: m.group(1)),
+]
+
+
+def rule_settings(text: str) -> tuple[str, dict[str, Any]] | None:
+    for pattern, setting, value in _SETTING_RULES:
+        if m := pattern.search(text or ""):
+            return "settings", {"setting": setting, "value": value(m)}
+    return None
+
+
 def rule_tool(text: str) -> tuple[str, dict[str, Any]] | None:
     """The common tool requests, recognised without a model (used when the model router is unavailable)."""
+    if hit := rule_settings(text):
+        return hit
     for pattern, tool in _RULES:
         m = pattern.search(text or "")
         if not m:

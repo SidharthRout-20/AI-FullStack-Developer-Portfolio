@@ -36,7 +36,7 @@ def test_tara_answers_as_the_expert_the_router_picks(tmp_path):
     assert out["persona"] == "chef"
     system = llm.prompts[1][0]
     assert "renowned chef" in system and "up to 8 clear sentences" in system  # experts get room to answer
-    assert '"chef" – recipes' in llm.prompts[0][0]  # the router sees the menu of experts
+    assert '"chef" (Chef): recipes' in llm.prompts[0][0]  # the router sees the menu of experts
 
 
 def test_the_users_pick_wins_for_that_question(tmp_path):

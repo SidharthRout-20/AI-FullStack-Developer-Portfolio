@@ -26,7 +26,7 @@ from app.keeper.models import KINDS, Command, Entry
 from app.keeper.parser import rule_parse
 from app.keeper.repo import RepoIndex
 from app.keeper.store import KeeperStore
-from app.keeper.tools import ACTIONS, TOOLS, ToolBox, ToolError, rule_tool
+from app.keeper.tools import ACTIONS, TOOLS, ToolBox, ToolError, rule_settings, rule_tool
 from appcore.llm import for_task
 from appcore.llm.chat import ChatLLM
 from appcore.llm.structured import complete_json
@@ -44,7 +44,7 @@ emotion: how the user seems to feel from their words: "neutral" | "happy" | "exc
         ("crisis" only for talk of self-harm, suicide or being in danger). Default "neutral".
 persona: for "chat" and "assist", who should answer: the expert a person would ask for this, one of
 {personas}
-        Use "assistant" when no special expertise is needed.
+        Pick the specialist whenever the question is in their field; "assistant" only for everyday tasks.
 tool (only for assist) and args:
         "weather"    {"place": city or null for the user's own location}
         "news"       {"topic": topic or null for top headlines}
@@ -54,6 +54,9 @@ tool (only for assist) and args:
         "time"       {"place": city} (the time somewhere else)
         "code"       {"query": what to find in this portfolio's own source code (how a feature works, where it is built)}
         "portfolio"  {"query": a question about Sidharth, who built this site: his work, skills, experience or its products}
+        "settings"   {"setting": "voice"|"speed"|"pitch"|"tone"|"length"|"name"|"language"|"wake"|"speak"|"sounds"|
+                      "keep"|"city"|"open", "value": e.g. "female", "faster", "lower", "professional", "short", "Sid",
+                      "Hindi", "off", "Pune"} (the user's own preferences for how Tara talks and behaves)
         "edit"       {"request": the change the user wants made to THIS site's own code, in their words, complete}
         "open"       {"target": app or website name or domain, or a product on this site: Safarnaama, CodeLens, Tara,
                       Jasoos, Quality}
@@ -80,18 +83,24 @@ recurring ("none"|"weekly"|"monthly"|"yearly"), subscription, every_days, every_
 category, items, gift_idea, query (for find), note.
 
 Conventions:
-- Questions like "where is X / where did I put X" → action "find", query "X".
+- Questions like "where is X / where did I put X" → action "find", query "X". Statements of where something is
+  ("passport is in the top drawer", "I parked on level 2, B14") → add (stash / parking). "find" is only for the
+  user's OWN saved things: "who/what is <a public person, place or thing>" → assist + wiki.
 - "where did I park" → find + kind parking.  "what's due / my day" → brief.  "shopping list" → list + pantry.
 - "X returned the Y" / "got Y back" → done + loan.  "bought milk" → done + pantry.  "AC was serviced" → done + appliance.
 - "remind me to X at/on T" → add + care (subject "other", title X, date/time) — a one-off reminder.
 - Weather, news, "who/what is X", rates, live facts → assist with weather/news/wiki/web/currency/time.
 - "open / launch / go to X" → open. "play X" → play. "navigate / directions / take me to X" → directions.
 - "call X" → call. "text / message / WhatsApp X" → message. "email X" → email. "set a timer / countdown" → timer.
-- "add a meeting / event to my calendar" → calendar; but "remind me to X" stays add + care (Tara reminds them).
+- Any message that says "calendar" ("add a dentist appointment on Friday to my calendar") → assist + calendar,
+  even when it starts with "add"; but "remind me to X" stays add + care (Tara reminds them).
 - Advice, explanations and maths ("how long to boil an egg", "what's 15% of 840") → chat.
 - How this site, Tara, CodeLens, Safarnaama, Jasoos or the Quality page works in code, or where something is built
   ("how does the wake word work?", "where is the weather tool?") → assist + code. (Where the USER's things are stays find.)
 - About Sidharth, his experience, skills, projects, or what this site's products do → assist + portfolio.
+- Changing how Tara talks or behaves for the user ("change your voice", "speak slower", "call me Sid", "be more
+  professional", "shorter answers", "talk in Hindi", "turn off Hey Tara", "stop reading answers aloud") → assist +
+  settings. These are personal settings, never code changes.
 - Asking to change, fix, add or remove something in this site's or Tara's code or UI ("make the CodeLens button
   bigger", "fix the typo on the home page", "add a dark mode toggle to Jasoos") → assist + edit.
 - Use the earlier conversation (if given) to resolve "it", "that", "same time", "tomorrow too".
@@ -162,6 +171,7 @@ class KeeperState(TypedDict, total=False):
     persona_choice: str | None  # picked by the user for this question; None or "auto" → the router decides
     persona: str | None  # who answered (only for answers, not for saves and finds)
     router_error: str | None  # why the model router fell back to rules, if it did (e.g. a rate limit)
+    router_retry_after: float | None  # how long the provider asked us to wait, when it was a rate limit
     trace: list[dict[str, Any]]
 
 
@@ -210,7 +220,7 @@ class KeeperAgent:
         start = time.perf_counter()
         now = state["now"]
         rules = rule_parse(state["text"], now.date())
-        command, routed_by, router_error = rules, "rules", None
+        command, routed_by, router_error, retry_after = rules, "rules", None, None
         if (hit := rule_tool(state["text"])) and rules.action in ("help", "find", "chat"):
             command = Command(action="assist", tool=hit[0], args=hit[1])  # tools still work without the model
         try:
@@ -227,11 +237,15 @@ class KeeperAgent:
             )
             if _plausible(llm_cmd):
                 command, routed_by = llm_cmd, "llm"
+                # "Change your voice" is a personal setting, never a code change (which only the owner may ask for).
+                if command.tool == "edit" and (hit := rule_settings(state["text"])):
+                    command = command.model_copy(update={"tool": hit[0], "args": hit[1]})
         except Exception as exc:  # noqa: BLE001 - any LLM failure → rules
             router_error = type(exc).__name__
+            retry_after = getattr(exc, "retry_after", None)  # the provider's own "try again in" hint, if any
             logger.info("Keeper router fell back to rules: %s", router_error)
         detail = f"{command.action}{' · ' + command.kind if command.kind else ''} (via {'LLM' if routed_by == 'llm' else 'offline rules'})"
-        return {"command": command, "routed_by": routed_by, "router_error": router_error,
+        return {"command": command, "routed_by": routed_by, "router_error": router_error, "router_retry_after": retry_after,
                 "trace": _trace(state, "understand", start, detail)}  # fmt: skip
 
     # ── act ────────────────────────────────────────────────────────────────

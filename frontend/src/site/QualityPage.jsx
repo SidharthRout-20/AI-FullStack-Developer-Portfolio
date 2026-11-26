@@ -47,6 +47,7 @@ export function QualityPage() {
   const [suites, setSuites] = useState([])
   const [results, setResults] = useState({})
   const [busy, setBusy] = useState(null) // 'app' | 'model'
+  const [step, setStep] = useState(null) // the model suite being measured right now
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -63,20 +64,36 @@ export function QualityPage() {
     }
   }, [])
 
+  const shown = useMemo(() => suites.filter((s) => product === 'all' || s.product === product), [suites, product])
+  const keep = (d) => setResults((r) => ({ ...r, ...Object.fromEntries(d.results.map((x) => [x.suite, x])) }))
+  // App checks in one go; model suites one request each (each stays well inside the server's time limit, and you
+  // see every result as it lands instead of waiting minutes for all of them).
+  const PASSES = 3
   const run = async (models) => {
     setBusy(models ? 'model' : 'app')
     setError(null)
     try {
-      const d = await api('/run', { product, models })
-      setResults((r) => ({ ...r, ...Object.fromEntries(d.results.map((x) => [x.suite, x])) }))
+      keep(await api('/run', { product, models: false }))
+      if (models) {
+        for (const s of shown.filter((x) => x.kind === 'model')) {
+          // A pass that the free tier cut short comes back "partial"; the next pass asks only the refused cases,
+          // so one click usually ends with every case measured.
+          for (let pass = 1; pass <= PASSES; pass++) {
+            setStep({ title: s.title, pass })
+            const d = await api('/run', { product, models: true, suite: s.id, resume: pass > 1 })
+            keep(d)
+            if (d.results[0]?.status !== 'partial') break
+          }
+        }
+      }
     } catch (e) {
       setError(e.message)
     } finally {
       setBusy(null)
+      setStep(null)
     }
   }
 
-  const shown = useMemo(() => suites.filter((s) => product === 'all' || s.product === product), [suites, product])
   const summary = useMemo(() => {
     const of = (kind) => shown.filter((s) => s.kind === kind).map((s) => results[s.id]).filter((r) => r?.value != null)
     const avg = (rs) => (rs.length ? rs.reduce((a, r) => a + r.value, 0) / rs.length : null)
@@ -117,7 +134,13 @@ export function QualityPage() {
             </button>
           </div>
         </div>
-        {busy === 'model' && <p className="mt-2 text-right text-[12px] text-ink-500">Calling the live model on every labelled case: about a minute.</p>}
+        {step && (
+          <p aria-live="polite" className="mt-3 text-[13px] text-ink-400">
+            {step.pass === 1
+              ? `Measuring “${step.title}” with the live model… (paced to stay inside the free-tier limits, so this can take a minute)`
+              : `“${step.title}”: asking the cases the free tier refused again (pass ${step.pass} of ${PASSES})…`}
+          </p>
+        )}
         {error && <p className="mt-3 rounded-xl border border-rose-400/20 bg-rose-400/[0.06] px-4 py-2 text-[13px] text-rose-200">{error}</p>}
 
         <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -188,11 +211,13 @@ function SuiteCard({ s, r }) {
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-[12px] sm:grid-cols-3">
         <Item k="Metric" v={s.metric} />
-        <Item k="Cases" v={r ? `${r.passed}/${r.total}` : `${s.size}`} />
+        <Item k="Cases" v={!r ? `${s.size}` : r.measured != null && r.measured < r.total ? `${r.passed}/${r.measured} measured (of ${r.total})` : `${r.passed}/${r.total}`} />
+        {r?.status === 'partial' && <Item k="Not measured" v={`${r.total - r.measured} (free-tier limit reached; run again later)`} />}
+        {r?.status === 'unmeasured' && <Item k="Status" v="Not measured: the model was unavailable (free-tier limit). Nothing was scored." />}
         <Item k="Last run" v={r ? ago(r.ran_at) : 'not run yet'} />
         {extra.hit_at_1 != null && <Item k="Top hit (hit@1)" v={pct(extra.hit_at_1)} />}
         {extra.p50_ms != null && <Item k="Latency p50 / p95" v={`${extra.p50_ms} / ${extra.p95_ms} ms`} />}
-        {extra.fallback_rate != null && <Item k="Fell back to rules" v={pct(extra.fallback_rate)} />}
+        {extra.coverage == null && extra.fallback_rate != null && <Item k="Fell back to rules" v={pct(extra.fallback_rate)} />}
         {r?.status === 'error' && <Item k="Status" v={`error (${r.error})`} />}
       </dl>
       {r?.failures?.length > 0 && (

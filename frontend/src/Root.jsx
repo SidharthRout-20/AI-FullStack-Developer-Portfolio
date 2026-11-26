@@ -1,5 +1,6 @@
 import { MotionConfig } from 'motion/react'
 import { LITE } from './lib/lite'
+import { trackView, watchClicks } from './lib/visits'
 import { lazy, Suspense, useEffect } from 'react'
 import { Backdrop } from './components/shell/Backdrop'
 import { AppSkeleton, PageSkeleton } from './components/Skeleton'
@@ -17,6 +18,7 @@ const DocuMindApp = lazy(() => import('./App'))
 const KeeperApp = lazy(() => import('./products/keeper/KeeperApp'))
 const ProductPage = lazy(() => import('./site/ProductPage').then((m) => ({ default: m.ProductPage })))
 const QualityPage = lazy(() => import('./site/QualityPage').then((m) => ({ default: m.QualityPage })))
+const InsightsPage = lazy(() => import('./site/InsightsPage').then((m) => ({ default: m.InsightsPage })))
 
 // Every product is its own code-split chunk, loaded only when opened.
 const APPS = [
@@ -53,6 +55,8 @@ export function Root() {
 
 function Routes() {
   const path = usePath()
+  useEffect(() => trackView(path), [path])
+  useEffect(() => watchClicks(SITE.resume), [])
 
   if (path === '/documind' || path.startsWith('/documind/')) return <DocuMindRoute />
   if (path === '/keeper' || path.startsWith('/keeper/')) return <KeeperRoute />
@@ -70,7 +74,7 @@ function Routes() {
     <MotionConfig reducedMotion={LITE ? 'always' : 'user'}>
       <Backdrop />
       <Suspense fallback={<PageSkeleton />}>
-        {path === '/' ? <Hub /> : path === '/quality' || path === '/quality/' ? <Quality /> : product ? <Preview slug={product.slug} /> : <NotFound />}
+        {path === '/' ? <Hub /> : path === '/quality' || path === '/quality/' ? <Quality /> : path === '/insights' || path === '/insights/' ? <Insights /> : product ? <Preview slug={product.slug} /> : <NotFound />}
       </Suspense>
     </MotionConfig>
   )
@@ -84,6 +88,11 @@ function Hub() {
 function Quality() {
   useTitle(`Quality · ${SITE.owner}`)
   return <QualityPage />
+}
+
+function Insights() {
+  useTitle(`Insights · ${SITE.owner}`)
+  return <InsightsPage />
 }
 
 function Preview({ slug }) {

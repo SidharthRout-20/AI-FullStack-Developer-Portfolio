@@ -482,12 +482,15 @@ function Labs() {
                 <div className="px-7 pt-7">
                   <p className="text-[12px] font-semibold text-ink-500">{p.category.replace('Labs · ', '')}</p>
                   <h3 className="mt-1 text-[24px] font-semibold tracking-tight text-white">{p.name}</h3>
-                  <p className="mt-1 text-[15px] leading-snug text-ink-400">{p.tagline}</p>
+                  {/* Two lines, always: a longer tagline must never push its screenshot lower than its neighbours'. */}
+                  <p className="mt-1 line-clamp-2 min-h-[2.75em] text-[15px] leading-snug text-ink-400" title={p.tagline}>{p.tagline}</p>
                   <span className="mt-3 inline-flex items-center gap-1 text-[14px] text-ink-500"><Lock className="size-3.5" /> In development</span>
                 </div>
                 {shot && (
-                  <div className="mt-6 ml-7 overflow-hidden rounded-tl-[12px]">
-                    <img src={shot} alt="" loading="lazy" className="aspect-[16/10] w-full object-cover object-left-top transition duration-700 ease-out group-hover:scale-[1.04]" />
+                  <div className="mt-auto pt-6">
+                    <div className="ml-7 overflow-hidden rounded-tl-[12px]">
+                      <img src={shot} alt="" loading="lazy" className="aspect-[16/10] w-full object-cover object-left-top transition duration-700 ease-out group-hover:scale-[1.04]" />
+                    </div>
                   </div>
                 )}
               </div>

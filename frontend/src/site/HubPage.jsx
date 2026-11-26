@@ -27,6 +27,7 @@ import { EXPERTISE, SITE, TIMELINE } from './config'
 import { fillCounts, FROZEN, PORTFOLIO } from './products'
 import { MiniPortrait, Polaroid } from './Portrait'
 import { ProductIndex } from './ProductIndex'
+import { track } from '../lib/visits'
 import { ShowcaseHub, ShowcaseNav } from './ShowcaseHub'
 import { SkillsChat } from './SkillsChat'
 import {
@@ -709,6 +710,7 @@ export function ContactForm() {
         )
       }
       setState('sent')
+      track('contact')
       setForm({ name: '', email: '', message: '', website: '' })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')

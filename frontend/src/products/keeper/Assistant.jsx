@@ -17,8 +17,9 @@ import { ActionCard, LookupCard, WeatherIcon } from './Cards'
 import { CursorGlow, Motes, Orb, Reveal, useMicLevel } from './Magic'
 import { moduleOf } from './modules'
 import { AUTO, GROUPS, PERSONAS, personaOf } from './personas'
-import { readPrefs, replyPrefs, writePrefs } from './prefs'
-import { canSpeak, chime, hearingMode, hush, isGoodbye, primeSpeech, say, useVoice, wakeSupported } from './voice'
+import { applySetting, readPrefs, replyPrefs, writePrefs } from './prefs'
+import { track } from '../../lib/visits'
+import { canSpeak, chime, hearingMode, hush, isGoodbye, primeSpeech, say, useVoice, useVoices, wakeSupported } from './voice'
 
 const GRAD = 'from-fuchsia-500 via-pink-500 to-orange-400'
 // Things to try, four at a time and always changing.
@@ -61,6 +62,7 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settings
   const [picking, setPicking] = useState(false)
   const [glance, setGlance] = useState(null)
   const [mood, setMood] = useState(null)
+  const voices = useVoices()
   const camera = useRef(null)
   const endRef = useRef(null)
   const threadRef = useRef(thread)
@@ -134,6 +136,7 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settings
     async (text, { spoken = false } = {}) => {
       const q = text.trim()
       if (!q) return
+      track('tara_ask') // counted, never the words
       quiet.current = false
       const history = threadRef.current.slice(-6).map((t) => ({ role: t.role, text: (t.text || '').slice(0, 700) }))
       setThread((t) => [...t, { id: crypto.randomUUID(), role: 'user', text: q, spoken }])
@@ -151,10 +154,20 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settings
           entries: res.action === 'add' || res.action === 'done' ? res.entries : [], kind: res.kind, saved: created, persona: res.persona ?? null,
         }])
         if (res.action === 'add' || res.action === 'done') onChanged()
+        // "Speak slower", "use a female voice", "call me Sid": the user's own settings, applied right here (and the
+        // reply is spoken in the new voice). Anything that can't be applied opens the settings panel instead.
+        let voicePrefs = prefs
+        if (res.client_action?.type === 'settings') {
+          const next = res.client_action.setting === 'open' ? null : applySetting(res.client_action, prefs, voices)
+          if (next) {
+            savePrefs(next)
+            voicePrefs = next
+          } else onSettings(true)
+        }
         setThinking(false)
-        if (prefs.speak && canSpeak()) {
+        if (voicePrefs.speak && canSpeak()) {
           setSpeaking(true)
-          await say(reply, prefs)
+          await say(reply, voicePrefs)
         }
         // A conversation: after a spoken answer, listen for a follow-up (no tapping), unless the user closed it.
         if (spoken && prefs.keep && !quiet.current && hearingMode()) {
@@ -170,7 +183,7 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settings
         setThread((t) => [...t, { id: crypto.randomUUID(), role: 'assistant', text: msg || "Sorry, I couldn't do that. Please try again.", error: true }])
       }
     },
-    [onChanged, onError, prefs, persona, voice],
+    [onChanged, onError, onSettings, prefs, persona, voice, voices],
   )
   useEffect(() => {
     askRef.current = ask
@@ -247,7 +260,7 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settings
                   {t.role === 'user' ? (
                     <div className="flex justify-end"><p className="max-w-[85%] rounded-3xl rounded-br-lg bg-white/[0.08] px-4 py-2.5 text-[15px] text-white">{t.text}</p></div>
                   ) : (
-                    <Reply t={t} prefs={prefs} onOpen={onOpen} onUndo={undo} />
+                    <Reply t={t} prefs={prefs} onOpen={onOpen} onUndo={undo} onSettings={onSettings} />
                   )}
                 </motion.li>
               ))}
@@ -317,7 +330,7 @@ function Avatar() {
   return <span className={`grid size-8 shrink-0 place-items-center rounded-full bg-gradient-to-br ${GRAD} text-on-accent shadow-md`}><Sparkles className="size-4" /></span>
 }
 
-function Reply({ t, prefs, onOpen, onUndo }) {
+function Reply({ t, prefs, onOpen, onUndo, onSettings }) {
   const [copied, setCopied] = useState(false)
   const who = t.persona && t.persona !== 'assistant' ? personaOf(t.persona) : null
   return (
@@ -331,7 +344,13 @@ function Reply({ t, prefs, onOpen, onUndo }) {
           <Reveal text={t.text} className="text-[15.5px] leading-relaxed whitespace-pre-line text-ink-100" />
         )}
         <LookupCard card={t.card} />
-        <ActionCard action={t.action} />
+        {t.action?.type === 'settings' ? (
+          <button type="button" onClick={() => onSettings(true)} className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1 text-[12.5px] text-ink-300 hover:border-white/20 hover:text-white">
+            Voice & personality settings →
+          </button>
+        ) : (
+          <ActionCard action={t.action} />
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12.5px] text-ink-500">
           {t.entries?.length > 0 && t.kind && <button type="button" onClick={() => onOpen(t.kind)} className="hover:text-white">See it in {moduleOf(t.kind).label} →</button>}
           {t.saved && !t.undone && <button type="button" onClick={() => void onUndo(t)} className="hover:text-white">Undo</button>}

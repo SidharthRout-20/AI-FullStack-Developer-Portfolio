@@ -120,3 +120,21 @@ def test_asking_tara_for_a_code_change_never_acts_on_its_own(tmp_path):
 
 
 _NOW = __import__("datetime").datetime(2030, 5, 1, 9, 0)
+
+
+def test_changing_taras_voice_is_a_setting_not_a_code_change(tmp_path):
+    from app.keeper.agent import KeeperAgent
+    from app.keeper.store import KeeperStore
+    from app.keeper.tools import ToolBox
+
+    # Even if the model mislabels it as a code edit, the user's own preference wins: no owner key involved.
+    llm = _Seen(['{"action": "assist", "tool": "edit", "args": {"request": "change your voice to a female one"}}'])
+    out = asyncio.run(
+        KeeperAgent(KeeperStore(tmp_path), llm, tools=ToolBox()).run("change your voice to a female one", _NOW)
+    )
+    assert out["client_action"]["type"] == "settings" and out["client_action"]["setting"] == "voice"
+    assert out["client_action"]["value"] == "female" and "voice" in out["reply"]
+    llm = _Seen(['{"action": "assist", "tool": "settings", "args": {"setting": "speed", "value": "slower"}}'])
+    out = asyncio.run(KeeperAgent(KeeperStore(tmp_path), llm, tools=ToolBox()).run("talk a bit slower", _NOW))
+    assert out["client_action"] == {"type": "settings", "setting": "speed", "value": "slower",
+                                    "label": "Voice & personality", "confirm": True, "auto": False}  # fmt: skip

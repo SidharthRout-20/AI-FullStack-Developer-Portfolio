@@ -37,6 +37,7 @@ from app.products import careerpilot, codelens, contact, evolve, flowforge, meet
 from app.products.suite import Suite
 from app.rag.service import RAGService
 from app.rag.watcher import DocumentWatcher
+from app.visits import router as visits_router
 from appcore.accounts import accounts_from
 from appcore.errors import ErrorsAsJSON
 from appcore.logs import configure_logging
@@ -151,6 +152,7 @@ def create_app(
     app.include_router(efi_router)
     app.include_router(llm_router)
     app.include_router(evals_router)
+    app.include_router(visits_router)
     app.include_router(edits_router)
     for product in (careerpilot, meetingmind, codelens, flowforge, trip_api, evolve, contact):
         app.include_router(product.router)

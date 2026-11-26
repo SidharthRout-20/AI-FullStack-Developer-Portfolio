@@ -184,7 +184,7 @@ export function ActionCard({ action }) {
   const tried = useRef(false)
   useEffect(() => {
     // Asked for outright ("open YouTube"): try straight away. If the browser wants a tap first, the button is there.
-    if (tried.current || !action?.auto || action.type === 'timer') return
+    if (tried.current || !action?.auto || !action.url || action.type === 'timer') return
     tried.current = true
     window.open(action.url, '_blank', 'noopener,noreferrer')
   }, [action])
@@ -278,6 +278,11 @@ function EditCard({ request }) {
     <div className={`${shell} px-4 py-3`}>
       <p className="flex items-center gap-2 text-[13px] font-semibold text-ink-100"><GitPullRequest className="size-4 text-emerald-300" /> Propose a code change</p>
       <p className="mt-1 text-[13px] text-ink-300">“{request}”</p>
+      {!key && (
+        <p className="mt-2 text-[12.5px] text-ink-400">
+          Changing the site's code is for its owner only. To change how Tara talks (voice, speed, tone, your name), just ask, or open Voice & personality.
+        </p>
+      )}
       {!key ? (
         <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); setOwnerKey(draftKey.trim()); setKey(draftKey.trim()) }}>
           <KeyRound className="mt-2 size-4 shrink-0 text-ink-500" />

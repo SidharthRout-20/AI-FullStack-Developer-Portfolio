@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import hashlib
 import statistics
 import time
 from collections.abc import Awaitable, Callable
@@ -45,8 +46,9 @@ class Suite:
     kind: str  # "app" (deterministic) | "model" (calls the live model)
     metric: str  # what the score means
     description: str
-    run: Callable[[Request], Awaitable[Result]]
+    run: Callable[..., Awaitable[Result]]
     size: int
+    fingerprint: str | None = None  # model suites: identifies the labelled set (see _prior)
 
 
 def _score(cases: list[tuple[Any, Any, Any]]) -> Result:
@@ -105,6 +107,7 @@ async def _tara_actions(_: Request) -> Result:
 
 
 ROUTING = [
+    ("change your voice to a female one", ("assist", "settings")), ("make the CodeLens start button bigger", ("assist", "edit")),
     ("passport is in the top drawer", ("add", "stash")), ("I parked on level 2, B14", ("add", "parking")),
     ("where did I keep my passport?", ("find", None)), ("remind me to call mom at 8 pm", ("add", "care")),
     ("netflix renews on the 5th, 649 rupees", ("add", "bill")), ("I lent my drill to Ravi", ("add", "loan")),
@@ -146,33 +149,75 @@ def _close(a: str | None, b: str | None) -> bool:
     return a == b or any(a in g and b in g for g in SAME)
 
 
-async def _route_all(request: Request, texts: list[str]) -> tuple[list[Any], list[float], int]:
-    """Route every text with the live model. A free-tier rate limit makes the router fall back to offline rules, which
-    would measure the rules instead of the model, so those cases wait for the limit to reset and are asked once more.
-    The fallback rate reported is what remained after that retry."""
+async def _route_all(request: Request, texts: list[str]) -> tuple[list[Any | None], list[float | None]]:
+    """Route each text with the live model, one at a time, inside a time budget.
+
+    Groq's free tier allows a few thousand tokens per model per minute, so a burst of routing calls gets refused and the
+    router falls back to offline rules. Scoring those would measure the rules, not the model, so a refused call waits
+    for the provider's own retry hint and tries again (at most twice). Texts the model never answered come back as
+    None or as a rules result; the suites report them as "not measured" instead of counting them as wrong.
+    """
     agent = request.app.state.keeper.agent
     now = dt.datetime.now()
-    sem = asyncio.Semaphore(2)
-    times: list[float] = []
-
-    async def one(text: str) -> Any:
-        async with sem:
+    deadline = time.perf_counter() + MODEL_BUDGET_S
+    times: list[float | None] = [None] * len(texts)
+    outs: list[Any | None] = [None] * len(texts)
+    for i, text in enumerate(texts):
+        if time.perf_counter() > deadline:
+            break  # out of time: the rest stay unmeasured
+        for _ in range(3):
             t0 = time.perf_counter()
             out = await agent._understand({"text": text, "now": now, "history": [], "prefs": {}, "trace": []})
-            times.append((time.perf_counter() - t0) * 1000)
-            return out
+            if out.get("routed_by") == "llm":
+                times[i] = (time.perf_counter() - t0) * 1000
+                break
+            if not _rate_limited(out.get("router_error")):
+                break  # no model at all (or bad output): waiting won't help
+            wait = min(max(float(out.get("router_retry_after") or 6), 2.0), 20.0)
+            if time.perf_counter() + wait > deadline:
+                break
+            await asyncio.sleep(wait)
+        outs[i] = out
+    return outs, times
 
-    outs = list(await asyncio.gather(*(one(t) for t in texts)))
-    missed = [i for i, o in enumerate(outs) if _rate_limited(o.get("router_error"))]
-    if missed:
-        await asyncio.sleep(RETRY_AFTER_S)
-        for i in missed:  # one at a time: well inside the per-minute limit
-            outs[i] = await one(texts[i])
-    fallbacks = sum(1 for o in outs if o.get("routed_by") != "llm")
-    return outs, times, fallbacks
+
+MODEL_BUDGET_S = 110.0  # per suite (one suite per request), inside the serverless time limit
 
 
-RETRY_AFTER_S = 15.0  # Groq's free tier resets its per-minute token budget within this
+Answers = dict[str, dict[str, Any]]  # case index → {"got": what the model said (as text), "ms": its latency}
+
+
+def _fingerprint(items: list[tuple[str, Any]]) -> str:
+    """Identifies a labelled set: answers kept from an earlier run are reused only for the very same cases."""
+    return hashlib.sha256(repr(items).encode()).hexdigest()[:16]
+
+
+async def _model_suite(request: Request, items: list[tuple[str, Any]], grade: Callable[[Any, Any], str],
+                       prior: Answers | None = None) -> Result:  # fmt: skip
+    """Route the cases not answered yet (all of them, or the ones an earlier pass of this run could not reach),
+    then score every case the model has answered. grade(expected, routed) → what the model said, as text that
+    equals str(expected) when it is right."""
+    answers: Answers = dict(prior or {})
+    todo = [i for i in range(len(items)) if str(i) not in answers]
+    outs, times = await _route_all(request, [items[i][0] for i in todo])
+    for i, out, ms in zip(todo, outs, times, strict=True):
+        if out is not None and out.get("routed_by") == "llm":
+            answers[str(i)] = {"got": grade(items[i][1], out), "ms": round(ms or 0)}
+    return {**_model_result(items, answers), "answers": answers, "fingerprint": _fingerprint(items)}
+
+
+def _model_result(items: list[tuple[str, Any]], answers: Answers) -> Result:
+    """Score only what the model answered; say how much that covers (a refused call is "not measured", not wrong)."""
+    keep = sorted(int(i) for i in answers)
+    total = len(items)
+    if not keep:
+        return {"value": None, "passed": 0, "total": total, "measured": 0, "failures": [], "status": "unmeasured",
+                "extra": {"coverage": 0.0, "fallback_rate": 1.0}}  # fmt: skip
+    scored = _score([(items[i][0], str(items[i][1]), answers[str(i)]["got"]) for i in keep])
+    times = [float(answers[str(i)]["ms"]) for i in keep]
+    return {**scored, "total": total, "measured": len(keep), "status": "ok" if len(keep) == total else "partial",
+            "extra": {**_latency(times), "coverage": round(len(keep) / total, 3),
+                      "fallback_rate": round(1 - len(keep) / total, 3)}}  # fmt: skip
 
 
 def _rate_limited(error: str | None) -> bool:
@@ -180,42 +225,39 @@ def _rate_limited(error: str | None) -> bool:
     return bool(error) and ("NoCompatibleModel" in error or "RateLimit" in error)
 
 
-def _latency(times: list[float], fallbacks: int, n: int) -> dict[str, Any]:
+def _latency(times: list[float]) -> dict[str, Any]:
+    """Latency of the calls the model answered (refused calls return in a millisecond and would flatter it)."""
     q = statistics.quantiles(times, n=20) if len(times) >= 2 else times or [0]
-    return {
-        "p50_ms": round(statistics.median(times or [0])),
-        "p95_ms": round(q[-1]),
-        "fallback_rate": round(fallbacks / max(1, n), 3),
-    }
+    return {"p50_ms": round(statistics.median(times or [0])), "p95_ms": round(q[-1])}
 
 
-async def _tara_routing(request: Request) -> Result:
-    outs, times, fb = await _route_all(request, [t for t, _ in ROUTING])
-    cases = []
-    for (text, (action, sub)), o in zip(ROUTING, outs, strict=True):
-        c = o["command"]
-        got_sub = c.tool if action == "assist" else c.kind if action == "add" else None
-        cases.append((text, (action, sub), (c.action, got_sub if sub else None)))
-    return {**_score(cases), "extra": _latency(times, fb, len(ROUTING))}
+def _grade_routing(want: tuple[str, str | None], out: Any) -> str:
+    action, sub = want
+    c = out["command"]
+    got_sub = c.tool if action == "assist" else c.kind if action == "add" else None
+    return str((c.action, got_sub if sub else None))
 
 
-async def _tara_emotion(request: Request) -> Result:
-    outs, times, fb = await _route_all(request, [t for t, _ in EMOTION])
-    cases = []
-    for (text, want), o in zip(EMOTION, outs, strict=True):
-        got = o["command"].emotion or "neutral"
-        cases.append((text, want, want if _close(want, got) else got))
-    return {**_score(cases), "extra": _latency(times, fb, len(EMOTION))}
+def _grade_emotion(want: str, out: Any) -> str:
+    got = out["command"].emotion or "neutral"
+    return want if _close(want, got) else got
 
 
-async def _tara_persona(request: Request) -> Result:
-    outs, times, fb = await _route_all(request, [t for t, _ in PERSONA])
-    cases = []
-    for (text, want), o in zip(PERSONA, outs, strict=True):
-        got = o["command"].persona or "assistant"
-        near = got == want or any(want in g and got in g for g in NEAR)
-        cases.append((text, want, want if near else got))
-    return {**_score(cases), "extra": _latency(times, fb, len(PERSONA))}
+def _grade_persona(want: str, out: Any) -> str:
+    got = out["command"].persona or "assistant"
+    return want if got == want or any(want in g and got in g for g in NEAR) else got
+
+
+async def _tara_routing(request: Request, prior: Answers | None = None) -> Result:
+    return await _model_suite(request, ROUTING, _grade_routing, prior)
+
+
+async def _tara_emotion(request: Request, prior: Answers | None = None) -> Result:
+    return await _model_suite(request, EMOTION, _grade_emotion, prior)
+
+
+async def _tara_persona(request: Request, prior: Answers | None = None) -> Result:
+    return await _model_suite(request, PERSONA, _grade_persona, prior)
 
 
 # ── CodeLens ─────────────────────────────────────────────────────────────
@@ -321,12 +363,14 @@ async def _jasoos_evidence(_: Request) -> Result:
 
 SUITES = [
     Suite("tara.routing", "tara", "Understands what you ask", "model", "routing accuracy",
-          "Labelled requests: does Tara pick the right action, kind of thing and tool?", _tara_routing, len(ROUTING)),
+          "Labelled requests: does Tara pick the right action, kind of thing and tool?", _tara_routing, len(ROUTING),
+          _fingerprint(ROUTING)),
     Suite("tara.emotion", "tara", "Reads how you feel", "model", "emotion accuracy",
-          "Labelled messages: does Tara sense the feeling (close feelings count, e.g. stressed/anxious)?", _tara_emotion, len(EMOTION)),
+          "Labelled messages: does Tara sense the feeling (close feelings count, e.g. stressed/anxious)?", _tara_emotion, len(EMOTION),
+          _fingerprint(EMOTION)),
     Suite("tara.persona", "tara", "Picks the right expert", "model", "expert accuracy",
           "Labelled questions: on Auto, does Tara answer as the expert a person would ask (chef, architect, listener…)?",
-          _tara_persona, len(PERSONA)),
+          _tara_persona, len(PERSONA), _fingerprint(PERSONA)),
     Suite("tara.rules", "tara", "Works without the model", "app", "offline tool recognition",
           "Weather, news, time, timers, open and play are recognised even when the model is down.", _tara_rules, len(TOOL_RULES)),
     Suite("tara.actions", "tara", "Device actions are exact", "app", "action correctness",
@@ -359,6 +403,30 @@ class RunIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     product: str = Field("all", pattern=r"^(all|tara|codelens|safarnaama|jasoos|platform)$")
     models: bool = False  # also run the suites that call the live model
+    suite: str | None = Field(
+        None, max_length=40, pattern=r"^[a-z.]+$"
+    )  # just this one (the page runs models one at a time)
+    # Pick up where this suite's last run stopped: only the cases the free tier refused are asked again (the page
+    # does this for a run that came back partial, so one click ends with every case measured when the limits allow).
+    resume: bool = False
+
+
+RESUME_WITHIN = dt.timedelta(minutes=30)
+
+
+def _prior(store: DocStore, s: Suite) -> Answers | None:
+    """The answers of this suite's latest run, if it was recent, partial and on the same labelled cases."""
+    last = next((d for d in store.list("results", limit=200) if d.get("suite") == s.id), None)
+    if not last or last.get("status") != "partial" or not last.get("answers"):
+        return None
+    ran = dt.datetime.fromisoformat(last["ran_at"])
+    if dt.datetime.now(dt.UTC) - ran > RESUME_WITHIN or last.get("fingerprint") != s.fingerprint:
+        return None
+    return last["answers"]
+
+
+def _public(doc: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in doc.items() if k not in ("answers", "fingerprint")}
 
 
 def _meta(s: Suite) -> dict[str, Any]:
@@ -384,14 +452,18 @@ def latest(request: Request) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for doc in _store(request).list("results", limit=200):
         out.setdefault(doc["suite"], doc)
-    return {"results": [out[s.id] for s in SUITES if s.id in out], "suites": [_meta(s) for s in SUITES]}
+    return {"results": [_public(out[s.id]) for s in SUITES if s.id in out], "suites": [_meta(s) for s in SUITES]}
 
 
 @router.post("/run")
-@limiter.limit("10/hour")
+@limiter.limit("30/hour")
 async def run(request: Request, body: RunIn) -> dict[str, Any]:
     chosen = [
-        s for s in SUITES if (body.product == "all" or s.product == body.product) and (body.models or s.kind == "app")
+        s
+        for s in SUITES
+        if (body.product == "all" or s.product == body.product)
+        and (body.models or s.kind == "app")
+        and (body.suite is None or s.id == body.suite)
     ]
     if not chosen:
         raise HTTPException(422, "No suites match.")
@@ -400,8 +472,9 @@ async def run(request: Request, body: RunIn) -> dict[str, Any]:
     for s in chosen:
         t0 = time.perf_counter()
         try:
-            r = await s.run(request)
-            status = "ok"
+            prior = _prior(store, s) if body.resume and s.kind == "model" else None
+            r = await (s.run(request, prior) if prior else s.run(request))
+            status = r.pop("status", "ok")  # model suites: ok | partial (some cases not measured) | unmeasured
         except Exception as exc:  # noqa: BLE001 - a broken suite is reported, not hidden
             r, status = (
                 {"value": None, "passed": 0, "total": s.size, "failures": [], "error": type(exc).__name__},
@@ -409,5 +482,5 @@ async def run(request: Request, body: RunIn) -> dict[str, Any]:
             )
         doc = {**_meta(s), **r, "suite": s.id, "status": status, "ms": round((time.perf_counter() - t0) * 1000),
                "ran_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds")}  # fmt: skip
-        results.append(store.put("results", doc))
+        results.append(_public(store.put("results", doc)))
     return {"results": results}
