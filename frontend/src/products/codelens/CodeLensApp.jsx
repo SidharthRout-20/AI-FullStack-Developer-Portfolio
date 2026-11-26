@@ -7,7 +7,7 @@
  */
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Code2, Copy, ExternalLink, FolderGit2, MessageSquareCode, Route as RouteIcon, Send, Sparkles, Terminal, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Component, useCallback, useEffect, useMemo, useState } from 'react'
 import Markdown from 'react-markdown'
 import { navigate, usePath } from '@appcore/web/router'
 import { Card, ErrorNote, inputClass, ProductShell, Spinner } from '@appcore/web/ui'
@@ -44,9 +44,27 @@ export default function CodeLensApp() {
   const id = repoIdFrom(usePath())
   return (
     <ProductShell name="CodeLens" tagline="Onboard onto any codebase in a week, without waiting for KT sessions" icon={Code2} accent={ACCENT}>
-      {id ? <PackView key={id} id={id} /> : <Start />}
+      <Boundary key={id ?? 'start'}>{id ? <PackView key={id} id={id} /> : <Start />}</Boundary>
     </ProductShell>
   )
+}
+
+/** A crash shows a way back, never a blank page. */
+class Boundary extends Component {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  render() {
+    if (!this.state.failed) return this.props.children
+    return (
+      <div className="mx-auto max-w-md py-16 text-center">
+        <p className="text-[18px] font-semibold text-white">Something went wrong on this screen.</p>
+        <p className="mt-1 text-[14px] text-ink-400">Nothing was lost. Go back and try again.</p>
+        <button type="button" onClick={() => { this.setState({ failed: false }); navigate(BASE) }} className={`mt-5 rounded-full bg-gradient-to-r ${ACCENT} px-5 py-2 text-[14px] font-semibold text-on-accent`}>Back to CodeLens</button>
+      </div>
+    )
+  }
 }
 
 // ── 1. Start: one input, examples, packs already built ─────────────────────────
@@ -114,11 +132,11 @@ function Start() {
           <p className="mb-2 text-[13px] font-semibold text-ink-300">Onboarding packs already built</p>
           <ul className="grid gap-2 sm:grid-cols-2">
             {repos.map((r) => (
-              <li key={r.id}>
+              <li key={r.id} className="min-w-0">
                 <button type="button" onClick={() => navigate(`${BASE}/${r.id}`)} className="flex w-full items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3 text-left hover:border-white/20">
                   <FolderGit2 className="size-4 shrink-0 text-amber-300" />
                   <span className="min-w-0 flex-1 truncate text-[14px] text-white">{r.owner}/{r.name}</span>
-                  <span className="text-[12px] text-ink-500">{r.files.length} files</span>
+                  <span className="shrink-0 text-[12px] text-ink-500">{r.files.length} files</span>
                 </button>
               </li>
             ))}
@@ -192,9 +210,9 @@ function Building({ stages, found }) {
   const keys = Object.keys(STAGES)
   const doneCount = stages.filter((s) => s.done).length
   // Steps, with the long embedding step filled in as its pieces are done.
+  const current = stages.at(-1)
   const within = current?.stage === 'embed' && found.total ? found.embedded / found.total : 0.5
   const pct = Math.min(99, Math.round(((doneCount + within) / keys.length) * 100))
-  const current = stages.at(-1)
   const nextUp = CHAPTERS[tip]
 
   return (
@@ -633,3 +651,4 @@ function CodeViewer({ repo, file, onClose }) {
   )
 }
 
+export const __test__ = { Building, Start, Overview, Areas, ReadingPath, Week, Ask }

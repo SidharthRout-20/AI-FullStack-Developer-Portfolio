@@ -24,11 +24,11 @@ import { originOf, setSkin, useSkin } from '../theme/theme'
 import { ThemeToggle } from '../theme/ThemeToggle'
 import { PaletteButton } from './CommandPalette'
 import { EXPERTISE, SITE, TIMELINE } from './config'
-import { fillCounts, FROZEN, PORTFOLIO, productHref } from './products'
+import { fillCounts, FROZEN, PORTFOLIO } from './products'
 import { MiniPortrait, Polaroid } from './Portrait'
+import { ProductIndex } from './ProductIndex'
 import { ShowcaseHub, ShowcaseNav } from './ShowcaseHub'
 import { SkillsChat } from './SkillsChat'
-import { StatusBadge } from './StatusBadge'
 import {
   BackToTop,
   CountUp,
@@ -625,59 +625,16 @@ function ProjectsSection() {
           title="Got one of these problems?"
           text="Pick the one that sounds like you. Each is solved by a product that works end to end today, one click away, no sign-up needed."
         />
-        <ul className="grid gap-5 md:grid-cols-2">
-          {PORTFOLIO.map((p, i) => (
-            <motion.li
-              key={p.slug}
-              initial={{ opacity: 0, y: 40, filter: 'blur(8px)' }}
-              whileInView={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              viewport={{ once: true, margin: '-60px' }}
-              transition={{ duration: 0.6, delay: (i % 2) * 0.1, ease: [0.2, 0.8, 0.2, 1] }}
-            >
-              <TiltCard max={4}>
-                <ProblemCard p={p} online={online} />
-              </TiltCard>
-            </motion.li>
-          ))}
-        </ul>
+        <ProductIndex products={PORTFOLIO} online={online} />
+        <p className="mt-6 text-center">
+          <Link to="/quality" className="inline-flex items-center gap-1.5 text-[14px] font-medium text-cyan-300 underline-offset-4 hover:underline">
+            See how each product is measured: live evals and quality checks <ArrowUpRight className="size-4" />
+          </Link>
+        </p>
         <FrozenSection />
         <Stack />
       </div>
     </section>
-  )
-}
-
-function ProblemCard({ p, online }) {
-  const Icon = p.icon
-  return (
-    <article className="spotlight group relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/[0.07] bg-ink-900/60 p-6 transition-colors duration-300 hover:border-white/15 hover:shadow-2xl hover:shadow-black/20">
-      <span aria-hidden className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${p.accent}`} />
-      <p className="text-[12px] font-semibold tracking-[0.14em] text-ink-500 uppercase">If this sounds like you</p>
-      <h3 className="mt-2 text-[21px] leading-snug font-semibold text-white">{p.problem}</h3>
-      <p className="mt-3 text-[14px] leading-relaxed text-ink-300">{p.outcome}</p>
-      <div className="mt-auto pt-6">
-        <div className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3">
-          <span className={`grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${p.accent} text-on-accent shadow-md`}>
-            <Icon className="size-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="flex flex-wrap items-center gap-x-2 text-[15px] font-semibold text-white">
-              {p.name} <StatusBadge status={p.status} />
-              {p.app && online === false && <span className="text-[11px] font-normal text-rose-300">backend offline</span>}
-            </p>
-            <p className="truncate text-[12px] text-ink-400">{p.category}</p>
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-          {p.app && (
-            <Link to={p.app.route} className={`inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r ${p.accent} px-4 py-2 text-[13.5px] font-semibold text-on-accent shadow-lg`}>
-              Try {p.name} <ArrowUpRight className="size-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-            </Link>
-          )}
-          <Link to={productHref(p)} className="text-[13px] text-ink-400 underline-offset-2 hover:text-white hover:underline">How it works</Link>
-        </div>
-      </div>
-    </article>
   )
 }
 

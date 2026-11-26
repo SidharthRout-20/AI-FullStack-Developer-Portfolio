@@ -1,7 +1,8 @@
-import { ArrowLeft, Cpu, Eye, KeyRound, LayoutGrid, Mic, Route as RouteIcon, ShieldCheck, Sparkles, WifiOff } from 'lucide-react'
+import { ArrowLeft, CalendarDays, KeyRound, LayoutGrid, Mic, Route as RouteIcon, Settings2, Sparkles, WifiOff } from 'lucide-react'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Backdrop } from '../../components/shell/Backdrop'
+import { LITE } from '../../lib/lite'
 import { Link } from '@appcore/web/router'
 import { ThemeToggle } from '../../theme/ThemeToggle'
 import {
@@ -26,7 +27,8 @@ export default function KeeperApp() {
   const [agenda, setAgenda] = useState([])
   const [brief, setBrief] = useState(null)
   const [briefLoading, setBriefLoading] = useState(false)
-  const [view, setView] = useState('assistant') // 'assistant' (talk to Tijori) | 'stuff' (everything it remembers)
+  const [view, setView] = useState('assistant') // 'assistant' | 'today' | 'saved'
+  const [settings, setSettings] = useState(false)
   const [module, setModule] = useState('today')
   const [busy, setBusy] = useState(false)
   const [turn, setTurn] = useState(null)
@@ -108,7 +110,7 @@ export default function KeeperApp() {
         if (a.bucket !== 'today' && a.bucket !== 'overdue') continue
         if (a.entry.due_time) continue
         if (sent[a.entry.id] === today) continue
-        void notify('Tijori', a.label, a.entry.id)
+        void notify('Tara', a.label, a.entry.id)
         sent[a.entry.id] = today
       }
       try {
@@ -211,72 +213,97 @@ export default function KeeperApp() {
   const meta = moduleOf(module)
   const examples = module === 'today' ? MODULES.slice(1, 6).map((m) => m.example) : [meta.example, "what's due?", 'help']
 
-  return (
-    <MotionConfig reducedMotion="user">
-      <Backdrop />
-      <div className="flex min-h-full flex-col">
-        {/* Header */}
-        <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-ink-950/70 backdrop-blur-xl">
-          <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4">
-            <Link
-              to="/"
-              aria-label="All products"
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.06] px-2 text-[12px] text-ink-300 transition hover:border-white/15 hover:text-white"
-            >
-              <LayoutGrid className="size-4" />
-              <span className="hidden md:inline">Products</span>
-            </Link>
-            <div className="flex items-center gap-2.5">
-              <span className="grid size-8 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400 text-on-accent shadow-lg shadow-pink-950/40">
-                <Sparkles className="size-4" />
-              </span>
-              <div className="leading-tight">
-                <p className="text-[15px] font-semibold tracking-tight text-white">Tijori</p>
-                <p className="hidden text-[11px] text-ink-400 sm:block">your personal assistant</p>
-              </div>
-            </div>
-            <div role="tablist" aria-label="Tijori views" className="ml-2 inline-flex rounded-full border border-white/[0.07] bg-white/[0.03] p-0.5 text-[12.5px]">
-              {[['assistant', 'Assistant', Mic], ['stuff', 'Your stuff', LayoutGrid]].map(([id, label, Icon]) => (
-                <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => setView(id)}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition ${view === id ? 'bg-white/[0.1] text-white' : 'text-ink-400 hover:text-white'}`}>
-                  <Icon className="size-3.5" /> <span className="hidden sm:inline">{label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="ml-auto flex items-center gap-2">
-              {status && (
-                <div className="hidden items-center gap-1.5 md:flex">
-                  <Capability icon={Cpu} label={`Router: ${status.llm_provider}`} ok />
-                  <Capability icon={Eye} label={status.vision ? 'Vision on' : 'Vision off'} ok={status.vision} />
-                  {status.protected && <Capability icon={ShieldCheck} label="Protected" ok />}
-                </div>
-              )}
-              {offline && (
-                <span className="flex items-center gap-1.5 rounded-lg bg-rose-500/10 px-2 py-1 text-[11.5px] text-rose-300">
-                  <WifiOff className="size-3.5" /> Offline
-                </span>
-              )}
-              <ThemeToggle />
-            </div>
-          </div>
-        </header>
+  const go = (v) => {
+    setView(v)
+    if (v === 'today') setModule('today')
+    else if (v === 'saved' && module === 'today') setModule(MODULES[1]?.id ?? 'stash')
+  }
+  const openSettings = (open = true) => {
+    if (open) setView('assistant') // the settings sheet lives with the assistant
+    setSettings(open)
+  }
+  const NAV = [
+    { id: 'assistant', label: 'Assistant', icon: Sparkles },
+    { id: 'today', label: 'Today', icon: CalendarDays, count: counts.today },
+    { id: 'saved', label: 'Saved', icon: LayoutGrid, count: entries.length || null },
+  ]
 
-        {needKey ? (
-          <KeyGate onUnlock={boot} />
-        ) : view === 'assistant' ? (
-          <div className="w-full flex-1 px-4 py-6 lg:py-10">
-            <AssistantBoundary>
-            <Assistant
-              agenda={agenda}
-              onChanged={() => void refresh()}
-              onOpen={(kind) => { setModule(kind); setView('stuff') }}
-              onScan={(p) => void startScan(p)}
-              onError={handle}
-            />
-            </AssistantBoundary>
+  return (
+    <MotionConfig reducedMotion={LITE ? 'always' : 'user'}>
+      <Backdrop />
+      <div className="flex min-h-full">
+        {/* Sidebar (desktop) */}
+        <aside className="sticky top-0 hidden h-svh w-64 shrink-0 flex-col border-r border-white/[0.06] bg-ink-950/60 px-3 py-4 backdrop-blur-xl lg:flex">
+          <div className="flex items-center gap-2.5 px-2">
+            <span className="grid size-9 place-items-center rounded-2xl bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400 text-on-accent shadow-lg shadow-pink-950/40"><Sparkles className="size-4.5" /></span>
+            <div className="leading-tight">
+              <p className="text-[16px] font-semibold tracking-tight text-white">Tara</p>
+              <p className="text-[11px] text-ink-500">Personal assistant</p>
+            </div>
           </div>
-        ) : (
-          <div className="mx-auto grid w-full max-w-7xl flex-1 grid-cols-[minmax(0,1fr)] gap-6 px-4 py-5 lg:grid-cols-[230px_minmax(0,1fr)] lg:py-8">
+          <button type="button" onClick={() => go('assistant')} className="mt-6 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-500/90 to-orange-400/90 px-3.5 py-2.5 text-[13.5px] font-semibold text-on-accent shadow-lg hover:opacity-95">
+            <Mic className="size-4" /> Talk to Tara
+          </button>
+          <nav aria-label="Tara" className="mt-5 space-y-1">
+            {NAV.map((n) => {
+              const Icon = n.icon
+              const active = view === n.id
+              return (
+                <button key={n.id} type="button" onClick={() => go(n.id)} aria-current={active ? 'page' : undefined}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] transition ${active ? 'bg-white/[0.08] text-white' : 'text-ink-300 hover:bg-white/[0.04] hover:text-white'}`}>
+                  <Icon className="size-4.5" /> {n.label}
+                  {!!n.count && <span className="ml-auto rounded-full bg-white/[0.07] px-2 text-[11px] text-ink-300 tabular-nums">{n.count}</span>}
+                </button>
+              )
+            })}
+          </nav>
+          <div className="mt-auto space-y-1">
+            <button type="button" onClick={() => openSettings(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-ink-300 hover:bg-white/[0.04] hover:text-white"><Settings2 className="size-4.5" /> Voice & personality</button>
+            {status && (
+              <p className="flex items-center gap-2 px-3 py-1 text-[11.5px] text-ink-500">
+                <span className={`size-1.5 rounded-full ${offline ? 'bg-rose-400' : 'bg-emerald-400'}`} /> {offline ? 'Offline' : `Online · ${status.llm_provider}`}{status.protected ? ' · protected' : ''}
+              </p>
+            )}
+            <div className="space-y-2 border-t border-white/[0.06] px-2 pt-3">
+              <ThemeToggle compact className="w-full justify-between" />
+              <Link to="/" className="flex h-8 items-center gap-1.5 rounded-lg px-1 text-[12px] text-ink-400 hover:text-white"><LayoutGrid className="size-3.5" /> All products</Link>
+            </div>
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* Top bar (phones) */}
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-2.5 border-b border-white/[0.06] bg-ink-950/70 px-4 backdrop-blur-xl lg:hidden">
+            <Link to="/" aria-label="All products" className="grid size-8 place-items-center rounded-lg border border-white/[0.06] text-ink-300"><LayoutGrid className="size-4" /></Link>
+            <span className="grid size-8 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400 text-on-accent"><Sparkles className="size-4" /></span>
+            <p className="text-[15px] font-semibold text-white">Tara</p>
+            {offline && <span className="flex items-center gap-1 rounded-lg bg-rose-500/10 px-2 py-0.5 text-[11px] text-rose-300"><WifiOff className="size-3" /> Offline</span>}
+            <div className="ml-auto flex items-center gap-1.5">
+              <ThemeToggle compact />
+            </div>
+          </header>
+
+          {needKey ? (
+            <KeyGate onUnlock={boot} />
+          ) : (
+            <>
+              {/* The assistant stays mounted, so the conversation survives a look at Today or Saved. */}
+              <div className={view === 'assistant' ? 'w-full flex-1 px-4 pb-16 lg:px-10 lg:pb-0' : 'hidden'}>
+                <AssistantBoundary>
+                  <Assistant
+                    agenda={agenda}
+                    onChanged={() => void refresh()}
+                    onOpen={(kind) => { if (kind === 'today') go('today'); else { setModule(kind); setView('saved') } }}
+                    onScan={(p) => void startScan(p)}
+                    onError={handle}
+                    settingsOpen={settings}
+                    onWake={() => setView('assistant')}
+                    onSettings={openSettings}
+                  />
+                </AssistantBoundary>
+              </div>
+              {view !== 'assistant' && (
+          <div className="mx-auto grid w-full max-w-6xl flex-1 grid-cols-[minmax(0,1fr)] gap-6 px-4 py-5 lg:grid-cols-[210px_minmax(0,1fr)] lg:px-8 lg:py-8">
             {/* Module rail (desktop) / chip strip (mobile) */}
             <nav aria-label="Keeper sections" className="lg:sticky lg:top-22 lg:self-start">
               <ul className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] lg:mx-0 lg:flex-col lg:px-0">
@@ -316,8 +343,8 @@ export default function KeeperApp() {
               </ul>
             </nav>
 
-            <main className="min-w-0 space-y-5 pb-28 lg:pb-8">
-              <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.06] bg-ink-950/80 p-3 backdrop-blur-xl lg:static lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
+            <main className="min-w-0 space-y-5 pb-44 lg:pb-8">
+              <div className="fixed inset-x-0 bottom-16 z-20 border-t border-white/[0.06] bg-ink-950/80 p-3 backdrop-blur-xl lg:static lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
                 <Capture
                   busy={busy}
                   placeholder="Tell me anything… “passport, top drawer”"
@@ -380,7 +407,25 @@ export default function KeeperApp() {
               </motion.section>
             </main>
           </div>
-        )}
+              )}
+            </>
+          )}
+
+          {/* Tab bar (phones) */}
+          <nav aria-label="Tara" className="fixed inset-x-0 bottom-0 z-30 grid h-16 grid-cols-4 border-t border-white/[0.06] bg-ink-950/90 backdrop-blur-xl lg:hidden">
+            {[...NAV, { id: 'settings', label: 'Settings', icon: Settings2 }].map((n) => {
+              const Icon = n.icon
+              const active = n.id === view
+              return (
+                <button key={n.id} type="button" onClick={() => (n.id === 'settings' ? openSettings(true) : go(n.id))} aria-current={active ? 'page' : undefined}
+                  className={`flex flex-col items-center justify-center gap-1 text-[11px] ${active ? 'text-white' : 'text-ink-500'}`}>
+                  <span className={`grid h-7 w-12 place-items-center rounded-full ${active ? 'bg-white/[0.1]' : ''}`}><Icon className="size-4.5" /></span>
+                  {n.label}
+                </button>
+              )
+            })}
+          </nav>
+        </div>
       </div>
 
       <ScanSheet scan={scan} onClose={() => setScan(null)} onSave={saveScan} />
@@ -404,19 +449,6 @@ export default function KeeperApp() {
   )
 }
 
-function Capability({ icon: Icon, label, ok }) {
-  return (
-    <span
-      className={`flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-ink-900/70 px-2 py-1 text-[11px] ${
-        ok ? 'text-ink-200' : 'text-ink-500'
-      }`}
-    >
-      <Icon className={`size-3.5 ${ok ? 'text-emerald-300' : ''}`} /> {label}
-    </span>
-  )
-}
-
-/** The latest exchange: what you said, Keeper's answer, and how the agent routed it. */
 function TurnCard({ turn }) {
   const r = turn.result
   return (

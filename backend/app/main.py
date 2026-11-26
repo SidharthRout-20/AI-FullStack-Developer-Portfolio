@@ -7,18 +7,21 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.api.cron import router as cron_router
+from app.api.edits import router as edits_router
 from app.api.efi import router as efi_router
 from app.api.keeper import actions_router
 from app.api.keeper import router as keeper_router
@@ -27,6 +30,8 @@ from app.api.products import router as products_router
 from app.api.routes import router
 from app.config import Settings, get_settings
 from app.efi.service import EFIService
+from app.evals import router as evals_router
+from app.keeper.edits import Edits
 from app.keeper.service import KeeperService
 from app.products import careerpilot, codelens, contact, evolve, flowforge, meetingmind
 from app.products.suite import Suite
@@ -73,6 +78,10 @@ def create_app(
         # Keeper shares the (lazily created) LLM client with DocuMind.
         keeper = (keeper_factory or (lambda s, r: KeeperService(s, r.get_llm)))(settings, rag)
         app.state.keeper = keeper
+        if (tools := getattr(getattr(keeper, "agent", None), "tools", None)) is not None:
+            tools.knowledge = _knowledge(rag)  # Tara answers questions about the portfolio from the same documents
+            if tools.repo is not None:  # code proposals plan against the same read-only index
+                app.state.edits = Edits(settings, tools.repo, rag.get_llm)
         jobs = settings.background_jobs
         reminder_task = asyncio.create_task(keeper.scheduler_loop(settings.public_url)) if jobs else None
         app.state.suite = Suite(settings, rag, keeper)
@@ -103,6 +112,8 @@ def create_app(
     # Inside CORS (added before it), so even an unexpected crash answers with CORS headers and the browser shows a
     # real 500 instead of a misleading "blocked by CORS policy".
     app.add_middleware(ErrorsAsJSON)
+    # Smaller JSON over slow connections (live event streams are left uncompressed so they arrive as they happen).
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins,
@@ -116,6 +127,7 @@ def create_app(
             "X-EFI-Owner",
             "X-Trip-Owner",
             "X-Trip-Share",
+            "X-Tara-Owner-Key",
             "Authorization",
         ],
         allow_credentials=False,
@@ -138,6 +150,8 @@ def create_app(
     app.include_router(cron_router)
     app.include_router(efi_router)
     app.include_router(llm_router)
+    app.include_router(evals_router)
+    app.include_router(edits_router)
     for product in (careerpilot, meetingmind, codelens, flowforge, trip_api, evolve, contact):
         app.include_router(product.router)
     app.include_router(flowforge.hooks)
@@ -165,3 +179,13 @@ def _mount_spa(app: FastAPI, dist: Path) -> None:
 
 
 app = create_app()
+
+
+def _knowledge(rag: RAGService) -> Callable[[str], Awaitable[list[dict[str, Any]]]]:
+    """Search the portfolio's indexed documents (the résumé and project notes) for Tara's "portfolio" tool."""
+
+    async def search(query: str) -> list[dict[str, Any]]:
+        hits = await asyncio.to_thread(rag.retriever.search, query, 4, 20)
+        return [{"source": h.chunk.source, "text": h.chunk.text} for h in hits]
+
+    return search

@@ -9,7 +9,7 @@ describe('catalogue', () => {
   it('features exactly four products, problem first, in priority order', () => {
     expect(ids(PORTFOLIO)).toEqual(FEATURED)
     expect(PORTFOLIO.map((p) => p.priority)).toEqual([1, 2, 3, 4])
-    expect(PORTFOLIO.map((p) => p.name)).toEqual(['Safarnaama', 'CodeLens', 'Tijori', 'Jasoos'])
+    expect(PORTFOLIO.map((p) => p.name)).toEqual(['Safarnaama', 'CodeLens', 'Tara', 'Jasoos'])
     for (const p of PORTFOLIO) {
       expect(p.problem, p.id).toMatch(/\?$/) // leads with the traveller's / developer's problem, as a question
       expect(p.outcome, p.id).toBeTruthy()

@@ -9,6 +9,7 @@
   "scripts": {
     "predev": "node scripts/check-node.mjs",
     "dev": "vite",
+    "dev:local": "vite --mode localapi",
     "prebuild": "node scripts/check-node.mjs",
     "build": "vite build",
     "preview": "vite preview",

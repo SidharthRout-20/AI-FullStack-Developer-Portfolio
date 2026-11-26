@@ -62,13 +62,17 @@ class AssistantPrefs(BaseModel):
     name: str = Field("", max_length=40)
     tone: Literal["warm", "professional", "cheerful"] = "warm"
     length: Literal["short", "detailed"] = "short"
+    city: str = Field("", max_length=80)  # home city, for weather when location isn't shared
+    lang: str = Field("", max_length=12)  # e.g. en-IN, for regional news
 
 
 class CommandIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str = Field(min_length=1, max_length=600)
     history: list[Turn] = Field(default_factory=list, max_length=8)  # recent turns, for follow-ups
-    prefs: AssistantPrefs | None = None  # how the user has set Tijori up (kept on their device)
+    prefs: AssistantPrefs | None = None  # how the user has set Tara up (kept on their device)
+    # Who should answer this question (app.keeper.personas); "auto" or none → Tara's router picks.
+    persona: str | None = Field(None, max_length=20, pattern=r"^[a-z]+$")
     photo_id: str | None = Field(None, pattern=r"^[0-9a-f]{32}$")
     lat: float | None = Field(None, ge=-90, le=90)
     lng: float | None = Field(None, ge=-180, le=180)
@@ -88,6 +92,10 @@ class CommandOut(BaseModel):
     entries: list[Entry]
     trace: list[TraceStep]
     brief: dict[str, Any] | None = None
+    card: dict[str, Any] | None = None  # a look-up to show (weather, news, a fact, a rate, the time)
+    client_action: dict[str, Any] | None = None  # something for the device to do (open, call, timer…)
+    emotion: str | None = None  # how the user seemed to feel; the reply adapted to it
+    persona: str | None = None  # who answered (app.keeper.personas); None for saves, finds and device actions
 
 
 class PhotoIn(BaseModel):
@@ -134,7 +142,9 @@ async def command(request: Request, body: CommandIn, keeper: Keeper, now: Now) -
         raise HTTPException(404, "Photo not found.")
     history = [t.model_dump() for t in body.history]
     prefs = body.prefs.model_dump() if body.prefs else None
-    state = await keeper.agent.run(normalize(body.text), now, body.photo_id, body.lat, body.lng, history, prefs)
+    state = await keeper.agent.run(
+        normalize(body.text), now, body.photo_id, body.lat, body.lng, history, prefs, persona=body.persona
+    )
     cmd = state["command"]
     out: dict[str, Any] = {
         "reply": state["reply"],
@@ -143,6 +153,10 @@ async def command(request: Request, body: CommandIn, keeper: Keeper, now: Now) -
         "routed_by": state["routed_by"],
         "entries": state.get("entries", []),
         "trace": state["trace"],
+        "card": state.get("card"),
+        "client_action": state.get("client_action"),
+        "emotion": cmd.emotion,
+        "persona": state.get("persona"),
     }
     if cmd.action == "brief":
         brief = await keeper.brief(now)
@@ -209,6 +223,25 @@ def delete_entry(entry_id: str, keeper: Keeper) -> None:
 @router.get("/agenda", response_model=list[AgendaItem])
 def get_agenda(keeper: Keeper, now: Now) -> list[AgendaItem]:
     return keeper.agenda(now)
+
+
+@router.get("/glance")
+@limiter.limit("30/minute")
+async def glance(
+    request: Request,
+    keeper: Keeper,
+    city: Annotated[str, Query(max_length=80)] = "",
+    lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
+    lng: Annotated[float | None, Query(ge=-180, le=180)] = None,
+) -> dict[str, Any]:
+    """The home screen's weather glance: a direct look-up, no model call. Empty when there's no place to use."""
+    if not city.strip() and (lat is None or lng is None):
+        return {"weather": None}
+    try:
+        res = await keeper.agent.tools.weather({"place": city}, lat, lng, "")
+    except Exception:  # noqa: BLE001 - the glance is optional; the assistant still works without it
+        return {"weather": None}
+    return {"weather": res["card"]}
 
 
 @router.get("/brief", response_model=BriefOut)
@@ -320,6 +353,7 @@ class SnoozeIn(BaseModel):
 class ReminderSettingsOut(ReminderSettings):
     telegram_configured: bool
     cron_configured: bool
+    last_tick: str | None = None  # when the scheduler last checked for due reminders (UTC, ISO); None = never
 
 
 def _settings_out(keeper: KeeperService) -> dict[str, Any]:
@@ -328,6 +362,7 @@ def _settings_out(keeper: KeeperService) -> dict[str, Any]:
         **keeper.reminder_settings().model_dump(),
         "telegram_configured": keeper.telegram_ready,
         "cron_configured": bool(secret and secret.get_secret_value()) or keeper.settings.background_jobs,
+        "last_tick": keeper.store.get_meta("last_tick"),
     }
 
 

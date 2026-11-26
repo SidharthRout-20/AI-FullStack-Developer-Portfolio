@@ -1,4 +1,4 @@
-/** How the user has set Tijori up. Kept on this device only (nothing about it is stored on the server). */
+/** How the user has set Tara up. Kept on this device only (nothing about it is stored on the server). */
 const KEY = 'tijori-voice'
 
 export const DEFAULTS = {
@@ -10,8 +10,11 @@ export const DEFAULTS = {
   tone: 'warm', // warm | professional | cheerful
   length: 'short', // short | detailed
   speak: true, // read replies aloud
-  keep: false, // keep listening after each reply (a conversation)
+  keep: true, // after answering a spoken request, listen for a follow-up (a conversation, no tapping)
   sounds: true, // chime when listening starts and stops
+  wake: true, // answer to "Hey Tara" while the page is open (starts after the first tap; can be turned off)
+  city: '', // home city: weather when location isn't shared
+  useLocation: false, // share this device's location for weather and directions
 }
 
 export const LANGUAGES = [
@@ -22,11 +25,15 @@ export const LANGUAGES = [
   ['hi-IN', 'Hindi'],
 ]
 
+const VERSION = 2 // v2: conversations (listen for a follow-up) became the default
+
 export function readPrefs() {
   try {
-    return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') }
+    const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}')
+    if ((saved.v ?? 1) < 2) saved.keep = true
+    return { ...DEFAULTS, ...saved, v: VERSION }
   } catch {
-    return { ...DEFAULTS }
+    return { ...DEFAULTS, v: VERSION }
   }
 }
 
@@ -39,4 +46,10 @@ export function writePrefs(p) {
 }
 
 /** What the server needs to shape replies (never the voice settings). */
-export const replyPrefs = (p) => ({ name: p.name.trim().slice(0, 40), tone: p.tone, length: p.length })
+export const replyPrefs = (p) => ({
+  name: p.name.trim().slice(0, 40),
+  tone: p.tone,
+  length: p.length,
+  city: p.city.trim().slice(0, 80),
+  lang: p.lang || (typeof navigator !== 'undefined' ? navigator.language : '') || 'en-IN',
+})

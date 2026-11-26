@@ -5,12 +5,14 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+
+from app.keeper.personas import valid as valid_persona
 
 Kind = Literal["stash", "parking", "loan", "expiry", "bill", "occasion", "appliance", "pantry", "care"]
 KINDS: tuple[str, ...] = Kind.__args__  # type: ignore[attr-defined]
 
-Action = Literal["add", "find", "done", "list", "brief", "help", "chat"]
+Action = Literal["add", "find", "done", "list", "brief", "help", "assist", "chat"]
 Recurrence = Literal["none", "weekly", "monthly", "yearly"]
 
 _TIME = r"^([01]\d|2[0-3]):[0-5]\d$"
@@ -111,11 +113,39 @@ class Command(BaseModel):
     gift_idea: str | None = Field(None, max_length=120)
     query: str | None = Field(None, max_length=200)
     note: str | None = Field(None, max_length=500)
+    tool: str | None = Field(None, max_length=20)  # for action "assist": see app.keeper.tools
+    # How the user seems to feel, from their words: replies adapt to it (never shown as a diagnosis).
+    emotion: Literal["neutral", "happy", "excited", "grateful", "stressed", "anxious", "sad", "angry",
+                     "frustrated", "tired", "confused", "lonely", "crisis"] | None = None  # fmt: skip
+    args: dict[str, Any] = Field(default_factory=dict)
+    persona: str | None = None  # who should answer (app.keeper.personas), picked by the router on "Auto"
+
+    @field_validator("persona", mode="before")
+    @classmethod
+    def _persona(cls, v: Any) -> Any:
+        return valid_persona(v)
+
+    @field_validator("emotion", mode="before")
+    @classmethod
+    def _emotion(cls, v: Any) -> Any:
+        ok = {"neutral", "happy", "excited", "grateful", "stressed", "anxious", "sad", "angry", "frustrated", "tired",
+              "confused", "lonely", "crisis"}  # fmt: skip
+        v = str(v or "").strip().lower()
+        return v if v in ok else None
+
+    @field_validator("args", mode="before")
+    @classmethod
+    def _args(cls, v: Any) -> Any:
+        return v if isinstance(v, dict) else {}
 
     @field_validator("title", "place", "person", "category", "gift_idea", "query", "note", "currency", mode="before")
     @classmethod
-    def _text(cls, v: Any) -> Any:
-        return _clean(v)
+    def _text(cls, v: Any, info: ValidationInfo) -> Any:
+        # A model that writes too much is trimmed, not rejected: one long note must not throw the whole command away.
+        v = _clean(v)
+        meta = cls.model_fields[info.field_name].metadata
+        limit = next((m.max_length for m in meta if hasattr(m, "max_length")), None)
+        return v[:limit].rstrip() if isinstance(v, str) and limit else v
 
     @field_validator("kind", "direction", "recurring", "subject", "date", "time", mode="before")
     @classmethod

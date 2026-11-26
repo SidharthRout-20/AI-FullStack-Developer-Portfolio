@@ -36,6 +36,7 @@ FLOOR = {Complexity.SIMPLE: 1, Complexity.STANDARD: 2, Complexity.COMPLEX: 3, Co
 WEIGHTS = {
     "base": 100.0,
     "overkill_per_tier": 12.0,  # prefer the smallest adequate model (saves the big model's quota)
+    "underpowered_per_tier": 30.0,  # ...but never a model below the task's floor while an adequate one can serve
     "preview": 25.0,  # production models first; preview ones may be discontinued at short notice
     "speed_per_100_tps": 2.0,
     "speed_cap": 20.0,
@@ -256,6 +257,9 @@ class LLMRouter:
             score = w["base"] - w["overkill_per_tier"] * max(0, spec.tier - floor)
             if spec.tier > floor:
                 reasons.append(f"tier {spec.tier} > needed {floor}")
+            if spec.tier < floor:  # still eligible as a fallback, just never ahead of an adequate model
+                score -= w["underpowered_per_tier"] * (floor - spec.tier)
+                reasons.append(f"tier {spec.tier} < needed {floor}")
             if spec.stage == "preview":
                 score -= w["preview"]
                 reasons.append("preview")

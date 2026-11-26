@@ -310,7 +310,8 @@ async def _answers(tmp_path):
     assert "I want a hard-boiled egg" in router_msg and "Now the user says: how long should I boil it?" in chat_msg
     assert "TODAY'S AGENDA: nothing due" in llm.prompts[1][0]
     system = llm.prompts[1][0]
-    assert "concise, professional" in system and "up to 6 clear sentences" in system and "name is Sid" in system
+    assert "concise, professional" in system and "up to 6 clear sentences" in system
+    assert "Don't address the user by name" in system  # one answer in already: the name is kept for later
 
 
 def test_tijori_still_answers_the_time_without_a_model(tmp_path):
@@ -346,3 +347,157 @@ def test_voice_commands_are_transcribed_without_storing_audio(client):
     assert client.post("/api/keeper/transcribe", json={"audio": "AA==", "mime": "text/html"}).status_code == 422
     # history is accepted with commands, for follow-ups
     assert say(client, "where is my passport", history=[{"role": "user", "text": "hi"}])["action"] == "find"
+
+
+# ── Tijori's tools (fake sources: no network in tests) ──────────────────────
+class _Resp:
+    def __init__(self, data=None, text=""):
+        self._data, self.text = data, text
+
+    def json(self):
+        return self._data
+
+
+async def _fake_fetch(url, params):
+    if "geocoding" in url:
+        return _Resp(
+            {
+                "results": [
+                    {
+                        "name": "Pune",
+                        "admin1": "Maharashtra",
+                        "country": "India",
+                        "latitude": 18.5,
+                        "longitude": 73.8,
+                        "timezone": "Asia/Kolkata",
+                    }
+                ]
+            }
+        )
+    if "api.open-meteo.com" in url:
+        return _Resp(
+            {
+                "current": {
+                    "temperature_2m": 27.4,
+                    "apparent_temperature": 29,
+                    "relative_humidity_2m": 61,
+                    "weather_code": 2,
+                    "wind_speed_10m": 9,
+                },
+                "daily": {
+                    "time": ["2030-05-01", "2030-05-02"],
+                    "weather_code": [2, 63],
+                    "temperature_2m_max": [31, 29],
+                    "temperature_2m_min": [21, 22],
+                    "precipitation_probability_max": [10, 70],
+                },
+            }
+        )
+    if "news.google.com" in url:
+        rss = (
+            "<rss><channel><item><title>Monsoon arrives early - The Hindu</title><source>The Hindu</source>"
+            "<link>https://news.example/1</link></item><item><title>No link item</title><link>javascript:x</link></item></channel></rss>"
+        )
+        return _Resp(text=rss)
+    raise AssertionError(url)
+
+
+def test_tijori_tools_look_things_up_from_real_shaped_sources():
+    from app.keeper.tools import ToolBox, ToolError
+
+    tb = ToolBox(_fake_fetch)
+    w = asyncio.run(tb.weather({"place": "Pune"}, None, None, ""))
+    assert (
+        w["card"]["place"] == "Pune, Maharashtra, India"
+        and w["card"]["temp"] == 27
+        and w["card"]["days"][1]["rain"] == 70
+    )
+    assert "Tomorrow: 22–29°C, rain, rain chance 70%" in w["facts"]
+    with pytest.raises(ToolError):  # no place, no location, no home city: ask, don't guess
+        asyncio.run(tb.weather({}, None, None, ""))
+    n = asyncio.run(tb.news({"topic": "monsoon"}, "en-IN"))
+    assert n["card"]["items"] == [
+        {"title": "Monsoon arrives early", "source": "The Hindu", "link": "https://news.example/1", "published": ""}
+    ]
+
+
+def test_tijori_actions_are_prepared_for_the_device_never_done_silently():
+    from app.keeper.tools import ToolBox
+
+    now = dt.datetime(2030, 5, 1, 9, 0)
+    act, said = ToolBox.action("open", {"target": "YouTube"}, now)
+    assert act["url"] == "https://www.youtube.com" and said == "Opening YouTube."
+    act, said = ToolBox.action("call", {"contact": "Mom"}, now)
+    assert act is None and "number" in said  # no contacts: ask instead of guessing
+    act, _ = ToolBox.action(
+        "message", {"contact": "Ravi", "number": "+91 98765 43210", "text": "Running late", "app": "whatsapp"}, now
+    )
+    assert act["url"] == "https://wa.me/919876543210?text=Running%20late" and act["confirm"] is True
+    act, said = ToolBox.action("timer", {"minutes": 10, "label": "Tea"}, now)
+    assert act == {"type": "timer", "seconds": 600, "label": "Tea"} and said == "Timer set for 10 minutes."
+    act, _ = ToolBox.action("calendar", {"title": "Dentist", "date": "2030-05-03", "time": "16:30", "minutes": 30}, now)
+    assert "dates=20300503T163000%2F20300503T170000" in act["url"]
+    act, _ = ToolBox.action("directions", {"destination": "Pune airport", "mode": "train"}, now)
+    assert "travelmode=transit" in act["url"]
+
+
+def test_tijori_answers_the_weather_instead_of_refusing(tmp_path):
+    from app.keeper.agent import KeeperAgent
+    from app.keeper.tools import ToolBox
+
+    llm = _Seen(
+        [
+            '{"action": "assist", "tool": "weather", "args": {"place": "Pune"}}',
+            "It's 27 degrees and partly cloudy in Pune.",
+        ]
+    )
+    agent = KeeperAgent(KeeperStore(tmp_path), llm, tools=ToolBox(_fake_fetch))
+    out = asyncio.run(agent.run("how's the weather in Pune today?", dt.datetime(2030, 5, 1, 9, 0)))
+    assert out["reply"] == "It's 27 degrees and partly cloudy in Pune." and out["card"]["type"] == "weather"
+    assert "LOOK-UP RESULT: Weather for Pune" in llm.prompts[1][0]
+    assert "never say you have no internet" in llm.prompts[1][0]
+
+
+def test_glance_gives_the_home_screen_weather_without_a_model(client):
+    from app.keeper.tools import ToolBox
+
+    client.app.state.keeper.agent.tools = ToolBox(_fake_fetch)
+    w = client.get("/api/keeper/glance", params={"city": "Pune"}).json()["weather"]
+    assert w["type"] == "weather" and w["place"].startswith("Pune")
+    assert client.get("/api/keeper/glance").json() == {"weather": None}  # nowhere to look: nothing, not an error
+
+
+def test_tara_reads_the_mood_and_answers_a_crisis_with_care(tmp_path):
+    from app.keeper.agent import KeeperAgent
+
+    llm = _Seen(['{"action": "chat", "emotion": "stressed"}', "Let's take it one thing at a time."])
+    agent = KeeperAgent(KeeperStore(tmp_path), llm)
+    out = asyncio.run(agent.run("I have so much to do and I'm panicking", dt.datetime(2030, 5, 1, 9, 0)))
+    assert out["command"].emotion == "stressed" and "be calm and brief" in llm.prompts[1][0]
+
+    crisis = _Seen(['{"action": "chat", "emotion": "crisis"}'])
+    out = asyncio.run(
+        KeeperAgent(KeeperStore(tmp_path), crisis).run("I don't want to live anymore", dt.datetime(2030, 5, 1, 9, 0))
+    )
+    assert "14416" in out["reply"] and len(crisis.prompts) == 1  # a fixed, safe reply: no model improvising
+
+    saved = _Seen(
+        ['{"action": "add", "kind": "stash", "title": "Passport", "place": "top drawer", "emotion": "tired"}']
+    )
+    out = asyncio.run(
+        KeeperAgent(KeeperStore(tmp_path), saved).run(
+            "ugh, passport is in the top drawer", dt.datetime(2030, 5, 1, 9, 0)
+        )
+    )
+    assert out["reply"].startswith("Leave this one to me.")
+
+
+def test_common_tools_work_even_when_the_model_is_down():
+    from app.keeper.tools import rule_tool
+
+    assert rule_tool("what's the weather") == ("weather", {"place": None})
+    assert rule_tool("how's the weather in Pune today?") == ("weather", {"place": "Pune"})
+    assert rule_tool("news about cricket") == ("news", {"topic": "cricket"})
+    assert rule_tool("set a timer for 10 minutes") == ("timer", {"seconds": 600, "label": "Timer"})
+    assert rule_tool("open YouTube") == ("open", {"target": "YouTube"})
+    assert rule_tool("passport is in the top drawer") is None

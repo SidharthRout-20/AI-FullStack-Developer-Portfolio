@@ -1,104 +1,222 @@
 /**
- * "Got a question about my skills?": a small chat on the home page that answers from my résumé (the indexed documents
- * behind /api/chat/stream), so a recruiter or client can ask instead of reading. Answers only what the documents say.
+ * "Ask Tara": the portfolio's assistant, as an AI spotlight instead of a chat bubble. A slim pill sits at the bottom centre (it tucks into
+ * an icon while you scroll down) and "/" opens a command-bar style panel over the page, the pattern of Linear, Vercel
+ * and Raycast AI: one big input, suggested questions, a streamed answer with its sources, and follow-ups in place.
+ * Answers come only from my résumé and the portfolio's projects page (the documents indexed behind /api/chat/stream).
+ * Ask by typing or by voice (the mic is only used when tapped; "Hey Tara" lives in the full assistant at /tara).
  */
-import { MessageCircleQuestion, Send, Square, X } from 'lucide-react'
+import { ArrowRight, ArrowUp, CornerDownLeft, FileText, Mic, Sparkles, Square, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useRef, useState } from 'react'
-import Markdown from 'react-markdown'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from '@appcore/web/router'
 import { useChat } from '../hooks/useChat'
+import { keeperApi } from '../products/keeper/api'
+import { hearingMode, useVoice } from '../products/keeper/voice'
+
+const TARA = 'from-fuchsia-500 via-pink-500 to-orange-400'
+// Only needed once an answer arrives: kept out of the home page's first download.
+const Markdown = lazy(() => import('react-markdown'))
 
 const NODES = []
-const STARTERS = ['What is his experience with RAG and agents?', 'Which frontend stack does he use?', 'Has he shipped Python backends to production?']
+// Questions the indexed documents answer definitely (the résumé and the portfolio's projects page).
+const SUGGESTED = [
+  'What AI products has he built?',
+  'How does CodeLens use RAG and citations?',
+  'What does he do at Deloitte?',
+  'How many years of experience does he have?',
+]
+const PLACEHOLDERS = ['Ask about my experience…', 'Ask about my AI work…', 'Ask what I could build for you…']
+
+function usePill() {
+  const [compact, setCompact] = useState(false)
+  useEffect(() => {
+    let last = window.scrollY
+    const on = () => {
+      const y = window.scrollY
+      if (Math.abs(y - last) > 8) setCompact(y > last && y > 200)
+      last = y
+    }
+    window.addEventListener('scroll', on, { passive: true })
+    return () => window.removeEventListener('scroll', on)
+  }, [])
+  return compact
+}
 
 export function SkillsChat() {
   const [open, setOpen] = useState(false)
-  const [text, setText] = useState('')
-  const chat = useChat(NODES)
-  const end = useRef(null)
+  const compact = usePill()
 
+  // "/" opens it from anywhere on the page (unless you're typing somewhere); Esc closes.
   useEffect(() => {
-    end.current?.scrollIntoView({ block: 'end' })
-  }, [chat.messages])
-  useEffect(() => {
-    if (!open) return
-    const close = (e) => e.key === 'Escape' && setOpen(false)
-    window.addEventListener('keydown', close)
-    return () => window.removeEventListener('keydown', close)
-  }, [open])
-
-  const ask = (q) => {
-    if (!q.trim() || chat.streaming) return
-    void chat.send(q)
-    setText('')
-  }
+    const key = (e) => {
+      const field = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || e.target?.isContentEditable
+      if (e.key === '/' && !field && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault()
+        setOpen(true)
+      } else if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [])
 
   return (
     <>
-      <AnimatePresence>
-        {open && (
-          <motion.aside
-            role="dialog"
-            aria-label="Ask about my skills"
-            initial={{ opacity: 0, y: 24, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 24, scale: 0.98 }}
-            transition={{ duration: 0.2 }}
-            className="fixed right-4 bottom-20 z-50 flex max-h-[min(72vh,640px)] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border border-white/10 bg-ink-900 shadow-2xl"
-          >
-            <div className="flex items-center gap-2 border-b border-white/[0.07] px-4 py-3">
-              <MessageCircleQuestion className="size-4 text-cyan-300" />
-              <div className="min-w-0">
-                <p className="text-[14px] font-semibold text-white">Ask about my skills</p>
-                <p className="text-[11.5px] text-ink-500">Answers come from my résumé, with sources.</p>
-              </div>
-              <button type="button" aria-label="Close" onClick={() => setOpen(false)} className="ml-auto grid size-7 place-items-center rounded-full text-ink-400 hover:bg-white/[0.06] hover:text-white"><X className="size-4" /></button>
-            </div>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 text-[13.5px]">
-              {chat.messages.length === 0 && (
-                <div className="space-y-2">
-                  <p className="text-ink-300">Hiring, or wondering if I'd fit your project? Ask anything about my experience and skills.</p>
-                  {STARTERS.map((q) => (
-                    <button key={q} type="button" onClick={() => ask(q)} className="block w-full rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-left text-ink-200 hover:border-white/20 hover:text-white">{q}</button>
-                  ))}
-                </div>
+      <div className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center">
+      <motion.button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Ask Tara about my work"
+        aria-keyshortcuts="/"
+        layout
+        className="group pointer-events-auto flex items-center gap-2.5 rounded-full border border-white/15 bg-ink-900/70 py-2 pr-2 pl-2 text-left shadow-[0_10px_40px_-10px_rgb(0_0_0/0.6)] ring-1 ring-white/5 backdrop-blur-2xl transition hover:border-white/25"
+      >
+        <span className={`relative grid size-8 place-items-center rounded-full bg-gradient-to-br ${TARA} text-white`}>
+          <motion.span aria-hidden className={`absolute inset-0 rounded-full bg-gradient-to-br ${TARA}`} animate={{ opacity: [0.5, 0, 0.5], scale: [1, 1.45, 1] }} transition={{ duration: 2.8, repeat: Infinity }} />
+          <Sparkles className="relative size-4" />
+        </span>
+        <AnimatePresence initial={false}>
+          {!compact && (
+            <motion.span key="label" initial={{ opacity: 0, width: 0 }} animate={{ opacity: 1, width: 'auto' }} exit={{ opacity: 0, width: 0 }} className="flex items-center gap-3 overflow-hidden whitespace-nowrap">
+              <span className="text-[14px] text-ink-200">Ask <span className="font-semibold text-white">Tara</span> about my work</span>
+              <kbd className="mr-1 rounded-md border border-white/15 bg-white/[0.06] px-1.5 py-0.5 font-mono text-[11px] text-ink-300">/</kbd>
+            </motion.span>
+          )}
+        </AnimatePresence>
+      </motion.button>
+      </div>
+      <AnimatePresence>{open && <Spotlight onClose={() => setOpen(false)} />}</AnimatePresence>
+    </>
+  )
+}
+
+function Spotlight({ onClose }) {
+  const [text, setText] = useState('')
+  const [ph, setPh] = useState(0)
+  const chat = useChat(NODES)
+  const input = useRef(null)
+  const end = useRef(null)
+
+  useEffect(() => {
+    input.current?.focus()
+    const t = setInterval(() => setPh((i) => (i + 1) % PLACEHOLDERS.length), 3000)
+    return () => clearInterval(t)
+  }, [])
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
+  }, [chat.messages])
+
+  const ask = (q) => {
+    if (!q.trim() || chat.streaming) return
+    void chat.send(q.trim())
+    setText('')
+  }
+  // Voice: tap the mic, speak, pause; the words appear as you talk and are asked when you stop.
+  const askRef = useRef(ask)
+  useEffect(() => {
+    askRef.current = ask
+  })
+  const onRequest = useCallback((said) => said && askRef.current(said), [])
+  const voice = useVoice({ transcribe: keeperApi.transcribe, wake: false, onRequest })
+  const listening = voice.state !== 'idle'
+  const sources = (m) => [...new Set((m.sources ?? []).map((s) => s.source ?? s.title ?? s.document).filter(Boolean))].slice(0, 3)
+
+  return (
+    <motion.div className="fixed inset-0 z-50 flex items-start justify-center bg-ink-950/60 px-3 pt-[10vh] backdrop-blur-md sm:pt-[14vh]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Ask Tara about my work"
+        initial={{ opacity: 0, y: -12, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -8, scale: 0.98 }}
+        transition={{ duration: 0.18 }}
+        onClick={(e) => e.stopPropagation()}
+        className="relative flex max-h-[76vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-ink-900/95 shadow-2xl ring-1 ring-white/5"
+      >
+        <div aria-hidden className="pointer-events-none absolute -top-24 left-1/2 h-48 w-[80%] -translate-x-1/2 rounded-full bg-gradient-to-r from-fuchsia-500/20 via-pink-500/15 to-orange-400/20 blur-3xl" />
+        <form className="relative flex items-center gap-3 border-b border-white/[0.07] px-5 py-4" onSubmit={(e) => { e.preventDefault(); ask(text) }}>
+          <span className={`grid size-7 shrink-0 place-items-center rounded-full bg-gradient-to-br ${TARA} text-white`}><Sparkles className="size-3.5" /></span>
+          <input
+            ref={input}
+            value={listening ? voice.interim : text}
+            readOnly={listening}
+            onChange={(e) => setText(e.target.value.slice(0, 500))}
+            placeholder={listening ? 'Listening… I’ll ask when you pause' : PLACEHOLDERS[ph]}
+            aria-label="Your question"
+            className="min-w-0 flex-1 bg-transparent text-[17px] text-white placeholder:text-ink-500 focus:outline-none"
+          />
+          {chat.streaming ? (
+            <button type="button" onClick={chat.stop} aria-label="Stop" className="grid size-8 place-items-center rounded-full bg-white/10 text-white"><Square className="size-3.5" /></button>
+          ) : text.trim() && !listening ? (
+            <button type="submit" aria-label="Ask" className={`grid size-8 place-items-center rounded-full bg-gradient-to-br ${TARA} text-white`}><ArrowUp className="size-4" /></button>
+          ) : (
+            <>
+              {hearingMode() && (
+                <button type="button" onClick={() => (listening ? voice.finish() : voice.listen())} aria-label={listening ? 'Ask now' : 'Ask by voice'} aria-pressed={listening}
+                  className={`relative grid size-8 place-items-center rounded-full ${listening ? `bg-gradient-to-br ${TARA} text-white` : 'text-ink-300 hover:bg-white/[0.06] hover:text-white'}`}>
+                  {listening && <motion.span aria-hidden className={`absolute inset-0 rounded-full bg-gradient-to-br ${TARA}`} animate={{ scale: [1, 1.5], opacity: [0.5, 0] }} transition={{ duration: 1.4, repeat: Infinity }} />}
+                  <Mic className="relative size-4" />
+                </button>
               )}
-              {chat.messages.map((m) => (
-                <div key={m.id} className={m.role === 'user' ? 'ml-8 rounded-2xl rounded-br-md bg-white/[0.08] px-3 py-2 text-white' : 'mr-4 text-ink-200'}>
-                  {m.status === 'error' ? <span className="text-rose-300">{m.error || 'Something went wrong. Please try again.'}</span> : (
-                    m.role === 'user' ? <p className="whitespace-pre-wrap">{m.content}</p> : (
-                      <div className="space-y-2 [&_li]:ml-4 [&_li]:list-disc [&_strong]:text-white">
-                        <Markdown>{m.content.replace(/\s*\[\d+\]/g, '') || (m.status === 'streaming' ? '…' : '')}</Markdown>
+              <button type="button" onClick={() => { voice.cancel(); onClose() }} aria-label="Close" className="grid size-8 place-items-center rounded-full text-ink-400 hover:bg-white/[0.06] hover:text-white"><X className="size-4" /></button>
+            </>
+          )}
+        </form>
+
+        <div className="relative min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {chat.messages.length === 0 ? (
+            <>
+              <p className="mb-2 text-[11.5px] font-semibold tracking-[0.14em] text-ink-500 uppercase">Suggested</p>
+              <ul className="space-y-1">
+                {SUGGESTED.map((q) => (
+                  <li key={q}>
+                    <button type="button" onClick={() => ask(q)} className="group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[14.5px] text-ink-200 hover:bg-white/[0.05] hover:text-white">
+                      <Sparkles className="size-3.5 shrink-0 text-ink-500 group-hover:text-pink-300" /> {q}
+                      <CornerDownLeft className="ml-auto size-3.5 text-ink-600 opacity-0 group-hover:opacity-100" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <div className="space-y-5" aria-live="polite">
+              {chat.messages.map((m) =>
+                m.role === 'user' ? (
+                  <p key={m.id} className="text-[13px] font-semibold text-ink-400">{m.content}</p>
+                ) : (
+                  <div key={m.id} className="space-y-2">
+                    {m.status === 'error' ? (
+                      <p className="text-[14px] text-rose-300">{m.error || 'Something went wrong. Please try again.'}</p>
+                    ) : (
+                      <div className="space-y-2 text-[15px] leading-relaxed text-ink-100 [&_li]:ml-4 [&_li]:list-disc [&_strong]:text-white">
+                        {m.content ? <Suspense fallback={<p>{m.content}</p>}><Markdown>{m.content.replace(/\s*\[\d+\]/g, '')}</Markdown></Suspense> : <Thinking />}
                       </div>
-                    )
-                  )}
-                  {m.role === 'assistant' && m.sources?.length > 0 && (
-                    <p className="mt-1 text-[11px] text-ink-500">Source: {[...new Set(m.sources.map((s) => s.source ?? s.title ?? s.document).filter(Boolean))].slice(0, 2).join(', ')}</p>
-                  )}
-                </div>
-              ))}
+                    )}
+                    {sources(m).length > 0 && (
+                      <p className="flex flex-wrap gap-1.5">
+                        {sources(m).map((s) => <span key={s} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11.5px] text-ink-400"><FileText className="size-3" /> {s}</span>)}
+                      </p>
+                    )}
+                  </div>
+                ),
+              )}
               <div ref={end} />
             </div>
-            <form className="flex gap-2 border-t border-white/[0.07] p-3" onSubmit={(e) => { e.preventDefault(); ask(text) }}>
-              <input value={text} onChange={(e) => setText(e.target.value.slice(0, 500))} placeholder="e.g. Has he built RAG systems?" aria-label="Your question"
-                className="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[13.5px] text-white placeholder:text-ink-500 focus:border-white/25 focus:outline-none" />
-              {chat.streaming ? (
-                <button type="button" onClick={chat.stop} aria-label="Stop" className="grid size-9 place-items-center rounded-xl bg-white/10 text-white"><Square className="size-4" /></button>
-              ) : (
-                <button type="submit" disabled={!text.trim()} aria-label="Send" className="grid size-9 place-items-center rounded-xl bg-cyan-400 text-ink-950 disabled:opacity-40"><Send className="size-4" /></button>
-              )}
-            </form>
-          </motion.aside>
-        )}
-      </AnimatePresence>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="fixed right-4 bottom-4 z-50 inline-flex items-center gap-2 rounded-full bg-cyan-400 px-4 py-3 text-[13.5px] font-semibold text-ink-950 shadow-xl hover:bg-cyan-300"
-      >
-        {open ? <X className="size-4" /> : <MessageCircleQuestion className="size-4" />} {open ? 'Close' : 'Ask about my skills'}
-      </button>
-    </>
+          )}
+        </div>
+        <p className="relative flex items-center justify-between border-t border-white/[0.06] px-5 py-2.5 text-[11.5px] text-ink-500">
+          <span>Answers come only from my résumé and project notes, with sources.{voice.error ? ` ${voice.error}` : ''}</span>
+          <Link to="/tara" className="inline-flex shrink-0 items-center gap-1 text-ink-300 hover:text-white">Talk to Tara <ArrowRight className="size-3" /></Link>
+        </p>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+function Thinking() {
+  return (
+    <span className="flex items-center gap-1 py-1" aria-label="Thinking">
+      {[0, 1, 2].map((i) => <motion.span key={i} className="size-1.5 rounded-full bg-pink-300/80" animate={{ opacity: [0.25, 1, 0.25], y: [0, -2, 0] }} transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }} />)}
+    </span>
   )
 }

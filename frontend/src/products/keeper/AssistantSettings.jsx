@@ -1,8 +1,8 @@
-/** "Make Tijori yours": voice, speed, language, name, personality and how it listens. One sheet, saved on this device. */
+/** "Make Tara yours": voice, speed, language, name, personality and how it listens. One sheet, saved on this device. */
 import { Play, RotateCcw, X } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 import { DEFAULTS, LANGUAGES } from './prefs'
-import { canSpeak, hearingMode, say, useVoices } from './voice'
+import { canSpeak, hearingMode, say, useVoices, wakeSupported } from './voice'
 
 const field = 'w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[14px] text-white focus:border-white/25 focus:outline-none'
 
@@ -54,14 +54,14 @@ export function AssistantSettings({ prefs, onChange, onClose }) {
     return () => window.removeEventListener('keydown', close)
   }, [onClose])
 
-  const preview = () => void say(`Hi${prefs.name.trim() ? ` ${prefs.name.trim()}` : ''}! I'm Tijori. This is how I'll sound.`, prefs)
+  const preview = () => void say(`Hi${prefs.name.trim() ? ` ${prefs.name.trim()}` : ''}! I'm Tara. This is how I'll sound.`, prefs)
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-end bg-black/50 backdrop-blur-sm sm:place-items-center sm:p-6" role="dialog" aria-modal="true" aria-label="Make Tijori yours" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-end bg-black/50 backdrop-blur-sm sm:place-items-center sm:p-6" role="dialog" aria-modal="true" aria-label="Make Tara yours" onClick={onClose}>
       <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-ink-900 shadow-2xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 border-b border-white/[0.07] px-5 py-4">
           <div className="min-w-0 flex-1">
-            <p className="text-[17px] font-semibold text-white">Make Tijori yours</p>
+            <p className="text-[17px] font-semibold text-white">Make Tara yours</p>
             <p className="text-[12px] text-ink-500">Saved on this device.</p>
           </div>
           <button type="button" aria-label="Close" onClick={onClose} className="grid size-8 place-items-center rounded-full text-ink-400 hover:bg-white/[0.06] hover:text-white"><X className="size-4" /></button>
@@ -73,6 +73,10 @@ export function AssistantSettings({ prefs, onChange, onClose }) {
             <Row title="What should I call you?" hint="optional">
               <input className={field} value={prefs.name} maxLength={40} onChange={(e) => set('name')(e.target.value)} placeholder="Your first name" />
             </Row>
+            <Row title="Home city" hint="for weather and local news">
+              <input className={field} value={prefs.city} maxLength={80} onChange={(e) => set('city')(e.target.value)} placeholder="e.g. Bengaluru" />
+            </Row>
+            <Toggle checked={prefs.useLocation} onChange={set('useLocation')}>Use this device's location for weather and directions</Toggle>
             <Row title="Personality">
               <Segmented label="Personality" value={prefs.tone} onChange={set('tone')} options={[['warm', 'Warm'], ['professional', 'Professional'], ['cheerful', 'Cheerful']]} />
             </Row>
@@ -110,7 +114,8 @@ export function AssistantSettings({ prefs, onChange, onClose }) {
           <section className="space-y-1">
             <p className="mb-2 text-[11.5px] font-semibold tracking-[0.14em] text-ink-500 uppercase">How it behaves</p>
             {canSpeak() && <Toggle checked={prefs.speak} onChange={set('speak')}>Read replies aloud</Toggle>}
-            {hearingMode() && <Toggle checked={prefs.keep} onChange={set('keep')}>Keep listening after each reply (a conversation)</Toggle>}
+            {wakeSupported() && <Toggle checked={prefs.wake} onChange={set('wake')}>Answer to “Hey Tara” while this page is open (your browser's speech service listens for it; Tara only gets what you say after it)</Toggle>}
+            {hearingMode() && <Toggle checked={prefs.keep} onChange={set('keep')}>After a spoken answer, listen for a follow-up, so you can keep talking (say “that's all” to stop)</Toggle>}
             <Toggle checked={prefs.sounds} onChange={set('sounds')}>Chime when I start and stop listening</Toggle>
           </section>
         </div>

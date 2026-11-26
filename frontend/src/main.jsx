@@ -2,6 +2,7 @@ import '@fontsource-variable/inter'
 import '@fontsource-variable/jetbrains-mono'
 import '@fontsource-variable/caveat'
 import './index.css'
+import { watchFrameRate } from './lib/lite'
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -12,3 +13,4 @@ createRoot(document.getElementById('root')).render(
     <Root />
   </StrictMode>,
 )
+watchFrameRate()

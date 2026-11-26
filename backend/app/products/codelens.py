@@ -139,6 +139,15 @@ Use ONLY the README, file list and connections given. Reply with ONE JSON object
 Only use file paths from the list. Never invent commands, services or people."""
 
 
+_CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
+def code_tokens(text: str) -> list[str]:
+    """Search terms for code: identifiers also count as their words (cartTotal → cart total, save_user → save user)."""
+    words = _CAMEL.sub(" ", text).replace("_", " ")
+    return tokenize(f"{text} {words}")
+
+
 # ── Chunking ─────────────────────────────────────────────────────────────
 def chunk_python(path: str, source: str) -> list[dict[str, Any]]:
     try:
@@ -351,7 +360,7 @@ class CodeService:
                 raise KeyError(repo_id)
             chunks = json.loads(raw_chunks)
             vecs = np.load(io.BytesIO(raw_vecs))
-            bm25 = BM25Okapi([tokenize(f"{c['path']} {c['symbol'] or ''} {c['text']}") or ["_"] for c in chunks])
+            bm25 = BM25Okapi([code_tokens(f"{c['path']} {c['symbol'] or ''} {c['text']}") or ["_"] for c in chunks])
             self._cache = {repo_id: (chunks, vecs, bm25)}  # keep one repo hot
         return self._cache[repo_id]
 
@@ -360,7 +369,7 @@ class CodeService:
         q = np.asarray(await asyncio.to_thread(self.embedder.embed_query, query), dtype=np.float32)
         sims = (vecs @ q) / (np.linalg.norm(vecs, axis=1) * (np.linalg.norm(q) or 1) + 1e-9)
         dense = [str(i) for i in np.argsort(-sims)[:40]]
-        lexical = [str(i) for i in np.argsort(-bm25.get_scores(tokenize(query)))[:40]]
+        lexical = [str(i) for i in np.argsort(-bm25.get_scores(code_tokens(query)))[:40]]
         fused = sorted(reciprocal_rank_fusion([dense, lexical]).items(), key=lambda kv: -kv[1])[:k]
         return [{**chunks[int(i)], "score": round(s, 4)} for i, s in fused]
 

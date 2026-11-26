@@ -1,12 +1,13 @@
 import { MotionConfig } from 'motion/react'
+import { LITE } from './lib/lite'
 import { lazy, Suspense, useEffect } from 'react'
 import { Backdrop } from './components/shell/Backdrop'
+import { AppSkeleton, PageSkeleton } from './components/Skeleton'
 import { CommandPalette } from './site/CommandPalette'
 import { Link, usePath } from '@appcore/web/router'
 import { ShellProvider } from '@appcore/web/ui'
 import { SITE } from './site/config'
 import { HubPage } from './site/HubPage'
-import { ProductPage } from './site/ProductPage'
 import { productBySlug } from './site/products'
 import { SkinWelcome } from './theme/SkinWelcome'
 import { ThemeToggle } from './theme/ThemeToggle'
@@ -14,6 +15,8 @@ import { ThemeToggle } from './theme/ThemeToggle'
 // Each product app is its own code-split chunk: the hub never downloads DocuMind's code.
 const DocuMindApp = lazy(() => import('./App'))
 const KeeperApp = lazy(() => import('./products/keeper/KeeperApp'))
+const ProductPage = lazy(() => import('./site/ProductPage').then((m) => ({ default: m.ProductPage })))
+const QualityPage = lazy(() => import('./site/QualityPage').then((m) => ({ default: m.QualityPage })))
 
 // Every product is its own code-split chunk, loaded only when opened.
 const APPS = [
@@ -27,7 +30,7 @@ const APPS = [
   { prefix: '/safarnaama', title: 'Safarnaama · Travel companion', label: 'Safarnaama', App: lazy(() => import('@safarnama/web/App')), props: { basePath: '/safarnaama' } },
 ]
 /** Apps that were renamed: old links (including shared trip links) keep working and land on the new address. */
-const RENAMED = { '/efi': '/jasoos', '/tripweaver': '/safarnaama', '/safarnama': '/safarnaama' }
+const RENAMED = { '/efi': '/jasoos', '/tripweaver': '/safarnaama', '/safarnama': '/safarnaama', '/tara': '/keeper', '/tijori': '/keeper' }
 
 function useTitle(title) {
   useEffect(() => {
@@ -64,9 +67,11 @@ function Routes() {
   if (product?.visibility === 'labs' && product.app) return <Redirect to={product.app.route} />
 
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionConfig reducedMotion={LITE ? 'always' : 'user'}>
       <Backdrop />
-      {path === '/' ? <Hub /> : product ? <Preview slug={product.slug} /> : <NotFound />}
+      <Suspense fallback={<PageSkeleton />}>
+        {path === '/' ? <Hub /> : path === '/quality' || path === '/quality/' ? <Quality /> : product ? <Preview slug={product.slug} /> : <NotFound />}
+      </Suspense>
     </MotionConfig>
   )
 }
@@ -74,6 +79,11 @@ function Routes() {
 function Hub() {
   useTitle(`${SITE.owner} · AI Product Portfolio`)
   return <HubPage />
+}
+
+function Quality() {
+  useTitle(`Quality · ${SITE.owner}`)
+  return <QualityPage />
 }
 
 function Preview({ slug }) {
@@ -86,11 +96,7 @@ function DocuMindRoute() {
   useTitle('DocuMind · RAG Studio')
   return (
     <Suspense
-      fallback={
-        <div className="grid h-full place-items-center">
-          <p className="text-shimmer text-sm font-medium">Launching DocuMind…</p>
-        </div>
-      }
+      fallback={<AppSkeleton label={'Opening DocuMind'} />}
     >
       <DocuMindApp />
     </Suspense>
@@ -101,11 +107,7 @@ function ProductRoute({ title, label, App, props }) {
   useTitle(title)
   return (
     <Suspense
-      fallback={
-        <div className="grid h-full place-items-center">
-          <p className="text-shimmer text-sm font-medium">Opening {label}…</p>
-        </div>
-      }
+      fallback={<AppSkeleton label={`Opening ${label}`} />}
     >
       <App {...props} />
     </Suspense>
@@ -113,14 +115,10 @@ function ProductRoute({ title, label, App, props }) {
 }
 
 function KeeperRoute() {
-  useTitle('Tijori · Personal assistant')
+  useTitle('Tara · Personal assistant')
   return (
     <Suspense
-      fallback={
-        <div className="grid h-full place-items-center">
-          <p className="text-shimmer text-sm font-medium">Opening Keeper…</p>
-        </div>
-      }
+      fallback={<AppSkeleton label={'Opening Tara'} />}
     >
       <KeeperApp />
     </Suspense>
