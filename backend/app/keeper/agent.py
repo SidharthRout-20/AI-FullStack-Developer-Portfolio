@@ -44,7 +44,9 @@ emotion: how the user seems to feel from their words: "neutral" | "happy" | "exc
         ("crisis" only for talk of self-harm, suicide or being in danger). Default "neutral".
 persona: for "chat" and "assist", who should answer: the expert a person would ask for this, one of
 {personas}
-        Pick the specialist whenever the question is in their field; "assistant" only for everyday tasks.
+        Pick the specialist whenever the question is in their field ("say X in Spanish" → language, "plan 3 days in
+        Goa" → travel, "a 20 minute workout" → fitness, "Postgres or MongoDB?" → architect); "assistant" only for
+        everyday tasks no expert would own (timers, small talk, quick facts).
 tool (only for assist) and args:
         "weather"    {"place": city or null for the user's own location}
         "news"       {"topic": topic or null for top headlines}

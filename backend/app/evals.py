@@ -456,7 +456,7 @@ def latest(request: Request) -> dict[str, Any]:
 
 
 @router.post("/run")
-@limiter.limit("30/hour")
+@limiter.limit("60/hour")  # one "Run with live model" click is up to 1 + 3 suites × 3 passes
 async def run(request: Request, body: RunIn) -> dict[str, Any]:
     chosen = [
         s

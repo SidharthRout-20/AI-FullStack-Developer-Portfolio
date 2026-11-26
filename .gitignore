@@ -66,3 +66,14 @@ PRODUCT_PORTFOLIO_DISCOVERY_V2.md
 /products/*/web/dist/
 /products/*/api/data/
 /products/*/api/.venv/
+
+# ==========================================
+# Android (Tara app): build output and keys never go in the repo
+# ==========================================
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/local.properties
+*.p12
+*.jks
+*.keystore

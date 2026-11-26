@@ -1,0 +1,19 @@
+// Tara for Android: a Trusted Web Activity. The app is the live site (/keeper) running full-screen in the phone's
+// own Chrome, so voice, "Hey Tara" and notifications work exactly as on the web. Built in CI: see
+// .github/workflows/tara-android.yml and android/README.md.
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "Tara"
+include ':app'

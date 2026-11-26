@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.sidharthrout20.tara",
+      "sha256_cert_fingerprints": ["4A:57:46:E5:D8:74:71:2F:34:CA:A3:BB:F4:C0:6A:09:C6:B2:D5:6D:BE:79:EA:E7:C3:FA:63:A0:6C:D9:65:16"]
+    }
+  }
+]

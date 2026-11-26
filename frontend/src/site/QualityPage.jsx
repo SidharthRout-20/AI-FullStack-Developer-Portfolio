@@ -25,10 +25,16 @@ async function api(path, body) {
     const d = await res.json().catch(() => null)
     if (res.status === 404)
       throw new Error("This backend doesn't have the evals yet (it's an older deployment). To try them locally, run the backend and `npm run dev:local`.")
-    throw new Error(res.status === 429 ? 'Runs are limited to a few per hour to protect the free model quota. Try again later.' : d?.detail ?? `Request failed (${res.status})`)
+    const err = new Error(res.status === 429 ? 'Runs are limited to a few per hour to protect the free model quota. Try again later.' : detailText(d?.detail) ?? `Request failed (${res.status})`)
+    err.status = res.status
+    throw err
   }
   return res.json()
 }
+
+/** FastAPI sends validation errors as a list; show them as a sentence, not "[object Object]". */
+const detailText = (detail) =>
+  detail == null ? null : Array.isArray(detail) ? detail.map((x) => `${(x.loc ?? []).slice(1).join('.')}: ${x.msg}`).join('; ') : String(detail)
 
 const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)}%`)
 const ago = (iso) => {
@@ -75,12 +81,25 @@ export function QualityPage() {
     try {
       keep(await api('/run', { product, models: false }))
       if (models) {
-        for (const s of shown.filter((x) => x.kind === 'model')) {
+        suites: for (const s of shown.filter((x) => x.kind === 'model')) {
           // A pass that the free tier cut short comes back "partial"; the next pass asks only the refused cases,
           // so one click usually ends with every case measured.
           for (let pass = 1; pass <= PASSES; pass++) {
             setStep({ title: s.title, pass })
-            const d = await api('/run', { product, models: true, suite: s.id, resume: pass > 1 })
+            let d
+            try {
+              // "resume" only on later passes: a backend from before resumable runs still takes the first pass.
+              d = await api('/run', { product, models: true, suite: s.id, ...(pass > 1 && { resume: true }) })
+            } catch (e) {
+              if (pass > 1 && e.status === 422) break // that older backend can't resume: keep the first pass
+              if (e.status === 422 && /suite/.test(e.message)) {
+                // A backend from before one-suite runs: it measures every model suite in one request.
+                setStep({ title: 'every model suite', pass: 1 })
+                keep(await api('/run', { product, models: true }))
+                break suites
+              }
+              throw e
+            }
             keep(d)
             if (d.results[0]?.status !== 'partial') break
           }

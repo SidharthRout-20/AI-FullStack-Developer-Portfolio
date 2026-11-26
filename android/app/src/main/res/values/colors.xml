@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tara's background (keeper.webmanifest theme_color), so the bars and splash blend into the app. -->
+    <color name="background">#0B0D14</color>
+</resources>

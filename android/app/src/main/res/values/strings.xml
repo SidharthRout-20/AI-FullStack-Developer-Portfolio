@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tara</string>
+    <!-- ?ref=app: visits from the app show up as "App" on the Insights page. -->
+    <string name="launch_url" translatable="false">https://ai-full-stack-developer-portfolio-p-ruby.vercel.app/keeper?ref=app</string>
+    <string name="asset_statements" translatable="false">
+        [{
+            \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+            \"target\": {\"namespace\": \"web\", \"site\": \"https://ai-full-stack-developer-portfolio-p-ruby.vercel.app\"}
+        }]
+    </string>
+</resources>
