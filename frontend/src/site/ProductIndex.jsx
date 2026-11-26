@@ -1,8 +1,11 @@
 /**
- * The featured products as an index, not a card grid: big typographic rows (number, name, the problem it solves).
- * On a desktop, a preview card with the outcome follows the cursor over the list and the other rows dim; on touch
- * screens and in lite mode the outcome sits inside each row instead. The preview moves with transforms only (one
- * requestAnimationFrame loop, only while the pointer is over the list), so it stays smooth on modest laptops.
+ * The featured products as a bento of large media tiles, after bradleyziffer.com: real screenshots in rounded tiles
+ * that alternate narrow/wide (40/60, then 60/40), each with its name set big over the image and the problem it
+ * solves. Hovering presses the tile in slightly, eases the screenshot forward and slides up the outcome; on desktops
+ * a round "try it" badge in the product's colours, with its label spinning around it, trails the cursor.
+ *
+ * Smooth on modest laptops: only transform and opacity change, the badge follows in one requestAnimationFrame loop that
+ * runs only while the pointer is over a tile, and images load lazily. Lite mode and touch screens skip the badge.
  */
 import { ArrowUpRight } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -11,23 +14,26 @@ import { LITE } from '../lib/lite'
 import { productHref } from './products'
 import { StatusBadge } from './StatusBadge'
 
+const SHOTS = new Set(['safarnaama', 'codelens', 'tara', 'jasoos'])
+const shotOf = (p) => (SHOTS.has(p.slug) ? `/projects/${p.slug}.webp` : null)
+// 5-column grid: narrow (2) + wide (3), then wide + narrow.
+const SPAN = ['md:col-span-2', 'md:col-span-3', 'md:col-span-3', 'md:col-span-2']
 const canFollow = () => !LITE && typeof window !== 'undefined' && window.matchMedia?.('(hover: hover) and (pointer: fine)').matches
 
 export function ProductIndex({ products, online }) {
-  const [active, setActive] = useState(null) // index of the hovered row
+  const [active, setActive] = useState(null)
   const [follow] = useState(canFollow)
-  const card = useRef(null)
+  const badge = useRef(null)
   const target = useRef({ x: 0, y: 0 })
   const pos = useRef({ x: 0, y: 0 })
 
-  // Ease the preview towards the pointer (a soft trail), only while a row is hovered.
   useEffect(() => {
     if (!follow || active === null) return
     let raf = 0
     const loop = () => {
-      pos.current.x += (target.current.x - pos.current.x) * 0.18
-      pos.current.y += (target.current.y - pos.current.y) * 0.18
-      card.current?.style.setProperty('transform', `translate3d(${pos.current.x}px, ${pos.current.y}px, 0)`)
+      pos.current.x += (target.current.x - pos.current.x) * 0.2
+      pos.current.y += (target.current.y - pos.current.y) * 0.2
+      badge.current?.style.setProperty('transform', `translate3d(${pos.current.x - 48}px, ${pos.current.y - 48}px, 0)`)
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
@@ -35,54 +41,33 @@ export function ProductIndex({ products, online }) {
   }, [follow, active])
 
   const onMove = (e) => {
-    target.current = { x: e.clientX + 28, y: e.clientY - 120 }
-    if (active === null) pos.current = { ...target.current } // appear at the pointer, then trail it
+    target.current = { x: e.clientX + 36, y: e.clientY + 36 } // beside the pointer, never under it
+    if (active === null) pos.current = { ...target.current }
   }
   const shown = active === null ? null : products[active]
 
   return (
-    <div className="relative" onPointerMove={follow ? onMove : undefined} onPointerLeave={() => setActive(null)}>
-      <ol className="border-b border-white/[0.08] [&:hover>li]:opacity-45 [&>li:hover]:!opacity-100">
-        {products.map((p, i) => {
-          const Icon = p.icon
-          return (
-            <li key={p.slug} onPointerEnter={() => setActive(i)} className="group border-t border-white/[0.08] transition-opacity duration-300">
-              <div className="grid grid-cols-[auto_1fr] items-baseline gap-x-4 py-6 sm:gap-x-8 sm:py-8 md:grid-cols-[auto_minmax(0,1fr)_minmax(0,22rem)]">
-                <span className="font-mono text-[12px] text-ink-500 tabular-nums sm:text-[13px]">{String(i + 1).padStart(2, '0')}</span>
-                <Link to={p.app?.route ?? productHref(p)} className="min-w-0 outline-none focus-visible:underline">
-                  <span className="flex items-center gap-3">
-                    <span className="truncate text-[clamp(2.25rem,7vw,5.5rem)] leading-[0.95] font-semibold tracking-tight text-white transition-transform duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] group-hover:translate-x-3">
-                      {p.name}
-                    </span>
-                    <ArrowUpRight className="size-6 shrink-0 text-ink-500 opacity-0 transition duration-300 group-hover:translate-x-1 group-hover:text-white group-hover:opacity-100 sm:size-8" />
-                  </span>
-                </Link>
-                <div className="col-start-2 mt-3 min-w-0 md:col-start-auto md:mt-0">
-                  <p className="text-[15px] leading-snug text-ink-200 sm:text-[16px]">{p.problem}</p>
-                  <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] text-ink-500">
-                    <Icon className="size-3.5" /> {p.category} <StatusBadge status={p.status} />
-                    {p.app && online === false && <span className="text-rose-300">backend offline</span>}
-                  </p>
-                  {!follow && <p className="mt-3 text-[14px] leading-relaxed text-ink-300">{p.outcome}</p>}
-                  <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
-                    {p.app && (
-                      <Link to={p.app.route} className="font-semibold text-white underline-offset-4 hover:underline">
-                        Try {p.name} →
-                      </Link>
-                    )}
-                    <Link to={productHref(p)} className="text-ink-400 underline-offset-4 hover:text-white hover:underline">How it works</Link>
-                  </p>
-                </div>
-              </div>
-            </li>
-          )
-        })}
-      </ol>
+    <div onPointerMove={follow ? onMove : undefined}>
+      <ul className="grid gap-4 md:grid-cols-5 md:gap-5">
+        {products.map((p, i) => (
+          <Tile key={p.slug} p={p} i={i} online={online} span={SPAN[i % 4]} onEnter={() => setActive(i)} onLeave={() => setActive(null)} />
+        ))}
+      </ul>
 
       {follow && (
-        <div ref={card} aria-hidden className="pointer-events-none fixed top-0 left-0 z-30 w-72 will-change-transform">
-          <div className={`origin-top-left transition duration-300 ease-out ${shown ? 'scale-100 opacity-100' : 'scale-90 opacity-0'}`}>
-            {shown && <Preview p={shown} />}
+        <div ref={badge} aria-hidden className="pointer-events-none fixed top-0 left-0 z-40 will-change-transform">
+          <div className={`transition duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${shown ? 'scale-100 opacity-100' : 'scale-0 opacity-0'}`}>
+            <div className={`relative grid size-24 place-items-center rounded-full bg-gradient-to-br ${shown?.accent ?? ''} text-on-accent shadow-2xl shadow-black/40`}>
+              <svg viewBox="0 0 100 100" className="cursor-ring absolute inset-0 size-full">
+                <defs>
+                  <path id="ring" d="M50,50 m-37,0 a37,37 0 1,1 74,0 a37,37 0 1,1 -74,0" />
+                </defs>
+                <text className="fill-current text-[10.5px] font-semibold tracking-[0.2em] uppercase">
+                  <textPath href="#ring">Try {shown?.name ?? ''} · Try it now ·</textPath>
+                </text>
+              </svg>
+              <ArrowUpRight className="size-7" />
+            </div>
           </div>
         </div>
       )}
@@ -90,18 +75,44 @@ export function ProductIndex({ products, online }) {
   )
 }
 
-function Preview({ p }) {
+function Tile({ p, i, online, span, onEnter, onLeave }) {
   const Icon = p.icon
+  const shot = shotOf(p)
+  const route = p.app?.route ?? productHref(p)
   return (
-    <div className="overflow-hidden rounded-3xl border border-white/10 bg-ink-900 shadow-2xl shadow-black/40">
-      <div className={`relative grid h-36 place-items-center bg-gradient-to-br ${p.accent}`}>
-        <Icon className="size-14 text-on-accent drop-shadow-lg" strokeWidth={1.5} />
-        <span className="absolute bottom-3 left-4 text-[12px] font-semibold tracking-wide text-on-accent/90 uppercase">{p.category}</span>
-      </div>
-      <div className="p-4">
-        <p className="text-[13.5px] leading-relaxed text-ink-200">{p.outcome}</p>
-        <p className="mt-3 text-[12.5px] font-semibold text-white">Click to try {p.name} →</p>
-      </div>
-    </div>
+    <li className={`min-w-0 ${span}`} onPointerEnter={onEnter} onPointerLeave={onLeave}>
+      <article className="group relative isolate h-[23rem] overflow-hidden rounded-[22px] border border-white/[0.06] bg-ink-900 transition-transform duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:scale-[0.985] sm:h-[26rem]">
+        {shot ? (
+          <img src={shot} alt={`${p.name} screenshot`} loading="lazy" decoding="async"
+            className="absolute inset-0 -z-10 size-full object-cover object-left-top opacity-75 transition-[transform,opacity] duration-[1400ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] group-hover:scale-[1.06] group-hover:opacity-100" />
+        ) : (
+          <div className={`absolute inset-0 -z-10 grid place-items-center bg-gradient-to-br ${p.accent}`}><Icon className="size-20 text-on-accent/80" strokeWidth={1.25} /></div>
+        )}
+        <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-t from-black via-black/60 via-45% to-black/10" />
+
+        <div className="flex items-center gap-2 p-4 sm:p-5">
+          <span className="grid size-9 place-items-center rounded-full bg-white/90 font-mono text-[12px] font-semibold text-black">{String(i + 1).padStart(2, '0')}</span>
+          <span className={`inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r ${p.accent} px-2.5 py-1 text-[11.5px] font-semibold text-on-accent`}>
+            <Icon className="size-3.5" /> {p.category}
+          </span>
+          <span className="ml-auto"><StatusBadge status={p.status} /></span>
+        </div>
+
+        <div className="absolute inset-x-0 bottom-0 p-5 sm:p-6">
+          <h3 className="text-[clamp(2.1rem,4.4vw,3.6rem)] leading-[0.95] font-semibold tracking-tight text-white">{p.name}</h3>
+          <p className="mt-2 max-w-xl text-[15px] leading-snug text-white/85">{p.problem}</p>
+          <div className="grid grid-rows-[0fr] opacity-0 transition-all duration-500 ease-[cubic-bezier(0.2,0.8,0.2,1)] group-focus-within:grid-rows-[1fr] group-focus-within:opacity-100 group-hover:grid-rows-[1fr] group-hover:opacity-100 max-md:grid-rows-[1fr] max-md:opacity-100">
+            <p className="overflow-hidden text-[13.5px] leading-relaxed text-white/70"><span className="block pt-2">{p.outcome}</span></p>
+          </div>
+          <p className="relative z-10 mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+            <span className="font-semibold text-white">Try {p.name} →</span>
+            <Link to={productHref(p)} className="text-white/60 underline-offset-4 hover:text-white hover:underline">How it works</Link>
+            {p.app && online === false && <span className="text-rose-300">backend offline</span>}
+          </p>
+        </div>
+        {/* The whole tile opens the product; "How it works" sits above this link. */}
+        <Link to={route} aria-label={`Try ${p.name}`} className="absolute inset-0 rounded-[22px] outline-none focus-visible:ring-4 focus-visible:ring-white/50" />
+      </article>
+    </li>
   )
 }

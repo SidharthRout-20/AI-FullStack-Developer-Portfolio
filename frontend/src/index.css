@@ -321,3 +321,7 @@ html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
   .tara-orb *, .tara-sheen, .tara-word { animation: none !important; opacity: 1; translate: none; }
 }
+
+/* Product tiles' "try it" badge: the label spins around the arrow (src/site/ProductIndex.jsx). */
+.cursor-ring { animation: tara-spin 7s linear infinite; }
+[data-lite] .cursor-ring { animation: none; }

@@ -30,7 +30,7 @@ const NAV = [
   { id: 'experience', label: 'Experience' },
 ]
 /** Screenshots that exist in public/projects (the others get an icon tile). */
-const SHOTS = new Set(['careerpilot', 'codelens', 'documind', 'evolve', 'flowforge', 'keeper', 'meetingmind', 'tripweaver'])
+const SHOTS = new Set(['careerpilot', 'codelens', 'documind', 'evolve', 'flowforge', 'jasoos', 'keeper', 'meetingmind', 'safarnaama', 'tara', 'tripweaver'])
 const shotOf = (p) => {
   const key = p.image ?? p.slug
   return SHOTS.has(key) ? `/projects/${key}.webp` : null

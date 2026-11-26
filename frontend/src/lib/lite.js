@@ -6,6 +6,7 @@
  * `?lite=1` / `?lite=0` force it either way (handy for testing), remembered for the visit.
  */
 const KEY = 'site-lite'
+let decided = false // forced with ?lite= or already decided this visit: the frame-rate check leaves it alone
 
 function decide() {
   if (typeof window === 'undefined') return false
@@ -13,7 +14,10 @@ function decide() {
     const forced = new URLSearchParams(window.location.search).get('lite')
     if (forced === '1' || forced === '0') sessionStorage.setItem(KEY, forced)
     const saved = sessionStorage.getItem(KEY)
-    if (saved) return saved === '1'
+    if (saved) {
+      decided = true
+      return saved === '1'
+    }
   } catch {
     /* storage blocked: fall through to detection */
   }
@@ -36,7 +40,7 @@ apply()
  * lite on its own (it's a one-way switch for the visit, so the page never flickers between modes).
  */
 export function watchFrameRate() {
-  if (LITE || typeof requestAnimationFrame === 'undefined') return
+  if (LITE || decided || typeof requestAnimationFrame === 'undefined') return
   let frames = 0
   let start = 0
   const tick = (t) => {
