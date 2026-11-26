@@ -2,6 +2,7 @@ import { ArrowLeft, CalendarDays, KeyRound, LayoutGrid, Mic, Route as RouteIcon,
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Backdrop } from '../../components/shell/Backdrop'
+import { LITE } from '../../lib/lite'
 import { Link } from '@appcore/web/router'
 import { ThemeToggle } from '../../theme/ThemeToggle'
 import {
@@ -228,7 +229,7 @@ export default function KeeperApp() {
   ]
 
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionConfig reducedMotion={LITE ? 'always' : 'user'}>
       <Backdrop />
       <div className="flex min-h-full">
         {/* Sidebar (desktop) */}
@@ -296,6 +297,7 @@ export default function KeeperApp() {
                     onScan={(p) => void startScan(p)}
                     onError={handle}
                     settingsOpen={settings}
+                    onWake={() => setView('assistant')}
                     onSettings={openSettings}
                   />
                 </AssistantBoundary>

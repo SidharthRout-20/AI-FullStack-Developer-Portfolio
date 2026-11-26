@@ -1,0 +1,103 @@
+# Tara's code proposals (started by the backend when the owner says go; see backend/app/keeper/edits.py).
+# Small changes: exact edits planned by Tara, re-checked against main. Larger ones: Claude Code, on the owner's Claude
+# subscription. Either way the result is committed to the single branch tara/proposals by the Tara bot (a GitHub App)
+# and opened as a pull request; CI and the Claude review run on it, and only the owner can approve and merge.
+#
+# Needs: repository variable TARA_APP_ID, secrets TARA_APP_PRIVATE_KEY and CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`).
+name: Tara proposal
+
+on:
+  workflow_dispatch:
+    inputs:
+      request:
+        description: What the owner asked for
+        required: true
+        type: string
+      mode:
+        description: small (exact edits) or large (Claude Code)
+        required: true
+        type: choice
+        options: [small, large]
+      edits:
+        description: JSON find/replace edits (small only)
+        required: false
+        type: string
+        default: "[]"
+
+permissions:
+  contents: read # every write goes through the Tara bot's own token
+
+concurrency:
+  group: tara-proposals
+  cancel-in-progress: false
+
+jobs:
+  propose:
+    if: github.actor == github.repository_owner # owner only
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      REQUEST: ${{ inputs.request }} # passed as data, never pasted into a command
+      EDITS: ${{ inputs.edits }}
+      MODE: ${{ inputs.mode }}
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: bot
+        with:
+          app-id: ${{ vars.TARA_APP_ID }}
+          private-key: ${{ secrets.TARA_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ steps.bot.outputs.token }}
+
+      - name: One proposal at a time
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+        run: |
+          if [ -n "$(gh pr list --head tara/proposals --state open --json number --jq '.[].number')" ]; then
+            echo "::error::A Tara proposal is already open. Merge or close it first."; exit 1
+          fi
+          git switch -C tara/proposals
+
+      - name: Apply the planned edits
+        if: inputs.mode == 'small'
+        run: python .github/scripts/tara_proposal.py apply
+
+      - name: Claude Code makes the change
+        if: inputs.mode == 'large'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ steps.bot.outputs.token }}
+          prompt: |
+            You are making one change to this repository, requested by its owner:
+
+            ${{ inputs.request }}
+
+            Read the README and the code around the change first, and follow the existing structure, naming and style.
+            Keep the change focused on the request; add or update tests next to the code you change. Do not touch
+            .github/, environment or secret files, deployment config, or dependency manifests. Do not commit or push:
+            the workflow commits your changes. Finish with a short summary of what you changed and why.
+          claude_args: --max-turns 40 --allowedTools "Read,Edit,Write,Glob,Grep"
+
+      - name: Check the change
+        run: python .github/scripts/tara_proposal.py guard
+
+      - name: Commit and open the pull request
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+          BOT: ${{ steps.bot.outputs.app-slug }}
+        run: |
+          git config user.name "${BOT}[bot]"
+          git config user.email "${BOT}[bot]@users.noreply.github.com"
+          title="Tara: $(printf '%s' "$REQUEST" | tr '\n' ' ' | cut -c1-60)"
+          printf '%s\n' "$title" "" "Requested by the owner through Tara ($MODE change)." | git commit -q -F -
+          git push --force origin tara/proposals
+          {
+            printf '## Request\n\n%s\n\n' "$REQUEST"
+            printf '## How this was made\n\n%s\n\n' "$([ "$MODE" = small ] && echo 'Exact edits planned by Tara and re-checked against main.' || echo 'Claude Code, following the repository structure.')"
+            printf '## Before merging\n\n- [ ] CI passes\n- [ ] Tara review (Claude Code) has no blocking findings\n- [ ] Owner approves\n'
+          } > body.md
+          gh pr create --base main --head tara/proposals --title "$title" --body-file body.md

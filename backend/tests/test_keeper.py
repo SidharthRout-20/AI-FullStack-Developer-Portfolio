@@ -310,7 +310,8 @@ async def _answers(tmp_path):
     assert "I want a hard-boiled egg" in router_msg and "Now the user says: how long should I boil it?" in chat_msg
     assert "TODAY'S AGENDA: nothing due" in llm.prompts[1][0]
     system = llm.prompts[1][0]
-    assert "concise, professional" in system and "up to 6 clear sentences" in system and "name is Sid" in system
+    assert "concise, professional" in system and "up to 6 clear sentences" in system
+    assert "Don't address the user by name" in system  # one answer in already: the name is kept for later
 
 
 def test_tijori_still_answers_the_time_without_a_model(tmp_path):

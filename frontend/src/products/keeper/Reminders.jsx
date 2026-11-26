@@ -247,11 +247,7 @@ export function ReminderSettingsCard({ onToast }) {
               <input type="checkbox" checked={s.telegram} onChange={(e) => set('telegram', e.target.checked)} /> Also send to Telegram
             </label>
           )}
-          {!s.cron_configured && (
-            <p className="rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-[11.5px] text-amber-200">
-              Phone delivery needs the server scheduler: set CRON_SECRET on the backend and add a free every-minute cron.
-            </p>
-          )}
+          <SchedulerStatus configured={s.cron_configured} lastTick={s.last_tick} />
         </div>
 
         <div className="space-y-2">
@@ -306,5 +302,22 @@ export function ReminderSettingsCard({ onToast }) {
         </button>
       </div>
     </section>
+  )
+}
+
+/** Whether reminders can reach the phone while this tab is closed, from the scheduler's own heartbeat. */
+function SchedulerStatus({ configured, lastTick }) {
+  const [now] = useState(() => Date.now())
+  const mins = lastTick ? Math.round((now - Date.parse(`${lastTick}Z`)) / 60000) : null
+  if (configured && mins !== null && mins <= 15)
+    return <p className="text-[11.5px] text-emerald-300">Scheduler running: last checked {mins < 1 ? 'just now' : `${mins} min ago`}. Reminders reach your phone even with Tara closed.</p>
+  return (
+    <p className="rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-[11.5px] text-amber-200">
+      {!configured
+        ? 'Phone reminders need the server scheduler: set CRON_SECRET on the backend and turn on the reminder cron.'
+        : mins === null
+          ? "The scheduler hasn't run yet, so reminders only arrive while this tab is open."
+          : `The scheduler last ran ${mins} min ago, so phone reminders may be late. Check the reminder cron.`}
+    </p>
   )
 }

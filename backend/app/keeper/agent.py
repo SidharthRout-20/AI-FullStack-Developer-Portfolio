@@ -20,9 +20,11 @@ from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-from app.keeper import schedule
+from app.config import PROJECT_ROOT
+from app.keeper import personas, schedule
 from app.keeper.models import KINDS, Command, Entry
 from app.keeper.parser import rule_parse
+from app.keeper.repo import RepoIndex
 from app.keeper.store import KeeperStore
 from app.keeper.tools import ACTIONS, TOOLS, ToolBox, ToolError, rule_tool
 from appcore.llm import for_task
@@ -40,6 +42,9 @@ action: "add" | "find" | "done" | "list" | "brief" | "help" | "assist" | "chat"
 emotion: how the user seems to feel from their words: "neutral" | "happy" | "excited" | "grateful" | "stressed" |
         "anxious" | "sad" | "angry" | "frustrated" | "tired" | "confused" | "lonely" | "crisis"
         ("crisis" only for talk of self-harm, suicide or being in danger). Default "neutral".
+persona: for "chat" and "assist", who should answer: the expert a person would ask for this, one of
+{personas}
+        Use "assistant" when no special expertise is needed.
 tool (only for assist) and args:
         "weather"    {"place": city or null for the user's own location}
         "news"       {"topic": topic or null for top headlines}
@@ -47,7 +52,11 @@ tool (only for assist) and args:
         "web"        {"query": a factual question that needs a current or specific answer}
         "currency"   {"amount": number, "from": "USD", "to": "INR"} (ISO codes)
         "time"       {"place": city} (the time somewhere else)
-        "open"       {"target": app or website name or domain}
+        "code"       {"query": what to find in this portfolio's own source code (how a feature works, where it is built)}
+        "portfolio"  {"query": a question about Sidharth, who built this site: his work, skills, experience or its products}
+        "edit"       {"request": the change the user wants made to THIS site's own code, in their words, complete}
+        "open"       {"target": app or website name or domain, or a product on this site: Safarnaama, CodeLens, Tara,
+                      Jasoos, Quality}
         "search"     {"query": what to search the web for}
         "play"       {"query": song, artist, playlist or video, "service": "youtube" | "spotify"}
         "directions" {"destination": place, "mode": "driving" | "walking" | "transit" | "bike"}
@@ -80,15 +89,21 @@ Conventions:
 - "call X" → call. "text / message / WhatsApp X" → message. "email X" → email. "set a timer / countdown" → timer.
 - "add a meeting / event to my calendar" → calendar; but "remind me to X" stays add + care (Tara reminds them).
 - Advice, explanations and maths ("how long to boil an egg", "what's 15% of 840") → chat.
+- How this site, Tara, CodeLens, Safarnaama, Jasoos or the Quality page works in code, or where something is built
+  ("how does the wake word work?", "where is the weather tool?") → assist + code. (Where the USER's things are stays find.)
+- About Sidharth, his experience, skills, projects, or what this site's products do → assist + portfolio.
+- Asking to change, fix, add or remove something in this site's or Tara's code or UI ("make the CodeLens button
+  bigger", "fix the typo on the home page", "add a dark mode toggle to Jasoos") → assist + edit.
 - Use the earlier conversation (if given) to resolve "it", "that", "same time", "tomorrow too".
 - Titles are short nouns ("Passport", "Drill", "Car insurance"), never full sentences.
 Today is {today} ({weekday}); the user's local time is {time}."""
 
 
-ASSISTANT_SYSTEM = """You are Tara, a {tone} personal assistant. Your reply will be read aloud, so:
-answer in {length} of plain speech (no markdown, lists, emojis or URLs), lead with the answer, and be
-specific.{name} Use the user's saved items and today's agenda below when relevant; never invent their data, bookings,
-messages or events. If a LOOK-UP RESULT is given, answer from it only and mention where it came from in a few words.
+ASSISTANT_SYSTEM = """You are Tara, a {tone} personal assistant. For this question you answer as {persona}.
+Your reply may be read aloud, so answer in {length} of plain speech (no markdown, lists, emojis or URLs), lead
+with the answer, and be specific. {name} Use the user's saved items and today's agenda below when relevant; never invent their data, bookings,
+messages or events. If a LOOK-UP RESULT is given, answer from it only and mention where it came from in a few words; when it is source
+code, explain what it does in plain words and name the files and functions that matter instead of reading code out.
 Tara can look up weather, news, facts, exchange rates and the time anywhere, and open apps, play music, give
 directions, prepare calls, messages and emails, set timers and add calendar events: never say you have no internet or
 no access; if something isn't covered, offer the closest of these instead.
@@ -125,6 +140,7 @@ CRISIS = (
 
 TONES = {"warm": "warm, capable", "professional": "concise, professional", "cheerful": "upbeat, cheerful"}
 LENGTHS = {"short": "1-3 short sentences", "detailed": "up to 6 clear sentences"}
+DEEP = "up to 8 clear sentences (say steps as first, then, finally)"  # experts get room to be useful
 
 
 class KeeperState(TypedDict, total=False):
@@ -143,6 +159,9 @@ class KeeperState(TypedDict, total=False):
     client_action: dict[str, Any] | None  # what the device should do (open, call, timer…)
     tool_facts: str
     tool_error: str
+    persona_choice: str | None  # picked by the user for this question; None or "auto" → the router decides
+    persona: str | None  # who answered (only for answers, not for saves and finds)
+    router_error: str | None  # why the model router fell back to rules, if it did (e.g. a rate limit)
     trace: list[dict[str, Any]]
 
 
@@ -163,7 +182,7 @@ class KeeperAgent:
         tools: ToolBox | None = None,
     ) -> None:
         self.store = store
-        self.tools = tools or ToolBox()
+        self.tools = tools or ToolBox(repo=RepoIndex(PROJECT_ROOT))
         self._get_llm = get_llm
         self._caption = caption
         self._timeout = llm_timeout_s
@@ -180,10 +199,10 @@ class KeeperAgent:
     async def run(self, text: str, now: dt.datetime, photo_id: str | None = None,
                   lat: float | None = None, lng: float | None = None,
                   history: list[dict[str, str]] | None = None,
-                  prefs: dict[str, str] | None = None) -> KeeperState:  # fmt: skip
+                  prefs: dict[str, str] | None = None, persona: str | None = None) -> KeeperState:  # fmt: skip
         return await self.graph.ainvoke(
             {"text": text, "now": now, "photo_id": photo_id, "lat": lat, "lng": lng, "trace": [],
-             "history": history or [], "prefs": prefs or {}}
+             "history": history or [], "prefs": prefs or {}, "persona_choice": personas.valid(persona)}
         )  # fmt: skip
 
     # ── understand ─────────────────────────────────────────────────────────
@@ -191,7 +210,7 @@ class KeeperAgent:
         start = time.perf_counter()
         now = state["now"]
         rules = rule_parse(state["text"], now.date())
-        command, routed_by = rules, "rules"
+        command, routed_by, router_error = rules, "rules", None
         if (hit := rule_tool(state["text"])) and rules.action in ("help", "find", "chat"):
             command = Command(action="assist", tool=hit[0], args=hit[1])  # tools still work without the model
         try:
@@ -200,6 +219,7 @@ class KeeperAgent:
                 ROUTER_SYSTEM.replace("{today}", now.date().isoformat())
                 .replace("{weekday}", now.strftime("%A"))
                 .replace("{time}", now.strftime("%H:%M"))
+                .replace("{personas}", personas.router_menu())
             )
             llm_cmd = await asyncio.wait_for(
                 complete_json(for_task(self._get_llm(), "keeper.command"), system, _with_history(state), Command),
@@ -208,9 +228,11 @@ class KeeperAgent:
             if _plausible(llm_cmd):
                 command, routed_by = llm_cmd, "llm"
         except Exception as exc:  # noqa: BLE001 - any LLM failure → rules
-            logger.info("Keeper router fell back to rules: %s", type(exc).__name__)
+            router_error = type(exc).__name__
+            logger.info("Keeper router fell back to rules: %s", router_error)
         detail = f"{command.action}{' · ' + command.kind if command.kind else ''} (via {'LLM' if routed_by == 'llm' else 'offline rules'})"
-        return {"command": command, "routed_by": routed_by, "trace": _trace(state, "understand", start, detail)}
+        return {"command": command, "routed_by": routed_by, "router_error": router_error,
+                "trace": _trace(state, "understand", start, detail)}  # fmt: skip
 
     # ── act ────────────────────────────────────────────────────────────────
     async def _act(self, state: KeeperState) -> KeeperState:
@@ -377,6 +399,10 @@ class KeeperAgent:
                 res = await self.tools.web(args)
             elif tool == "currency":
                 res = await self.tools.currency(args)
+            elif tool == "code":
+                res = await self.tools.code(args)
+            elif tool == "portfolio":
+                res = await self.tools.portfolio(args)
             else:
                 res = await self.tools.time_in(args, now)
         except ToolError as exc:
@@ -410,14 +436,18 @@ class KeeperAgent:
                     "reply": state.get("reply") or "Done.",
                     "trace": _trace(state, "respond", start, "action prepared"),
                 }
+            who = _persona_of(state)
             if not state.get("tool_facts"):  # nothing to quote: answer from general knowledge, search one tap away
                 reply = await self._chat(state)
-                return {"reply": reply, "trace": _trace(state, "respond", start, "answered; offered a web search")}
+                return {"reply": reply, "persona": who,
+                        "trace": _trace(state, "respond", start, "answered; offered a web search")}  # fmt: skip
             reply = await self._chat(state, facts=state["tool_facts"])
-            return {"reply": reply, "trace": _trace(state, "respond", start, f"answered from {cmd.tool}")}
+            return {"reply": reply, "persona": who,
+                    "trace": _trace(state, "respond", start, f"answered from {cmd.tool} as {who}")}  # fmt: skip
         if cmd.action == "chat":
+            who = _persona_of(state)
             reply = await self._chat(state)
-            return {"reply": reply, "trace": _trace(state, "respond", start, "answered as an assistant")}
+            return {"reply": reply, "persona": who, "trace": _trace(state, "respond", start, f"answered as {who}")}
         reply = compose_reply(state["command"], state.get("entries", []))
         if ack := ACKS.get(state["command"].emotion or ""):
             reply = f"{ack} {reply}"
@@ -430,32 +460,77 @@ class KeeperAgent:
         agenda = "; ".join(i.label for i in items) or "nothing due"
         prefs = state.get("prefs") or {}
         name = (prefs.get("name") or "").strip()
+        use_name = name_allowed(name, state.get("history") or [])
+        persona = personas.PERSONAS[_persona_of(state)]
         system = ASSISTANT_SYSTEM.format(
             now=now.strftime("%Y-%m-%d %H:%M"), weekday=now.strftime("%A"), agenda=agenda,
             tone=TONES.get(prefs.get("tone", ""), TONES["warm"]),
-            length=LENGTHS.get(prefs.get("length", ""), LENGTHS["short"]),
-            name=f" The user's name is {name}; use it now and then, not in every reply." if name else "",
+            persona=persona.brief,
+            length=DEEP if persona.deep else LENGTHS.get(prefs.get("length", ""), LENGTHS["short"]),
+            name=(f"The user's name is {name}; you may use it once in this reply." if use_name
+                  else "Don't address the user by name in this reply."),
             mood=MOODS.get(getattr(state.get("command"), "emotion", None) or "", ""),
         )  # fmt: skip
         if facts:
             system += "\nLOOK-UP RESULT: " + facts
         try:
             text = await asyncio.wait_for(
-                for_task(self._get_llm(), "keeper.chat").complete(
-                    system, [{"role": "user", "content": _with_history(state)}]
-                ),
+                for_task(
+                    self._get_llm(), "keeper.expert" if persona.deep or "FILE " in facts else "keeper.chat"
+                ).complete(system, [{"role": "user", "content": _with_history(state)}]),
                 self._timeout,
             )
             text = re.sub(r"[*_#`]+", "", str(text)).strip()
+            if name and not use_name:
+                text = drop_name(text, name)
             if text:
-                return text[:700]
+                return text[: 1400 if persona.deep else 700]
         except Exception as exc:  # noqa: BLE001 - offline: still answer something useful
             logger.info("Tara chat fell back: %s", type(exc).__name__)
+        card = state.get("card") or {}
+        if card.get("type") == "code":  # the model is down: say where the code is rather than read it out
+            places = "; ".join(f"{h['path']}" + (f" ({h['symbol']})" if h.get("symbol") else "") for h in card["hits"])
+            return f"Here's where that lives in the code: {places}."
         if facts:  # the model is down: the facts themselves are still a truthful answer
             return facts[:500]
         if re.search(r"\btime\b", state["text"], re.I):
             return f"It's {now.strftime('%H:%M')} on {now.strftime('%A, %d %B')}."
         return "I can't answer that right now, but I can remember things, remind you, and tell you what's due."
+
+
+def _persona_of(state: KeeperState) -> str:
+    """The user's pick for this question, else the router's, else the everyday assistant."""
+    return (
+        personas.valid(state.get("persona_choice"))
+        or personas.valid(getattr(state.get("command"), "persona", None))
+        or personas.DEFAULT
+    )
+
+
+def name_allowed(name: str, history: list[dict[str, str]]) -> bool:
+    """Use the user's name in the first answer and then about one in four, never twice in a row.
+
+    Left to the model, "use it now and then" turns into every reply, so the decision is made here.
+    """
+    if not name:
+        return False
+    replies = [str(t.get("text") or "") for t in history if t.get("role") == "assistant"]
+    if not replies:
+        return True
+    recent = replies[-3:]
+    return len(replies) % 4 == 0 and not any(re.search(rf"\b{re.escape(name)}\b", r, re.I) for r in recent)
+
+
+def drop_name(text: str, name: str) -> str:
+    """Take the user's name out where it's only a form of address ("Sure, Sid!" → "Sure!", "Sid, it's 9." → "It's 9.")."""
+    n = re.escape(name)
+    out = re.sub(rf",\s*{n}\b(?=\s*[.!?,;:]|\s*$)", "", text, flags=re.I)  # "..., Sid." / "Hi, Sid!"
+    out = re.sub(
+        rf"^\s*(?:(?:hi|hey|hello|okay|ok|sure|alright)\s+)?{n}\s*[,!.:]\s*", "", out, flags=re.I
+    )  # "Sid, ..."
+    out = re.sub(rf"^(hi|hey|hello)\s+{n}\b", r"\1", out, flags=re.I)
+    out = out.strip()
+    return (out[:1].upper() + out[1:]) if out else text
 
 
 def _with_history(state: KeeperState) -> str:

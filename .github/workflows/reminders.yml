@@ -1,0 +1,31 @@
+# Drives Tara's reminders on Vercel, where nothing runs between requests: every 5 minutes, ask the backend to send
+# whatever is due (phone push via ntfy / Telegram, the morning brief). Free on public repositories.
+# GitHub runs schedules on a best-effort basis (they can be a few minutes late); for minute-exact reminders, also
+# point a free cron service (e.g. cron-job.org) at the same URL. Duplicate ticks are safe: each alert is sent once.
+#
+# Needs the repository secret CRON_SECRET (the same value as the backend's CRON_SECRET). Without it this job skips.
+name: Reminders
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: reminders
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      BACKEND_URL: ${{ vars.BACKEND_URL || 'https://ai-full-stack-developer-portfolio-b.vercel.app' }}
+    steps:
+      - name: Send due reminders
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "CRON_SECRET is not set; skipping."; exit 0; fi
+          curl -fsS --max-time 60 -H "Authorization: Bearer $CRON_SECRET" "$BACKEND_URL/api/cron/tick"

@@ -23,6 +23,8 @@ async function api(path, body) {
   const res = await fetch(`${API_BASE}/api/evals${path}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined)
   if (!res.ok) {
     const d = await res.json().catch(() => null)
+    if (res.status === 404)
+      throw new Error("This backend doesn't have the evals yet (it's an older deployment). To try them locally, run the backend and `npm run dev:local`.")
     throw new Error(res.status === 429 ? 'Runs are limited to a few per hour to protect the free model quota. Try again later.' : d?.detail ?? `Request failed (${res.status})`)
   }
   return res.json()

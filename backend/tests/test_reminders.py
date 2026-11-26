@@ -133,3 +133,14 @@ def test_cron_tick_pushes_due_reminders_with_one_tap_actions(cron_client):
 
 def test_cron_is_disabled_without_a_secret(client):
     assert client.get("/api/cron/tick").status_code == 503
+
+
+def test_the_reminder_screen_can_tell_whether_the_scheduler_runs(cron_client):
+    c = cron_client
+    assert c.get("/api/keeper/reminders/settings").json()["last_tick"] is None  # never ran: the UI says so
+    assert c.get("/api/cron/tick", headers={"Authorization": "Bearer tick-secret"}).status_code == 200
+    last = c.get("/api/keeper/reminders/settings").json()["last_tick"]
+    assert (
+        last
+        and abs((dt.datetime.fromisoformat(last) - dt.datetime.now(dt.UTC).replace(tzinfo=None)).total_seconds()) < 60
+    )

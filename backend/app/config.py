@@ -49,6 +49,11 @@ class Settings(CoreSettings):
     data_dir: Path = BACKEND_DIR / "data"
     # Shared secret for scheduled calls (reminders, daily brief): "Authorization: Bearer <CRON_SECRET>".
     cron_secret: SecretStr | None = None
+    # Tara code proposals (owner only): the owner's key, a GitHub token that can only start workflows and read pull
+    # requests (fine-grained: Actions read/write, Pull requests read, on this repo), and the repo "owner/name".
+    tara_owner_key: SecretStr | None = None
+    tara_github_token: SecretStr | None = None
+    tara_repo: str = ""
     # Background loops (reminders, scheduled flows). Off on serverless hosts, which use the cron endpoint instead.
     background_jobs: bool = True
     # This backend's public URL, used for one-tap links in notifications sent by the background loop.

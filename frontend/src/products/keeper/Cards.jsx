@@ -2,8 +2,9 @@
  * Rich answers: what Tara looked up (weather, news, a fact, a rate, the time) and what it prepared for this device
  * (open, call, message, email, a timer). Each card says where its information came from.
  */
-import { AlarmClock, ArrowUpRight, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Droplets, Globe, IndianRupee, Mail, MessageCircle, Newspaper, Phone, Sun, Wind, X } from 'lucide-react'
+import { AlarmClock, ArrowUpRight, ChevronDown, GitPullRequest, KeyRound, Cloud, CloudDrizzle, CloudFog, CloudLightning, CloudRain, CloudSnow, CloudSun, Droplets, FileCode2, FileText, Globe, IndianRupee, Mail, MessageCircle, Newspaper, Phone, Sun, Wind, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { editsApi, getOwnerKey, setOwnerKey } from './api'
 import { chime } from './voice'
 
 const shell = 'mt-2 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03]'
@@ -130,8 +131,44 @@ function TimeCard({ c }) {
   )
 }
 
+/** Where an answer about this app came from in its own code: the files and functions, with a peek at each. */
+function CodeCard({ c }) {
+  const [open, setOpen] = useState(null)
+  return (
+    <div className={shell}>
+      <p className="flex items-center gap-2 px-4 pt-3 text-[12.5px] font-semibold text-ink-200"><FileCode2 className="size-4 text-emerald-300" /> Found in the code</p>
+      <ul className="px-2 py-1">
+        {c.hits.map((h, i) => (
+          <li key={`${h.path}:${h.start}`}>
+            <button type="button" onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i}
+              className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left hover:bg-white/[0.03]">
+              <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink-100">{h.path}<span className="text-ink-500">:{h.start}</span></span>
+              {h.symbol && !h.symbol.startsWith('(') && <span className="shrink-0 rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-[11px] text-emerald-200">{h.symbol}</span>}
+              <ChevronDown className={`size-3.5 shrink-0 text-ink-500 transition ${open === i ? 'rotate-180' : ''}`} />
+            </button>
+            {open === i && <pre className="mx-2 mb-2 max-h-52 overflow-auto rounded-xl bg-black/30 p-3 font-mono text-[11.5px] leading-relaxed text-ink-200">{h.preview}</pre>}
+          </li>
+        ))}
+      </ul>
+      <Source>From {c.source} (read-only)</Source>
+    </div>
+  )
+}
+
+/** The documents an answer about the portfolio came from. */
+function SourcesCard({ c }) {
+  return (
+    <div className={`${shell} flex flex-wrap items-center gap-2 px-4 py-3 text-[12px] text-ink-300`}>
+      <FileText className="size-4 text-sky-300" /> From
+      {c.items.map((s) => <span key={s} className="rounded-full border border-white/[0.08] px-2 py-0.5 text-ink-200">{s}</span>)}
+    </div>
+  )
+}
+
 export function LookupCard({ card }) {
   if (!card) return null
+  if (card.type === 'code') return <CodeCard c={card} />
+  if (card.type === 'sources') return <SourcesCard c={card} />
   if (card.type === 'weather') return <WeatherCard c={card} />
   if (card.type === 'news') return <NewsCard c={card} />
   if (card.type === 'fact') return <FactCard c={card} />
@@ -152,6 +189,7 @@ export function ActionCard({ action }) {
     window.open(action.url, '_blank', 'noopener,noreferrer')
   }, [action])
   if (!action) return null
+  if (action.type === 'edit') return <EditCard request={action.request} />
   if (action.type === 'timer') return <TimerCard seconds={action.seconds} label={action.label} />
   const Icon = ACTION_ICON[action.type] ?? ArrowUpRight
   const sameTab = action.url.startsWith('/') || /^(tel|sms|mailto):/.test(action.url)
@@ -206,6 +244,74 @@ function TimerCard({ seconds, label }) {
         {left > 0 && !stopped && <button type="button" aria-label="Cancel timer" onClick={() => setStopped(true)} className="grid size-8 place-items-center rounded-full text-ink-400 hover:bg-white/[0.06] hover:text-white"><X className="size-4" /></button>}
       </div>
       <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full bg-gradient-to-r from-fuchsia-500 to-orange-400 transition-[width] duration-300" style={{ width: `${stopped ? 0 : pct}%` }} /></div>
+    </div>
+  )
+}
+
+/**
+ * A change to this site's code, as a pull request: plan it (a diff for small changes, Claude Code for bigger ones),
+ * then open it on the owner's go-ahead. CI and a Claude review run on it, and only the owner can approve and merge.
+ */
+function EditCard({ request }) {
+  const [key, setKey] = useState(getOwnerKey)
+  const [draftKey, setDraftKey] = useState('')
+  const [step, setStep] = useState('idle') // idle | planning | planned | opening | opened
+  const [plan, setPlan] = useState(null)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
+  const run = async (fn, busy, done) => {
+    setError(null)
+    setStep(busy)
+    try {
+      await fn()
+      setStep(done)
+    } catch (e) {
+      if (e.status === 403) {
+        setOwnerKey('')
+        setKey('')
+      }
+      setError(e.message)
+      setStep(busy === 'opening' ? 'planned' : 'idle')
+    }
+  }
+  return (
+    <div className={`${shell} px-4 py-3`}>
+      <p className="flex items-center gap-2 text-[13px] font-semibold text-ink-100"><GitPullRequest className="size-4 text-emerald-300" /> Propose a code change</p>
+      <p className="mt-1 text-[13px] text-ink-300">“{request}”</p>
+      {!key ? (
+        <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); setOwnerKey(draftKey.trim()); setKey(draftKey.trim()) }}>
+          <KeyRound className="mt-2 size-4 shrink-0 text-ink-500" />
+          <input type="password" value={draftKey} onChange={(e) => setDraftKey(e.target.value)} placeholder="Owner key" aria-label="Owner key" autoComplete="off"
+            className="min-w-0 flex-1 rounded-xl border border-white/10 bg-transparent px-3 py-1.5 text-[13px] text-white placeholder:text-ink-500 focus:border-white/25 focus:outline-none" />
+          <button type="submit" disabled={!draftKey.trim()} className="rounded-full bg-white/10 px-3 text-[12.5px] text-white disabled:opacity-40">Unlock</button>
+        </form>
+      ) : step === 'idle' || step === 'planning' ? (
+        <button type="button" disabled={step === 'planning'} onClick={() => void run(async () => setPlan(await editsApi.plan(request)), 'planning', 'planned')}
+          className="mt-3 rounded-full bg-gradient-to-r from-fuchsia-500 to-orange-400 px-4 py-1.5 text-[13px] font-semibold text-on-accent disabled:opacity-60">
+          {step === 'planning' ? 'Planning the change…' : 'Plan the change'}
+        </button>
+      ) : null}
+      {plan && step !== 'opened' && (
+        <div className="mt-3 space-y-2">
+          <p className="text-[13px] text-ink-200">{plan.summary}</p>
+          {plan.size === 'small' ? (
+            plan.diffs.map((d) => <pre key={d.path} className="max-h-60 overflow-auto rounded-xl bg-black/30 p-3 font-mono text-[11.5px] leading-relaxed whitespace-pre text-ink-200">{d.diff}</pre>)
+          ) : (
+            <p className="text-[12.5px] text-ink-400">{plan.reason} Claude Code will make it in GitHub Actions, following the repository's structure.</p>
+          )}
+          <button type="button" disabled={step === 'opening'} onClick={() => void run(async () => setResult(await editsApi.propose(plan)), 'opening', 'opened')}
+            className="rounded-full bg-gradient-to-r from-fuchsia-500 to-orange-400 px-4 py-1.5 text-[13px] font-semibold text-on-accent disabled:opacity-60">
+            {step === 'opening' ? 'Starting…' : plan.size === 'small' ? 'Open the pull request' : 'Hand it to Claude Code'}
+          </button>
+        </div>
+      )}
+      {step === 'opened' && result && (
+        <p className="mt-3 text-[13px] text-emerald-300">
+          Started. The pull request appears on <span className="font-mono">{result.branch}</span> in a few minutes; CI and the Claude review run on it, and you approve and merge.{' '}
+          <a href={result.runs} target="_blank" rel="noopener noreferrer" className="underline">Watch the run</a>
+        </p>
+      )}
+      {error && <p className="mt-2 text-[12.5px] text-rose-300">{error}</p>}
     </div>
   )
 }

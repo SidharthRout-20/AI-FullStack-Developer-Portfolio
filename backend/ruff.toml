@@ -14,6 +14,8 @@ ignore = ["S101"]  # asserts are fine in tests
 "app/keeper/agent.py" = ["E501"]
 "app/keeper/tools.py" = ["E501"]
 "app/evals.py" = ["E501"]  # labelled datasets read better one case per line
+"app/keeper/edits.py" = ["E501"]  # user-facing messages read better unwrapped
+"app/api/edits.py" = ["E501"]
 "app/products/*.py" = ["E501"]
 
 [lint.isort]

@@ -15,6 +15,7 @@ Every source failure becomes an honest, short message: nothing is ever made up.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import logging
 import re
@@ -26,10 +27,12 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from app.keeper.repo import RepoIndex
+
 logger = logging.getLogger(__name__)
 
-LOOKUPS = ("weather", "news", "wiki", "web", "currency", "time")
-ACTIONS = ("open", "search", "play", "directions", "call", "message", "email", "timer", "calendar")
+LOOKUPS = ("weather", "news", "wiki", "web", "currency", "time", "code", "portfolio")
+ACTIONS = ("open", "search", "play", "directions", "call", "message", "email", "timer", "calendar", "edit")
 TOOLS = LOOKUPS + ACTIONS
 UA = {"User-Agent": "TaraAssistant/1.0 (personal-assistant demo)"}
 
@@ -53,10 +56,15 @@ SITES = {
     "outlook": "https://outlook.live.com", "teams": "https://teams.microsoft.com", "zoom": "https://zoom.us",
     "swiggy": "https://www.swiggy.com", "zomato": "https://www.zomato.com", "uber": "https://m.uber.com", "ola": "https://book.olacabs.com",
     "irctc": "https://www.irctc.co.in", "makemytrip": "https://www.makemytrip.com", "wikipedia": "https://www.wikipedia.org",
-    "safarnaama": "/safarnaama", "codelens": "/codelens",
+    # This portfolio's own products open in the same tab.
+    "safarnaama": "/safarnaama", "safarnama": "/safarnaama", "codelens": "/codelens", "code lens": "/codelens",
+    "tara": "/keeper", "jasoos": "/jasoos", "quality": "/quality", "quality page": "/quality", "evals": "/quality",
+    "portfolio": "/", "home": "/", "home page": "/",
 }  # fmt: skip
 
 Fetch = Callable[[str, dict[str, Any]], Awaitable[httpx.Response]]
+# Searches the portfolio's indexed documents (résumé, project notes): query -> [{"source", "text"}].
+Knowledge = Callable[[str], Awaitable[list[dict[str, Any]]]]
 
 
 class ToolError(Exception):
@@ -74,8 +82,11 @@ def _digits(v: Any) -> str:
 
 
 class ToolBox:
-    def __init__(self, fetch: Fetch | None = None) -> None:
+    def __init__(self, fetch: Fetch | None = None, repo: RepoIndex | None = None,
+                 knowledge: Knowledge | None = None) -> None:  # fmt: skip
         self._fetch = fetch  # injectable for tests: async (url, params) -> httpx.Response
+        self.repo = repo  # this portfolio's source code, read-only
+        self.knowledge = knowledge  # set by the app once the document index exists
 
     async def _get(self, url: str, params: dict[str, Any] | None = None) -> httpx.Response:
         if self._fetch is not None:
@@ -220,6 +231,45 @@ class ToolBox:
                 "source": "Frankfurter (reference rates, not live quotes)"}  # fmt: skip
         return {"card": card, "facts": f"{amount:g} {base} = {value:,.2f} {to} (reference rate of {d.get('date')})."}
 
+    async def code(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Where something lives in this portfolio's own code, with the code itself for the answer."""
+        q = _clean(args.get("query"), 200)
+        if not q:
+            raise ToolError("What part of the code should I look at?")
+        if self.repo is None:
+            raise ToolError("The source code isn't available on this server.")
+        hits = await asyncio.to_thread(self.repo.search, q)
+        if not hits:
+            raise ToolError(f"I couldn't find anything about {q} in this portfolio's code.")
+        card = {
+            "type": "code", "query": q, "source": "This portfolio's source code",
+            "hits": [{"path": h["path"], "start": h["start"], "end": h["end"], "symbol": h.get("symbol"),
+                      "preview": "\n".join(ln for ln in h["text"].splitlines() if ln.strip())[:600]} for h in hits],
+        }  # fmt: skip
+        facts = "\n\n".join(
+            f"FILE {h['path']} lines {h['start']}-{h['end']}"
+            + (f" ({h['symbol']})" if h.get("symbol") else "")
+            + ":\n"
+            + h["text"][:1500]
+            for h in hits
+        )
+        return {"card": card, "facts": facts}
+
+    async def portfolio(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Answers about Sidharth and this site's products, from the documents behind the "Ask Tara" panel."""
+        q = _clean(args.get("query"), 200)
+        if not q:
+            raise ToolError("What would you like to know about the portfolio?")
+        if self.knowledge is None:
+            raise ToolError("The portfolio's documents aren't loaded on this server yet.")
+        hits = [h for h in await self.knowledge(q) if (h.get("text") or "").strip()][:4]
+        if not hits:
+            raise ToolError("The portfolio's documents don't cover that.")
+        sources = list(dict.fromkeys(str(h.get("source") or "document") for h in hits))
+        card = {"type": "sources", "query": q, "items": sources, "source": "Sidharth's résumé and project notes"}
+        facts = "\n\n".join(f"FROM {h.get('source')}: {str(h['text'])[:1200]}" for h in hits)
+        return {"card": card, "facts": facts}
+
     async def time_in(self, args: dict[str, Any], now: dt.datetime) -> dict[str, Any]:
         place = _clean(args.get("place"), 80)
         if not place:
@@ -255,6 +305,14 @@ class ToolBox:
                 ({"type": "open", "url": url, "label": f"Open {name or 'it'}"}, f"Opening {name or 'it'}.")
                 if url
                 else (None, "What should I open?")
+            )
+        if tool == "edit":  # a change to this site's code: planned and proposed as a pull request, owner only
+            req = str(a.get("request") or "").strip()
+            if len(req) < 8:
+                return None, "What should I change in the code?"
+            return (
+                {"type": "edit", "request": req[:2000], "label": "Propose a code change", "confirm": True},
+                "I can propose that as a pull request. Only the owner can go ahead, and it's reviewed before merging.",
             )
         if tool == "search":
             q = a.get("query") or ""

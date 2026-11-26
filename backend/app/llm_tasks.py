@@ -23,6 +23,9 @@ register_tasks(
         # Keeper
         "keeper.command": TaskProfile(S, "intent_classification", "json", signals=False),
         "keeper.chat": TaskProfile(S, "conversation"),
+        # Expert answers (architect, engineer, chef…) and explanations of this app's code: the strongest free model.
+        "keeper.expert": TaskProfile(A, "conversation"),
+        "tara.edit": TaskProfile(A, "engineering_debugging", "json", signals=False),
         "keeper.transcribe": TaskProfile(S, "transcription"),
         "keeper.brief": TaskProfile(S, "summarisation", background=True),
         "keeper.photo": TaskProfile(S, "image_extraction", "json"),

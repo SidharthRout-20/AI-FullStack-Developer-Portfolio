@@ -132,11 +132,11 @@ function Start() {
           <p className="mb-2 text-[13px] font-semibold text-ink-300">Onboarding packs already built</p>
           <ul className="grid gap-2 sm:grid-cols-2">
             {repos.map((r) => (
-              <li key={r.id}>
+              <li key={r.id} className="min-w-0">
                 <button type="button" onClick={() => navigate(`${BASE}/${r.id}`)} className="flex w-full items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3 text-left hover:border-white/20">
                   <FolderGit2 className="size-4 shrink-0 text-amber-300" />
                   <span className="min-w-0 flex-1 truncate text-[14px] text-white">{r.owner}/{r.name}</span>
-                  <span className="text-[12px] text-ink-500">{r.files.length} files</span>
+                  <span className="shrink-0 text-[12px] text-ink-500">{r.files.length} files</span>
                 </button>
               </li>
             ))}

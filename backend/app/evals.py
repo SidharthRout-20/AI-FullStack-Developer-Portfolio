@@ -126,6 +126,18 @@ EMOTION = [
     ("nobody ever calls me anymore", "lonely"), ("set a timer for 5 minutes", "neutral"),
     ("I'm furious, they cancelled my flight again", "angry"), ("what a lovely morning!", "happy"),
 ]  # fmt: skip
+# Who should answer: the expert a person would ask. Neighbouring experts count (an architect or an engineer for code).
+PERSONA = [
+    ("Should we use Postgres or MongoDB for a booking system?", "architect"),
+    ("Why does my React effect run twice?", "engineer"), ("Write user stories for a refund feature", "product"),
+    ("I have chicken, rice and yoghurt. What can I cook tonight?", "chef"),
+    ("I've been feeling anxious about everything lately", "therapist"), ("Mock interview me for a backend role", "interviewer"),
+    ("How do I say 'where is the station' in Spanish?", "language"), ("Plan 3 relaxed days in Goa", "travel"),
+    ("Is a SIP better than a fixed deposit for 5 years?", "finance"), ("My landlord won't return my deposit", "legal"),
+    ("Explain photosynthesis simply", "teacher"), ("Give me a 20 minute home workout", "fitness"),
+]  # fmt: skip
+NEAR = [{"architect", "engineer"}, {"coach", "interviewer"}, {"teacher", "language"}, {"product", "designer"}]
+
 # Close feelings count as right: the reply adapts the same way.
 SAME = [{"stressed", "anxious"}, {"angry", "frustrated"}, {"sad", "lonely"}, {"happy", "excited", "grateful"}]
 
@@ -135,9 +147,12 @@ def _close(a: str | None, b: str | None) -> bool:
 
 
 async def _route_all(request: Request, texts: list[str]) -> tuple[list[Any], list[float], int]:
+    """Route every text with the live model. A free-tier rate limit makes the router fall back to offline rules, which
+    would measure the rules instead of the model, so those cases wait for the limit to reset and are asked once more.
+    The fallback rate reported is what remained after that retry."""
     agent = request.app.state.keeper.agent
     now = dt.datetime.now()
-    sem = asyncio.Semaphore(4)
+    sem = asyncio.Semaphore(2)
     times: list[float] = []
 
     async def one(text: str) -> Any:
@@ -147,9 +162,22 @@ async def _route_all(request: Request, texts: list[str]) -> tuple[list[Any], lis
             times.append((time.perf_counter() - t0) * 1000)
             return out
 
-    outs = await asyncio.gather(*(one(t) for t in texts))
+    outs = list(await asyncio.gather(*(one(t) for t in texts)))
+    missed = [i for i, o in enumerate(outs) if _rate_limited(o.get("router_error"))]
+    if missed:
+        await asyncio.sleep(RETRY_AFTER_S)
+        for i in missed:  # one at a time: well inside the per-minute limit
+            outs[i] = await one(texts[i])
     fallbacks = sum(1 for o in outs if o.get("routed_by") != "llm")
     return outs, times, fallbacks
+
+
+RETRY_AFTER_S = 15.0  # Groq's free tier resets its per-minute token budget within this
+
+
+def _rate_limited(error: str | None) -> bool:
+    """A busy free tier (worth waiting for), as opposed to no model at all (nothing to wait for)."""
+    return bool(error) and ("NoCompatibleModel" in error or "RateLimit" in error)
 
 
 def _latency(times: list[float], fallbacks: int, n: int) -> dict[str, Any]:
@@ -178,6 +206,16 @@ async def _tara_emotion(request: Request) -> Result:
         got = o["command"].emotion or "neutral"
         cases.append((text, want, want if _close(want, got) else got))
     return {**_score(cases), "extra": _latency(times, fb, len(EMOTION))}
+
+
+async def _tara_persona(request: Request) -> Result:
+    outs, times, fb = await _route_all(request, [t for t, _ in PERSONA])
+    cases = []
+    for (text, want), o in zip(PERSONA, outs, strict=True):
+        got = o["command"].persona or "assistant"
+        near = got == want or any(want in g and got in g for g in NEAR)
+        cases.append((text, want, want if near else got))
+    return {**_score(cases), "extra": _latency(times, fb, len(PERSONA))}
 
 
 # ── CodeLens ─────────────────────────────────────────────────────────────
@@ -286,6 +324,9 @@ SUITES = [
           "Labelled requests: does Tara pick the right action, kind of thing and tool?", _tara_routing, len(ROUTING)),
     Suite("tara.emotion", "tara", "Reads how you feel", "model", "emotion accuracy",
           "Labelled messages: does Tara sense the feeling (close feelings count, e.g. stressed/anxious)?", _tara_emotion, len(EMOTION)),
+    Suite("tara.persona", "tara", "Picks the right expert", "model", "expert accuracy",
+          "Labelled questions: on Auto, does Tara answer as the expert a person would ask (chef, architect, listener…)?",
+          _tara_persona, len(PERSONA)),
     Suite("tara.rules", "tara", "Works without the model", "app", "offline tool recognition",
           "Weather, news, time, timers, open and play are recognised even when the model is down.", _tara_rules, len(TOOL_RULES)),
     Suite("tara.actions", "tara", "Device actions are exact", "app", "action correctness",

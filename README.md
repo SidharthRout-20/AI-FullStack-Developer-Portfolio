@@ -1,45 +1,44 @@
 # AI Full-Stack Developer Portfolio
 
-**A five-product AI portfolio in one React + FastAPI monorepo, built one product at a time on free-tier infrastructure.**
+**Four AI products in one React + FastAPI monorepo, each solving one everyday problem, built on free-tier
+infrastructure by Sidharth Rout (6 years in software; Senior Consultant at Deloitte, AI & Data, delivering Generative-AI
+proofs of concept as an LLM Engineer).**
 
-[Live site](https://ai-full-stack-developer-portfolio-p.vercel.app) ·
+[Live site](https://ai-full-stack-developer-portfolio-p-ruby.vercel.app) ·
+[Quality (evals)](https://ai-full-stack-developer-portfolio-p-ruby.vercel.app/quality) ·
 [API health](https://ai-full-stack-developer-portfolio-b.vercel.app/api/health) ·
 [Roadmap](ROADMAP.md)
 
 ![CI](https://github.com/SidharthRout-20/AI-FullStack-Developer-Portfolio/actions/workflows/ci.yml/badge.svg)
 
-The portfolio has five approved products, each with a real implementation status, plus Labs: earlier, still-working
-apps whose code is reused as shared capabilities. Everything shares one backend: an LLM layer that can switch
-providers, a hybrid-retrieval engine, LangGraph agents and a storage layer that runs on SQLite locally and on Postgres
-in production.
+The site is problem-first: each product starts from a problem people recognise and the outcome it gives them. Four are
+featured; earlier apps are kept as frozen "in development" tiles and their code is reused as shared capabilities.
+Everything shares one backend: a free-tier LLM router (Groq) with offline fallbacks, hybrid retrieval, LangGraph agents,
+evaluation suites, and a storage layer that runs on SQLite locally and on Postgres (Neon) in production.
 
 The single source of truth for product identity, status and visibility is
-[frontend/src/site/products.js](frontend/src/site/products.js); every count on the site is derived from it. The backend
-has no product records, it only serves the apps.
+[frontend/src/site/products.js](frontend/src/site/products.js); every count on the site is derived from it.
 
 ---
 
-## Portfolio (approved products)
+## Portfolio (featured products)
 
-| # | Product | Status | What exists today |
+| # | Product | Problem it solves | What exists today |
 | --- | --- | --- | --- |
-| 1 | **Safarnaama** (travel: plan, book, keep) | In development | Implemented end to end at `/safarnaama` (see [Safarnaama](products/safarnama/README.md)) and covered by tests, browser-checked locally. Not live yet: identity is per browser (accounts are next), and live prices and booking need provider partnerships |
-| 2 | **Jasoos** (formerly EFI, Engineering Failure Investigator): why did this build, test or deploy fail? | In development | The full workflow (see [EFI](#efi-engineering-failure-investigator)), tested with a mocked model. Not yet live-verified with Groq; history is per browser (no accounts); the deployed backend needs Postgres for it to persist |
-| 3 | **Tijori** (formerly Keeper: purchase & warranty recovery) | Planned | Not built. The earlier Keeper memory assistant (natural-language capture, photo scanning, ntfy / Telegram reminders) runs at `/keeper` as a prototype |
-| 4 | **Pramaan** (formerly DocuMind Respond: security and vendor questionnaires) | Gated | Not built; gated on two committed design partners. The DocuMind RAG Studio it builds on (LangGraph RAG with citations, briefs, Match Analyzer) runs at `/documind` |
-| 5 | **Vaada** (formerly Follow-through: commitment execution) | Planned | Not built. MeetingMind (transcripts → decisions, action items, Kanban, archive Q&A) runs at `/meetingmind` as a prototype |
+| 1 | **Safarnaama** (`/safarnaama`) | Planning a trip means juggling a dozen tabs and apps | Plans, places and moments in one story-like flow; Google sign-in (Neon Auth) to keep trips across devices; a "did you book it?" return prompt after provider hand-offs. Live prices and in-app booking need provider partnerships |
+| 2 | **CodeLens** (`/codelens`) | Joining a new codebase and waiting days for KT sessions | Paste a public GitHub repo: symbol-aware chunking, hybrid search (BM25 + embeddings, fused with RRF), an import graph and a guided onboarding pack, with live progress while it indexes |
+| 3 | **Tara** (`/tara`) | An assistant that actually gets things done, by voice or text | Voice-first assistant: "Hey Tara" and pause-aware listening, weather/news/facts/rates, device actions, memory and phone reminders, 20 expert personas picked per question, answers about this site's own code and documents, and owner-only code changes proposed as reviewed pull requests |
+| 4 | **Jasoos** (`/jasoos`) | A build, test or deploy failed and the log is thousands of lines long | Parses CI logs and stack traces into evidence, then reasons to a likely cause and fix |
+
+Frozen (shown as "in development"): Pramaan, Vaada, CareerPilot, FlowForge, Evolve. Their working code stays in the
+repository (DocuMind RAG Studio at `/documind`, MeetingMind at `/meetingmind`) and feeds the featured products.
 
 Statuses follow one rule: **Live** only when the principal workflow works end to end, persists, is access-controlled
-where needed and is tested. Approval is not completion.
+where needed and is tested. The featured products are in **beta**.
 
-## Labs
-
-| App | What it does | Interesting engineering |
-| --- | --- | --- |
-| **CareerPilot** (archived, replaced by EFI) | Job-hunt copilot | Requirement-by-requirement match verdicts, tailored documents, voice mock interviews with follow-ups. Its match score uses the documents indexed in DocuMind, not the saved resume |
-| **FlowForge** | Drag-and-drop AI automations | React Flow canvas, flow validation before save (one trigger, acyclic, reachable, required fields, references), webhook and cron triggers, runs animated live |
-| **Evolve** | Prompts that learn from their own mistakes | Deterministic checks plus an LLM judge, failure "lessons", reflection that proposes a new prompt, promotion only after re-testing, versioning and rollback |
-| **CodeLens** | Understand a public codebase | AST and symbol-aware chunking, answers cited to files and line ranges, import graph, generated guided tour |
+**Quality.** `/quality` runs evaluation suites per product or for the whole app: deterministic app checks (retrieval
+hit@k, parsers, rules, device actions) and live-model evals (routing, emotion, expert choice) with latency and fallback
+rates, stored with their date.
 
 ---
 
@@ -120,12 +119,12 @@ small channel interface, so SMS can be added without touching the reminder logic
   delimiter-tagged in the prompt.
 - Rendering: Markdown is rendered without raw HTML.
 - Requests: per-IP rate limits (slowapi), a strict CORS allow-list with credentials disabled, security headers (CSP,
-  nosniff, framing, HSTS in production), and an optional access key for personal data (Keeper).
+  nosniff, framing, HSTS in production), and an optional access key for personal data (Tara; its API is still `/api/keeper`).
 - Links: one-tap reminder actions use HMAC-signed, expiring tokens.
 
 ---
 
-## EFI: Engineering Failure Investigator
+## Jasoos (internally EFI): Engineering Failure Investigator
 
 CodeLens explains how code works; EFI explains why a specific run failed, which evidence supports that, and how to
 check a fix. It lives in [backend/app/efi/](backend/app/efi/), [backend/app/api/efi.py](backend/app/api/efi.py) and
@@ -213,7 +212,7 @@ suitable **free-tier Groq** model for that request, deterministically, without s
 1. **Classify** ([classify.py](packages/py-core/src/appcore/llm/classify.py)): complexity (simple → standard → complex → advanced) from the
    task profile plus measurable signals (context size, multi-step wording, tool count), and, independently, modality
    (text / image / audio), structured-output needs (JSON, schema, strict), tool calling and quota priority
-   (1 EFI, 2 TripWeaver, 3 other products and Labs, 4 background jobs).
+   (1 EFI, 2 Safarnaama, 3 other products and Labs, 4 background jobs).
 2. **Registry + discovery** ([catalog.py](packages/py-core/src/appcore/llm/catalog.py)): capabilities are written from Groq's
    documentation (verified 2026-11-14); unverified capabilities are `None` and never relied on. `GET /openai/v1/models`
    (cached 6 h) says what this key can see right now; listed-but-unknown models are recorded and never selected,
@@ -236,7 +235,7 @@ suitable **free-tier Groq** model for that request, deterministically, without s
    discovery with `POST /api/llm/router/discover`.
 
 Typical routing today: short extraction/classification and routine answers → `openai/gpt-oss-20b`; planning, complex
-synthesis and EFI → `openai/gpt-oss-120b` (still the safe default for undeclared tasks); images (Keeper photos,
+synthesis and EFI → `openai/gpt-oss-120b` (still the safe default for undeclared tasks); images (Tara photo scans,
 receipts) → `qwen/qwen3.8-27b` (preview, the only verified vision model); audio → `whisper-large-v3-turbo`
 (`whisper-large-v3` for translation). These are outcomes of the registry and filters, not hard-coded choices.
 
@@ -270,7 +269,7 @@ A monorepo: the portfolio, the shared core it is built on, and products that are
 
 ```
 .
-├── backend/              # portfolio API (FastAPI): RAG, Keeper, EFI, Labs; mounts Safarnaama's API
+├── backend/              # portfolio API (FastAPI): RAG, Tara (keeper), Jasoos (efi), Labs; mounts Safarnaama's API
 │   ├── app/
 │   │   ├── api/          # HTTP routers: core RAG, products, keeper, cron, LLM router admin
 │   │   ├── rag/          # ingestion, embeddings, hybrid retriever, LangGraph pipeline
@@ -313,7 +312,7 @@ uvicorn app.main:app --reload
 # 3. Frontend  →  http://localhost:5173
 cd frontend
 npm install
-VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev  # omit to use the deployed API
+npm run dev:local  # uses the backend above; plain `npm run dev` uses the deployed API (main), so unmerged backend changes won't show
 ```
 
 **Or in one container:** `docker compose up --build` serves the SPA and API on <http://localhost:7860>.
@@ -347,7 +346,7 @@ Backend environment variables:
 | `DATABASE_URL` | yes on Vercel | Neon Postgres. Connecting the Neon store to the backend project sets it automatically |
 | `CRON_SECRET` | for reminders | Protects `/api/cron/tick`. Point a free every-minute job at it with `Authorization: Bearer <secret>` |
 | `CORS_ORIGINS` | no | Extra allowed origins. The frontend's Vercel domains and localhost are always allowed |
-| `KEEPER_ACCESS_KEY` | recommended | Locks Keeper's personal data behind a key |
+| `KEEPER_ACCESS_KEY` | recommended | Locks Tara's personal data behind a key |
 | `ANTHROPIC_API_KEY`, `LLM_PROVIDER` | no | Switch the LLM to Claude |
 
 After deploying, `GET /api/health` should report `"storage": "postgres"`. If it says `"sqlite"` with
@@ -365,7 +364,38 @@ python scripts/sqlite_to_postgres.py --url "postgresql://...neon.tech/neondb?ssl
 
 ---
 
+## Tara: phone reminders and code proposals (one-time setup)
+
+Both are off until these settings exist; nothing here is set automatically.
+
+**Phone reminders.** Tara sends due reminders to your phone through [ntfy](https://ntfy.sh) (free, no account) or
+Telegram, even when the app is closed. On Vercel something has to wake the backend:
+
+1. Backend Vercel project → Environment Variables: `CRON_SECRET` = a long random string. Redeploy.
+2. GitHub → Settings → Secrets and variables → Actions → secret `CRON_SECRET` with the same value. The
+   `Reminders` workflow then calls `/api/cron/tick` every 5 minutes (best effort). For minute-exact reminders, also add a
+   free [cron-job.org](https://cron-job.org) job for `GET <backend>/api/cron/tick` with header
+   `Authorization: Bearer <CRON_SECRET>` (duplicate ticks are safe).
+3. In Tara → Reminders, set an ntfy topic, install the ntfy app on your phone and subscribe to it. The screen shows
+   when the scheduler last ran.
+
+**Code proposals (owner only).** Ask Tara for a change ("make the CodeLens button bigger"); it plans it and, on your
+go-ahead, opens a pull request from the single branch `tara/proposals` (one open at a time). Small, exact changes are
+planned by Tara with Groq; larger ones are made by Claude Code on your Claude subscription in GitHub Actions. CI and a
+Claude Code review run on every proposal; only you approve and merge.
+
+1. **Tara bot (GitHub App, free).** GitHub → Settings → Developer settings → GitHub Apps → New: no webhook;
+   repository permissions *Contents: read and write*, *Pull requests: read and write* (nothing else, so it can't touch
+   workflows). Install it on this repository only. Add the App ID as the Actions **variable** `TARA_APP_ID` and a
+   generated private key as the **secret** `TARA_APP_PRIVATE_KEY`.
+2. **Claude Code.** Run `claude setup-token` locally and save the token as the Actions secret `CLAUDE_CODE_OAUTH_TOKEN`.
+3. **Backend (Vercel env vars).** `TARA_OWNER_KEY` (a long random string you'll type into Tara once),
+   `TARA_REPO` = `owner/repo`, and `TARA_GITHUB_TOKEN` = a fine-grained personal access token for this repository
+   only, with *Actions: read and write* and *Pull requests: read* (it can start the workflow and see the open proposal,
+   nothing more). Redeploy.
+4. **Branch protection for `main`.** Require a pull request with 1 approval and the CI checks passing.
+
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md). Next for TripWeaver: real accounts, then provider integrations for ordering, booking and
+See [ROADMAP.md](ROADMAP.md). Next for Safarnaama: real accounts, then provider integrations for ordering, booking and
 public transport, once their terms and costs are understood.

@@ -140,6 +140,8 @@ def test_product_priorities():
         ("documind.answer", {}, "openai/gpt-oss-20b"),  # standard → smallest adequate
         ("tripweaver.plan", {}, "openai/gpt-oss-120b"),  # complex → production reasoning model over preview
         ("efi.investigate", {}, "openai/gpt-oss-120b"),  # advanced
+        ("keeper.chat", {}, "openai/gpt-oss-20b"),  # everyday answers: fast and light
+        ("keeper.expert", {}, "openai/gpt-oss-120b"),  # an expert or code answer: never an under-powered model
         ("app.unspecified", {}, "openai/gpt-oss-120b"),  # undeclared → safe default
         ("keeper.photo", {"images": [("image/png", b"x")]}, "qwen/qwen3.8-27b"),  # only verified vision model
         ("documind.answer", {"tools": [{"type": "function"}], "parallel_tools": True}, "qwen/qwen3.8-27b"),

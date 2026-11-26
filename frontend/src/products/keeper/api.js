@@ -57,8 +57,8 @@ export const keeperApi = {
     try {
       return await post('/command', { text, ...extra })
     } catch (e) {
-      if (e?.status !== 422 || !(extra.history || extra.prefs)) throw e
-      const { history: _h, prefs: _p, ...rest } = extra
+      if (e?.status !== 422 || !(extra.history || extra.prefs || extra.persona)) throw e
+      const { history: _h, prefs: _p, persona: _r, ...rest } = extra
       return post('/command', { text, ...rest })
     }
   },
@@ -91,6 +91,7 @@ export const keeperApi = {
     const body = { ...s }
     delete body.telegram_configured // read-only fields reported by the server
     delete body.cron_configured
+    delete body.last_tick
     return call('/reminders/settings', { method: 'PUT', body: JSON.stringify(body) })
   },
   testReminder: () => post('/reminders/test'),
@@ -102,3 +103,41 @@ export const keeperApi = {
     return URL.createObjectURL(await res.blob())
   },
 }
+
+// ── Code proposals (owner only): plan a change, then open it as a pull request ─────────────────────────────
+const OWNER_KEY = 'tara-owner-key'
+export const getOwnerKey = () => {
+  try {
+    return localStorage.getItem(OWNER_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+export const setOwnerKey = (k) => {
+  try {
+    if (k) localStorage.setItem(OWNER_KEY, k)
+    else localStorage.removeItem(OWNER_KEY)
+  } catch {
+    /* private mode: ask again next time */
+  }
+}
+async function edits(path, body) {
+  const res = await fetch(`${BASE}/api/tara/edits${path}`, {
+    method: body ? 'POST' : 'GET',
+    headers: { Accept: 'application/json', 'X-Tara-Owner-Key': getOwnerKey(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    const err = new Error(typeof data.detail === 'string' ? data.detail : `Request failed (${res.status})`)
+    err.status = res.status
+    throw err
+  }
+  return data
+}
+export const editsApi = {
+  status: () => edits('/status'),
+  plan: (request) => edits('/plan', { request }),
+  propose: (plan) => edits('/propose', plan),
+}
+

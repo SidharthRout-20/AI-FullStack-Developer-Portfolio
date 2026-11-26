@@ -263,7 +263,7 @@ class KeeperService:
             ("Done", self.action_url(base_url, a.entry.id, a.key, "done")),
             ("Snooze 10 min", self.action_url(base_url, a.entry.id, a.key, "snooze")),
         ]
-        text = " · ".join(filter(None, [a.entry.due_time, a.entry.note, a.entry.place])) or "Keeper reminder"
+        text = " · ".join(filter(None, [a.entry.due_time, a.entry.note, a.entry.place])) or "Tara reminder"
         title = f"{'⚠ ' if a.urgent else ''}{a.label}"
         return await self._deliver(title, text, s, urgent=a.urgent, links=links)
 
@@ -274,17 +274,18 @@ class KeeperService:
                 client,
                 self.settings.telegram_bot_token.get_secret_value(),  # type: ignore[union-attr]
                 str(self.settings.telegram_chat_id),
-                f"Keeper · daily brief\n\n{text}",
+                f"Tara · daily brief\n\n{text}",
             )
 
     async def test_channels(self, s: ReminderSettings) -> list[str]:
-        return await self._deliver("Keeper test", "Reminders will arrive here.", s)
+        return await self._deliver("Tara test", "Reminders will arrive here.", s)
 
     # ── the scheduler tick (every minute: cron on serverless hosts, a loop elsewhere) ─
     async def tick(self, base_url: str) -> dict[str, Any]:
         s = self.reminder_settings()
         offset = self.offset()
         now_utc = dt.datetime.now(dt.UTC).replace(tzinfo=None)
+        self.store.set_meta("last_tick", now_utc.isoformat(timespec="seconds"))  # proof the scheduler is running
         send, skip = reminders.to_push(self.store.list(), now_utc, offset, s)
         sent = 0
         for a in send:
@@ -302,7 +303,7 @@ class KeeperService:
         brief_due = s.brief_push and local.hour >= s.brief_hour and self.store.get_meta("brief_sent") != today
         if brief_due and self.phone_ready:
             b = await self.brief(local)
-            if await self._deliver("Keeper · your day", b["text"], s):
+            if await self._deliver("Tara · your day", b["text"], s):
                 self.store.set_meta("brief_sent", today)
                 brief = "sent"
         return {"alerts_sent": sent, "alerts_due": len(send), "brief": brief}

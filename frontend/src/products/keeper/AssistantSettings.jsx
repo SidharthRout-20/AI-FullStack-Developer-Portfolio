@@ -114,8 +114,8 @@ export function AssistantSettings({ prefs, onChange, onClose }) {
           <section className="space-y-1">
             <p className="mb-2 text-[11.5px] font-semibold tracking-[0.14em] text-ink-500 uppercase">How it behaves</p>
             {canSpeak() && <Toggle checked={prefs.speak} onChange={set('speak')}>Read replies aloud</Toggle>}
-            {wakeSupported() && <Toggle checked={prefs.wake} onChange={set('wake')}>Answer to “Hey Tara” while this page is open (nothing is sent until you say it)</Toggle>}
-            {hearingMode() && <Toggle checked={prefs.keep} onChange={set('keep')}>Keep listening after each reply (a conversation)</Toggle>}
+            {wakeSupported() && <Toggle checked={prefs.wake} onChange={set('wake')}>Answer to “Hey Tara” while this page is open (your browser's speech service listens for it; Tara only gets what you say after it)</Toggle>}
+            {hearingMode() && <Toggle checked={prefs.keep} onChange={set('keep')}>After a spoken answer, listen for a follow-up, so you can keep talking (say “that's all” to stop)</Toggle>}
             <Toggle checked={prefs.sounds} onChange={set('sounds')}>Chime when I start and stop listening</Toggle>
           </section>
         </div>

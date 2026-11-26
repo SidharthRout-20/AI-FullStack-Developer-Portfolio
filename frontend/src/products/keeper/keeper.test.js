@@ -105,74 +105,117 @@ describe('"Hey Tara"', () => {
     expect(afterWake("Hey Tara, what's the weather?")).toBe("what's the weather?")
     expect(afterWake('ok tarah set a timer for 5 minutes')).toBe('set a timer for 5 minutes')
     expect(afterWake('hey terra')).toBe('')
+    expect(afterWake('hey there what time is it')).toBe('what time is it') // a common mishearing of "Hey Tara"
+    expect(afterWake('Hey Tyra, play some music')).toBe('play some music')
     expect(afterWake('I was talking to Tara yesterday')).toBeNull() // the name alone isn't a wake-up
     expect(afterWake('what a day')).toBeNull()
   })
 })
 
-describe('"Hey Tara" listener (simulated speech recogniser)', () => {
-  const setup = async () => {
-    const { startWakeListener } = await import('./voice')
+describe('Tara listening (simulated speech recogniser)', () => {
+  const setup = async (opts = {}) => {
+    const { startVoice } = await import('./voice')
     const made = []
     class FakeRec {
       constructor() {
         made.push(this)
       }
       start() {
-        this.started = true
         this.onstart?.()
       }
       abort() {
         this.aborted = true
       }
     }
-    const timers = []
-    const woke = []
-    const states = []
-    const stop = startWakeListener(FakeRec, {
-      onWake: (rest) => woke.push(rest),
-      onState: (s) => states.push(s),
-      schedule: (fn) => timers.push(fn),
-      cancel: () => {},
+    let n = 0
+    const timers = new Map() // id -> { fn, ms }
+    const out = { woke: 0, done: [], interim: [], states: [] }
+    const session = startVoice(FakeRec, {
+      mode: 'wake',
+      onWake: () => (out.woke += 1),
+      onDone: (text, reason) => out.done.push([text, reason]),
+      onInterim: (t) => out.interim.push(t),
+      onState: (s) => out.states.push(s),
+      schedule: (fn, ms) => (timers.set(++n, { fn, ms }), n),
+      cancel: (id) => timers.delete(id),
+      ...opts,
     })
-    const say = (text, isFinal) => made.at(-1).onresult({ resultIndex: 0, results: [Object.assign([{ transcript: text }], { isFinal })] })
-    const runTimers = () => timers.splice(0).forEach((fn) => fn())
-    return { made, woke, states, stop, say, runTimers }
+    // What the recogniser has heard in this session so far (each string is one result).
+    const hear = (...parts) => made.at(-1).onresult({ resultIndex: 0, results: parts.map((t) => Object.assign([{ transcript: t }], { isFinal: false })) })
+    const delays = () => [...timers.values()].map((t) => t.ms)
+    const run = (ms) => [...timers].filter(([, t]) => t.ms === ms).forEach(([id, t]) => (timers.delete(id), t.fn()))
+    return { made, out, session, hear, delays, run }
   }
 
-  it('answers "Hey Tara" on its own, even if the browser never finalises the sentence', async () => {
+  it('wakes on "Hey Tara" and takes the request that follows in the same breath', async () => {
+    const { END_MS } = await import('./voice')
     const t = await setup()
-    expect(t.states).toEqual(['listening'])
-    t.say('hey Tara', false)
-    expect(t.woke).toEqual([]) // waits a moment for the rest…
-    t.runTimers()
-    expect(t.woke).toEqual(['']) // …then answers
+    t.hear('hey Tara')
+    expect(t.out.woke).toBe(1)
+    t.hear('hey Tara', "what's the weather today")
+    expect(t.out.interim.at(-1)).toBe("what's the weather today")
+    t.run(END_MS) // the speaker paused
+    expect(t.out.done).toEqual([["what's the weather today", 'heard']])
     expect(t.made.at(-1).aborted).toBe(true)
   })
 
-  it('takes a request said in the same breath', async () => {
-    const t = await setup()
-    t.say("Hey Tara, what's the weather today", false) // 3+ words after the phrase: no need to wait
-    expect(t.woke).toEqual(["what's the weather today"])
+  it('waits longer when the sentence sounds unfinished, so a pause doesn\'t cut you off', async () => {
+    const { END_MS, HOLD_MS } = await import('./voice')
+    const t = await setup({ mode: 'command' })
+    t.hear('remind me to call mom and')
+    expect(t.delays()).toContain(HOLD_MS)
+    t.run(END_MS)
+    expect(t.out.done).toEqual([]) // not yet
+    t.hear('remind me to call mom and', 'pick up the cake at six')
+    t.run(HOLD_MS) // the old, longer wait was replaced
+    t.run(END_MS)
+    expect(t.out.done).toEqual([['remind me to call mom and pick up the cake at six', 'heard']])
   })
 
-  it('ignores other speech and keeps listening when the browser ends the session', async () => {
-    const t = await setup()
-    t.say('I was talking to Tara yesterday', true)
-    t.made.at(-1).onend()
-    t.runTimers()
-    expect(t.woke).toEqual([])
-    expect(t.made).toHaveLength(2) // restarted
-    t.say('hetara', true) // glued together, as some recognisers write it
-    expect(t.woke).toEqual([''])
+  it('keeps what was said when the browser ends the session mid-request', async () => {
+    const { END_MS } = await import('./voice')
+    const t = await setup({ mode: 'command' })
+    t.hear('add milk eggs')
+    t.made.at(-1).onend() // browsers end sessions on their own
+    t.run(250) // restart
+    expect(t.made).toHaveLength(2)
+    t.hear('and bread to the shopping list')
+    t.run(END_MS)
+    expect(t.out.done).toEqual([['add milk eggs and bread to the shopping list', 'heard']])
   })
 
-  it('says so when the microphone is blocked, instead of silently doing nothing', async () => {
+  it('answers to "Tara, …" said first, but ignores the name in passing', async () => {
     const t = await setup()
-    t.made.at(-1).onerror({ error: 'not-allowed' })
-    t.made.at(-1).onend()
-    t.runTimers()
-    expect(t.states.at(-1)).toBe('blocked')
-    expect(t.made).toHaveLength(1) // no restart loop
+    t.hear('I was talking to Tara yesterday')
+    expect(t.out.woke).toBe(0)
+    const u = await setup()
+    u.hear('Tara what time is it')
+    expect(u.out.woke).toBe(1)
+    expect(u.out.interim.at(-1)).toBe('what time is it')
+  })
+
+  it('gives up quietly when nobody speaks, and says so when the microphone is blocked', async () => {
+    const { FOLLOW_UP_MS } = await import('./voice')
+    const t = await setup({ mode: 'command', noSpeechMs: FOLLOW_UP_MS })
+    t.run(FOLLOW_UP_MS)
+    expect(t.out.done).toEqual([['', 'silence']])
+    const b = await setup()
+    b.made.at(-1).onerror({ error: 'not-allowed' })
+    expect(b.out.done).toEqual([['', 'blocked']])
+    expect(b.out.states.at(-1)).toBe('blocked')
+    expect(b.made).toHaveLength(1) // no restart loop
+  })
+
+  it('drops a request that was cancelled', async () => {
+    const t = await setup({ mode: 'command' })
+    t.hear('play some music')
+    t.session.stop()
+    expect(t.out.done).toEqual([])
+  })
+
+  it('knows a goodbye from a request', async () => {
+    const { isGoodbye } = await import('./voice')
+    for (const s of ["that's all", 'Thanks, that’s all', 'no thanks', 'stop', 'never mind']) expect(isGoodbye(s.replace('’', "'"))).toBe(true)
+    for (const s of ['stop the timer', 'no I meant Pune', 'thanks for the weather, now the news']) expect(isGoodbye(s)).toBe(false)
   })
 })

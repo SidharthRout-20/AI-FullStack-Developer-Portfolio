@@ -10,7 +10,7 @@ export const DEFAULTS = {
   tone: 'warm', // warm | professional | cheerful
   length: 'short', // short | detailed
   speak: true, // read replies aloud
-  keep: false, // keep listening after each reply (a conversation)
+  keep: true, // after answering a spoken request, listen for a follow-up (a conversation, no tapping)
   sounds: true, // chime when listening starts and stops
   wake: true, // answer to "Hey Tara" while the page is open (starts after the first tap; can be turned off)
   city: '', // home city: weather when location isn't shared
@@ -25,11 +25,15 @@ export const LANGUAGES = [
   ['hi-IN', 'Hindi'],
 ]
 
+const VERSION = 2 // v2: conversations (listen for a follow-up) became the default
+
 export function readPrefs() {
   try {
-    return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') }
+    const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}')
+    if ((saved.v ?? 1) < 2) saved.keep = true
+    return { ...DEFAULTS, ...saved, v: VERSION }
   } catch {
-    return { ...DEFAULTS }
+    return { ...DEFAULTS, v: VERSION }
   }
 }
 
