@@ -1,4 +1,6 @@
 User-agent: *
 Allow: /
+Disallow: /insights
+Disallow: /control
 
 Sitemap: https://ai-full-stack-developer-portfolio-p-ruby.vercel.app/sitemap.xml

@@ -224,3 +224,20 @@ def test_postgres_health_check_reports_categories_without_details(monkeypatch):
 def test_health_reports_no_database_check_on_sqlite(client):
     body = client.get("/api/health").json()
     assert body["storage"] == "sqlite" and body["storage_ok"] is None and body["storage_error"] is None
+
+
+def test_client_names_never_reach_the_index(settings, monkeypatch):
+    from app.rag import ingestion
+    from app.rag.redact import redact_clients
+
+    said = redact_clients("UI Developer for HP and Telefónica; Telefonica too; HSBC, usaa. PHP and hp stay.")
+    assert said == ("UI Developer for a global technology client and a European telecom client; a European telecom "
+                    "client too; a global bank, a US financial-services client. PHP and hp stay.")  # fmt: skip
+    (settings.documents_dir / "cv.md").write_text("Wipro: React for HP and HSBC. COBOL for USAA.", encoding="utf-8")
+    store, emb = VectorStore(settings), FakeEmbedder()
+    ingest(settings, store, emb)
+    text = " ".join(c.text for c in store.all_chunks())
+    assert "Wipro" in text and not any(n in text for n in ("HP ", "HSBC", "USAA"))
+    # New redaction rules re-index documents that were indexed under the old ones, even though the files are unchanged.
+    monkeypatch.setattr(ingestion, "REDACTION_VERSION", "next")
+    assert "cv.md" in ingest(settings, store, emb).updated

@@ -22,14 +22,14 @@ class Persona:
 PERSONAS: dict[str, Persona] = {
     "assistant": Persona("Everyday assistant", "everyday help, quick answers, small talk",
                          "a capable everyday personal assistant"),
-    "architect": Persona("Senior architect", "system design, scaling, cloud, trade-offs, how a codebase is structured",
+    "architect": Persona("Senior architect", "system design, choosing a database or stack, scaling, cloud, trade-offs",
                          "a pragmatic senior software architect: frame the problem, name the key trade-offs (cost, "
                          "scale, reliability, complexity), recommend one design and say why, and name the main risk",
                          deep=True),
     "engineer": Persona("Senior engineer", "code, bugs, debugging, how some code works, code review",
                         "a senior software engineer: be precise, name the exact files and functions when code is "
                         "given, suggest the smallest correct change, and say how to test it", deep=True),
-    "product": Persona("Product owner", "features, roadmaps, priorities, user stories, requirements, MVPs",
+    "product": Persona("Product owner", "user stories, requirements, roadmaps, features, priorities, MVPs",
                        "an experienced product owner: start from the user's problem and the outcome, prioritise "
                        "(must, should, later), give crisp acceptance criteria when useful, and name the success metric",
                        deep=True),
@@ -96,5 +96,7 @@ def valid(key: object) -> str | None:
 
 def router_menu() -> str:
     """The persona list as the router sees it, kept short (it is part of every routing prompt): key – when."""
-    items = [f'"{k}" – {", ".join(p.when.split(", ")[:2])}' for k, p in PERSONAS.items()]
-    return "\n".join("        " + "; ".join(items[i : i + 3]) for i in range(0, len(items), 3))
+    # The label tells apart keys that read alike ("coach" is the career coach, "fitness" the fitness coach), and three
+    # cues let the model recognise the field ("Postgres or MongoDB?" is a database choice: the architect).
+    items = [f'"{k}" ({p.label}): {", ".join(p.when.split(", ")[:3])}' for k, p in PERSONAS.items()]
+    return "\n".join("        " + "; ".join(items[i : i + 2]) for i in range(0, len(items), 2))

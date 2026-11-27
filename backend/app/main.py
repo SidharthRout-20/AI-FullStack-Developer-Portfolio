@@ -29,6 +29,8 @@ from app.api.llm import router as llm_router
 from app.api.products import router as products_router
 from app.api.routes import router
 from app.config import Settings, get_settings
+from app.control import Control, ProductGate, SwitchableLLM, set_active
+from app.control import router as control_router
 from app.efi.service import EFIService
 from app.evals import router as evals_router
 from app.keeper.edits import Edits
@@ -37,6 +39,7 @@ from app.products import careerpilot, codelens, contact, evolve, flowforge, meet
 from app.products.suite import Suite
 from app.rag.service import RAGService
 from app.rag.watcher import DocumentWatcher
+from app.visits import router as visits_router
 from appcore.accounts import accounts_from
 from appcore.errors import ErrorsAsJSON
 from appcore.logs import configure_logging
@@ -61,6 +64,11 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Model loading & indexing are blocking → run in a worker thread.
         rag = await asyncio.to_thread(service_factory, settings)
+        # The control room picks the model per call (free tier, or a paid provider within its budget).
+        control = app.state.control = Control(settings)
+        set_active(control)
+        build = rag._llm_factory
+        rag._llm_factory = lambda s: SwitchableLLM(build(s), control, s)
         if settings.auto_ingest:
             report = await asyncio.to_thread(rag.ingest)
             logger.info(
@@ -112,6 +120,8 @@ def create_app(
     # Inside CORS (added before it), so even an unexpected crash answers with CORS headers and the browser shows a
     # real 500 instead of a misleading "blocked by CORS policy".
     app.add_middleware(ErrorsAsJSON)
+    # A product the owner paused in the control room answers 503 (inside CORS, so the browser sees the message).
+    app.add_middleware(ProductGate)
     # Smaller JSON over slow connections (live event streams are left uncompressed so they arrive as they happen).
     app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(
@@ -151,6 +161,8 @@ def create_app(
     app.include_router(efi_router)
     app.include_router(llm_router)
     app.include_router(evals_router)
+    app.include_router(visits_router)
+    app.include_router(control_router)
     app.include_router(edits_router)
     for product in (careerpilot, meetingmind, codelens, flowforge, trip_api, evolve, contact):
         app.include_router(product.router)

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { forecastFreshness } from '@safarnama/web/freshness'
+import * as config from './config'
 import { fillCounts, FROZEN, LABS, LIVE_COUNT, MODULE_STATUSES, PORTFOLIO, PRODUCTS, productBySlug, productHref, STATUSES } from './products'
 
 const ids = (list) => list.map((p) => p.id)
@@ -85,5 +86,14 @@ describe('TripWeaver weather freshness', () => {
     expect(forecastFreshness('2026-11-14T03:00:00Z', now)).toEqual({ label: 'Forecast as of 9 h ago', stale: true })
     expect(forecastFreshness(null, now).stale).toBe(true)
     expect(forecastFreshness('garbage', now).label).toBe('Forecast time not recorded')
+  })
+})
+
+describe('client confidentiality', () => {
+  it('never names a client served through an employer, anywhere in the site copy', () => {
+    // Icons are components (not copy), so they're dropped before scanning the text.
+    const copy = JSON.stringify(config) + JSON.stringify(PRODUCTS.map((p) => ({ ...p, icon: undefined })))
+    for (const name of [/\bHP\b/, /Hewlett/i, /Telef[oó]nica/i, /HSBC/i, /USAA/i]) expect(copy).not.toMatch(name)
+    expect('React for HP and Telefónica').toMatch(/\bHP\b/) // the check itself can see a name
   })
 })

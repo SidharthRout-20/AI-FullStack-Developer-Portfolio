@@ -20,6 +20,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.config import Settings
 from app.rag.embeddings import Embedder
 from app.rag.loaders import LoadedFile, discover_files, file_sha256, load_file
+from app.rag.redact import REDACTION_VERSION, redact_clients
 from app.rag.vectorstore import Chunk, VectorStore
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ def chunk_file(loaded: LoadedFile, settings: Settings) -> list[Chunk]:
     chunks: list[Chunk] = []
     idx = 0
     for page in loaded.pages:
-        for piece in splitter.split_text(page.text):
+        for piece in splitter.split_text(redact_clients(page.text)):  # client names never enter the index
             # Deterministic id → re-ingesting the same content is a no-op upsert.
             digest = hashlib.sha256(f"{loaded.source}|{page.page}|{idx}|{piece}".encode()).hexdigest()
             chunks.append(Chunk(id=digest[:24], text=piece, source=loaded.source, page=page.page, chunk_index=idx))
@@ -81,6 +82,11 @@ def _save_textless(settings: Settings, textless: dict[str, str]) -> None:
     tmp.replace(path)
 
 
+def index_hash(path: Path) -> str:
+    """The file's content plus the redaction rules it was indexed with: changing either re-indexes the file."""
+    return f"{file_sha256(path)}+{REDACTION_VERSION}"
+
+
 def ingest(settings: Settings, store: VectorStore, embedder: Embedder) -> IngestReport:
     report = IngestReport()
     indexed = store.indexed_sources()
@@ -96,7 +102,8 @@ def ingest(settings: Settings, store: VectorStore, embedder: Embedder) -> Ingest
 
         try:
             # Hash first (cheap) — only parse files whose content actually changed.
-            if previous_hash == file_sha256(path):
+            current_hash = index_hash(path)
+            if previous_hash == current_hash:
                 report.unchanged.append(source)
                 continue
             # Parse and embed *before* touching the index: if either fails, the old chunks stay searchable.
@@ -113,11 +120,11 @@ def ingest(settings: Settings, store: VectorStore, embedder: Embedder) -> Ingest
         (report.updated if previous_hash is not None else report.added).append(source)
 
         if chunks:
-            store.upsert(chunks, vectors, loaded.file_hash)
+            store.upsert(chunks, vectors, current_hash)
             textless.pop(source, None)
             report.chunks_written += len(chunks)
         else:
-            textless[source] = loaded.file_hash
+            textless[source] = current_hash
             logger.warning("%s contains no extractable text (empty or scanned?); nothing indexed", source)
         logger.info("Indexed %s -> %d chunks", source, len(chunks))
 

@@ -3,12 +3,17 @@
 # GitHub runs schedules on a best-effort basis (they can be a few minutes late); for minute-exact reminders, also
 # point a free cron service (e.g. cron-job.org) at the same URL. Duplicate ticks are safe: each alert is sent once.
 #
+# The schedule is OFF while this repository is private: private repos get 2,000 free Actions minutes a month and a
+# 5-minute schedule bills ~8,600. Use cron-job.org (free) to call <backend>/api/cron/tick every 5 minutes with
+# the header "Authorization: Bearer <CRON_SECRET>". If the repository is made public (unlimited free minutes),
+# uncomment the schedule below.
+#
 # Needs the repository secret CRON_SECRET (the same value as the backend's CRON_SECRET). Without it this job skips.
 name: Reminders
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  # schedule:
+  #   - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions: {}

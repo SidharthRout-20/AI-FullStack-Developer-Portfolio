@@ -32,7 +32,20 @@ from app.keeper.repo import RepoIndex
 logger = logging.getLogger(__name__)
 
 LOOKUPS = ("weather", "news", "wiki", "web", "currency", "time", "code", "portfolio")
-ACTIONS = ("open", "search", "play", "directions", "call", "message", "email", "timer", "calendar", "edit")
+ACTIONS = (
+    "product",
+    "open",
+    "search",
+    "play",
+    "directions",
+    "call",
+    "message",
+    "email",
+    "timer",
+    "calendar",
+    "edit",
+    "settings",
+)
 TOOLS = LOOKUPS + ACTIONS
 UA = {"User-Agent": "TaraAssistant/1.0 (personal-assistant demo)"}
 
@@ -61,6 +74,168 @@ SITES = {
     "tara": "/keeper", "jasoos": "/jasoos", "quality": "/quality", "quality page": "/quality", "evals": "/quality",
     "portfolio": "/", "home": "/", "home page": "/",
 }  # fmt: skip
+
+# The product inventory: what each of this site's products does. Tara hands a request to the product built for it
+# before answering it herself (a trip goes to Safarnaama, which plans with real places, weather and routes; Tara would
+# only be guessing). `route(args)` builds the link, with what the user asked already filled in where the product can
+# take it.
+PRODUCTS: dict[str, dict[str, Any]] = {
+    "safarnaama": {
+        "name": "Safarnaama",
+        "does": "plans trips and itineraries: a day-by-day plan with real places, weather and routes, then bookings, "
+        "budget and documents",
+        "route": lambda a: "/safarnaama" + (f"?{urlencode({'to': a['place']})}" if a.get("place") else ""),
+        "say": lambda a: (
+            f"Safarnaama plans this properly, with real places, weather and routes. I've set {a['place']} as the "
+            "destination: tap to open it and pick your dates."
+            if a.get("place")
+            else "Safarnaama plans this properly, with real places, weather and routes. Tap to open it and pick a place."
+        ),
+    },
+    "codelens": {
+        "name": "CodeLens",
+        "does": "explains a GitHub repository or codebase: an onboarding pack, a week-one plan, and answers that cite "
+        "files and lines",
+        "route": lambda a: "/codelens",
+        "say": lambda a: (
+            "CodeLens is built for this: paste the GitHub repo and it maps the code and answers with the "
+            "exact files and lines. Tap to open it."
+        ),
+    },
+    "jasoos": {
+        "name": "Jasoos",
+        "does": "finds why a build, CI run or test failed: paste the log and get the failing step, the cause and a fix",
+        "route": lambda a: "/jasoos",
+        "say": lambda a: (
+            "Jasoos is built for this: paste the failing log and it finds the step, the likely cause and a "
+            "fix, quoting the lines it used. Tap to open it."
+        ),
+    },
+    "quality": {
+        "name": "the Quality page",
+        "does": "shows how well each product works, measured: evaluation scores, latency and what they got wrong",
+        "route": lambda a: "/quality",
+        "say": lambda a: "The Quality page has the measured numbers for every product. Tap to open it.",
+    },
+}
+
+_TRIP = re.compile(
+    r"\b(itinerar(?:y|ies)|sightseeing|day ?trips?|road ?trips?|getaways?|vacation|holiday|travel(?:l?ing)? "
+    r"(?:tips?|ideas?|plans?|suggestions?|guide)|trip (?:ideas?|tips?|plans?|to)|"
+    r"plan (?:a|my|our|the)? ?(?:trip|visit|tour|holiday|weekend|day out|outing)|weekend (?:plans?|trip|outing)|"
+    r"(?:places|things|spots) (?:to (?:visit|see|do|go)|nearby|near me|around (?:me|here))|"
+    r"(?:nearby|tourist|local) (?:places|spots|attractions|getaways?|trips?|sights)|"
+    r"where (?:should|can|could) (?:i|we) (?:go|travel|visit)|hill stations?|tourist|tour of|"
+    r"(?:visit|explore|exploring) (?:nearby|around)|what (?:can|should|could) (?:i|we) (?:do|see) (?:in|around|near|at))\b",
+    re.I,
+)
+_NEARBY = re.compile(r"\b(?:nearby|near me|around me|around here|near here|close by|local)\b", re.I)
+_TRIP_PLACE = re.compile(
+    r"(?:\b(?:in|around|near|at|visit(?:ing)?|explore|exploring)|\b(?:trip|travel(?:l?ing)?|go(?:ing)?|fly(?:ing)?|getaway|"
+    r"drive|driving|holiday|vacation|weekend|visit)\s+to|\btour\s+of|\b(?:getaways?|trips?|drives?|escapes?)\s+from)\s+([A-Za-z][\w'.-]*(?:\s+[A-Z][\w'.-]*){0,2})",
+    re.I,
+)
+_NOT_PLACES = {"a", "an", "the", "my", "our", "me", "us", "it", "this", "that", "next", "nearby", "weekend", "today",
+               "places", "place", "things", "spots", "list", "somewhere", "anywhere", "i", "we", "can", "good", "some",
+               "tomorrow", "march", "april", "may", "june", "july", "august", "december", "january", "february",
+               "september", "october", "november", "one", "two", "three", "days", "day", "week", "family", "kids", "for",
+               "with", "and", "on", "by"}  # fmt: skip
+_CODE = re.compile(
+    r"github\.com/[\w.-]+/[\w.-]+|\b(?:understand|explain|onboard(?: me)? (?:onto|to)|walk me through)\b.{0,30}\b(?:repo|repository|codebase|code base)\b",
+    re.I,
+)
+_BUILD = re.compile(
+    r"\b(?:build|ci|pipeline|deploy(?:ment)?|workflow|github actions|test suite|unit tests|tests)\b.{0,25}"
+    r"\b(?:fail(?:ed|ing|s)?|broke(?:n)?|is red|errors?)\b|\b(?:stack ?trace|traceback|error log|build log)\b",
+    re.I,
+)
+_NAMED = re.compile(r"\b(safarnaa?ma|code ?lens|jasoos|quality page)\b", re.I)
+_NAMES = {"safarnama": "safarnaama", "safarnaama": "safarnaama", "codelens": "codelens", "code lens": "codelens",
+          "jasoos": "jasoos", "quality page": "quality"}  # fmt: skip
+
+
+def place_in(text: str) -> str | None:
+    """The place a trip request is about ("nearby places in Bangalore" → "Bangalore"), if it names one."""
+    found = None
+    for m in _TRIP_PLACE.finditer(text or ""):  # the last one wins: "an itinerary for places in Bangalore"
+        words = [w.strip(".,!?'") for w in m.group(1).split()]
+        cut = next(
+            (
+                k
+                for k, w in enumerate(words)
+                if k and w.lower() in ("from", "for", "with", "and", "on", "by", "this", "next")
+            ),
+            None,
+        )
+        words = words[:cut]  # "Coorg from Bengaluru" → "Coorg"
+        while words and words[-1].lower() in _NOT_PLACES:
+            words.pop()
+        while words and words[0].lower() in ("near", "around", "in", "at", "to"):  # "visit near Mysore"
+            words.pop(0)
+        if words and words[0].lower() not in _NOT_PLACES:
+            found = " ".join(words).title()
+    return found
+
+
+def rule_product(
+    text: str, history: list[dict[str, str]] | None = None, home: str = ""
+) -> tuple[str, dict[str, Any]] | None:
+    """A request one of the site's products is built for, recognised without a model.
+
+    Also: naming a product about an earlier request ("why didn't you use Safarnaama for this?", "do it in
+    Safarnaama") hands that earlier request to it. "Nearby" means the user's home city when they have set one.
+    """
+    t = text or ""
+    earlier = [str(h.get("text") or "") for h in (history or []) if h.get("role") == "user"][::-1]
+
+    def trip_place(*texts: str) -> str | None:
+        for x in texts:
+            if p := place_in(x):
+                return p
+        return home.strip().title() or None if any(_NEARBY.search(x) for x in texts) else None
+
+    if named := _NAMED.search(t):
+        product = _NAMES[re.sub(r"\s+", " ", named.group(1).lower())]
+        trips = [e for e in earlier if _TRIP.search(e)]
+        place = trip_place(t, *trips) if product == "safarnaama" else None
+        return "product", {"product": product, "named": True, **({"place": place} if place else {})}
+    if _TRIP.search(t):
+        return "product", {"product": "safarnaama", **({"place": p} if (p := trip_place(t)) else {})}
+    if _CODE.search(t):
+        return "product", {"product": "codelens"}
+    if _BUILD.search(t):
+        return "product", {"product": "jasoos"}
+    return None
+
+
+_YES = re.compile(
+    r"^\s*(?:yes|yeah|yep|yup|ya|sure|ok(?:ay)?|please|go ahead|go for it|do it|let'?s do it|sounds good|absolutely|"
+    r"of course|why not|alright|great)\b.{0,40}$|"
+    r"^\s*(?:(?:i|we) (?:want|need|would like|'?d like)(?: you)?(?: to)? (?:one|it|that|do it|do that|plan it|plan one|make it|make one|"
+    r"have it|have one)|(?:can|could|would|will) you (?:do|plan|make) (?:it|that|one)|please (?:do|plan) (?:it|that|one)?|"
+    r"do that|plan it|make it so)\b.{0,30}$",
+    re.I,
+)
+
+
+def accepted_offer(
+    text: str, history: list[dict[str, str]] | None, home: str = ""
+) -> tuple[str, dict[str, Any]] | None:
+    """A short "yes" / "I want you to do it" right after Tara mentioned one of the products: open that product for
+    the earlier request."""
+    if not _YES.search(text or "") or not history:
+        return None
+    last = next((str(h.get("text") or "") for h in reversed(history) if h.get("role") == "assistant"), "")
+    if not (named := list(_NAMED.finditer(last))):
+        return None
+    hit = rule_product(named[-1].group(1), history, home)
+    return (hit[0], {**{k: v for k, v in hit[1].items() if k != "named"}, "accepted": True}) if hit else None
+
+
+def products_menu() -> str:
+    """The inventory as the router sees it."""
+    return "\n".join(f'        "{k}": {p["does"]}' for k, p in PRODUCTS.items())
+
 
 Fetch = Callable[[str, dict[str, Any]], Awaitable[httpx.Response]]
 # Searches the portfolio's indexed documents (résumé, project notes): query -> [{"source", "text"}].
@@ -293,6 +468,35 @@ class ToolBox:
     def action(tool: str, args: dict[str, Any], now: dt.datetime) -> tuple[dict[str, Any] | None, str]:
         """(action for the browser, what Tara says). No action when something essential is missing."""
         a = {k: _clean(v, 300) if isinstance(v, str) else v for k, v in args.items()}
+        if tool == "product":  # hand the request to the site's own product built for it
+            key = str(a.get("product") or "").lower().strip()
+            key = _NAMES.get(key, key)
+            if key not in PRODUCTS:
+                return None, "Which product should I open?"
+            p, args = PRODUCTS[key], {k: v for k, v in a.items() if v}
+            place = str(args.get("place") or "").strip()
+            if place and all(
+                w.lower().strip(".,") in _NOT_PLACES | {"near", "around", "here", "local", "home", "city"}
+                for w in place.split()
+            ):
+                args.pop("place")  # "nearby", "near me", "around here": not a destination
+            url = p["route"](args)
+            label = (
+                f"Plan {args['place']} in Safarnaama"
+                if key == "safarnaama" and args.get("place")
+                else f"Open {p['name']}"
+            )
+            cta = "Plan it" if key == "safarnaama" else "Open"
+            lead = (
+                "On it. "
+                if args.get("accepted")
+                else f"You're right, this is {p['name']}'s job. "
+                if args.get("named")
+                else ""
+            )
+            return {"type": "open", "url": url, "label": label, "product": key, "cta": cta, "confirm": True}, lead + p[
+                "say"
+            ](args)
         if tool == "open":
             name = str(a.get("target") or a.get("app") or a.get("site") or "").strip()  # as the user said it
             target = name.lower()
@@ -305,6 +509,23 @@ class ToolBox:
                 ({"type": "open", "url": url, "label": f"Open {name or 'it'}"}, f"Opening {name or 'it'}.")
                 if url
                 else (None, "What should I open?")
+            )
+        if tool == "settings":  # how Tara talks and behaves for this user: applied on their device, no owner needed
+            setting = str(a.get("setting") or "open").lower().strip()
+            value = str(a.get("value") or "").strip()[:60]
+            if setting not in SETTINGS:
+                setting = "open"
+            said = SETTINGS[setting](value.lower()) if setting != "name" else (
+                f"Nice to meet you, {value}. I'll call you that." if value else "What should I call you?")  # fmt: skip
+            return (
+                {
+                    "type": "settings",
+                    "setting": setting,
+                    "value": value,
+                    "label": "Voice & personality",
+                    "confirm": True,
+                },
+                said,
             )
         if tool == "edit":  # a change to this site's code: planned and proposed as a pull request, owner only
             req = str(a.get("request") or "").strip()
@@ -445,8 +666,65 @@ _RULES: list[tuple[re.Pattern[str], str]] = [
 ]
 
 
+# What Tara says after changing one of the user's own settings (the device applies the change).
+def _onoff(v: str) -> bool:
+    return not re.search(r"\b(off|no|stop|disable|don'?t|never|mute|quiet)\b", v)
+
+
+SETTINGS: dict[str, Callable[[str], str]] = {
+    "voice": lambda v: "Here's my new voice. How does this sound?",
+    "speed": lambda v: "Okay, I'll speak a little slower." if "slow" in v else "Okay, I'll speak a little faster.",
+    "pitch": lambda v: "Okay, a lower voice." if re.search(r"low|deep", v) else "Okay, a higher voice.",
+    "tone": lambda v: f"Got it, I'll be more {v or 'warm'}.",
+    "length": lambda v: (
+        "Sure, short answers from now on."
+        if re.search(r"short|brief|concise", v)
+        else "Sure, I'll give you more detail."
+    ),
+    "language": lambda v: f"Okay, switching to {v or 'that language'}.",
+    "wake": lambda v: "Hey Tara is on." if _onoff(v) else "Okay, I won't listen for Hey Tara.",
+    "speak": lambda v: "I'll read my answers aloud." if _onoff(v) else "Okay, I'll answer quietly, on screen only.",
+    "sounds": lambda v: "Chimes are on." if _onoff(v) else "Chimes off.",
+    "keep": lambda v: "I'll keep listening after each answer." if _onoff(v) else "Okay, one question at a time.",
+    "city": lambda v: f"Got it, {v.title()} is your home city now." if v else "Which city?",
+    "open": lambda v: "Here are my voice and personality settings.",
+    "name": lambda v: "",
+}
+
+_SETTING_RULES: list[tuple[re.Pattern[str], str, Callable[[re.Match[str]], str]]] = [
+    (
+        re.compile(
+            r"\b(?:change|switch|new|different|another)\b.*\bvoice\b|\bvoice\b.*\b(?:female|male|woman|man)\b", re.I
+        ),
+        "voice",
+        lambda m: (
+            "female"
+            if re.search(r"female|woman|girl", m.string, re.I)
+            else "male"
+            if re.search(r"\bmale\b|\bman\b", m.string, re.I)
+            else "different"
+        ),
+    ),
+    (
+        re.compile(r"\b(?:speak|talk)\b.*\b(faster|slower|quicker|slowly|quickly)\b", re.I),
+        "speed",
+        lambda m: m.group(1),
+    ),
+    (re.compile(r"\bcall me ([A-Z][\w'-]{1,30})", re.I), "name", lambda m: m.group(1)),
+]
+
+
+def rule_settings(text: str) -> tuple[str, dict[str, Any]] | None:
+    for pattern, setting, value in _SETTING_RULES:
+        if m := pattern.search(text or ""):
+            return "settings", {"setting": setting, "value": value(m)}
+    return None
+
+
 def rule_tool(text: str) -> tuple[str, dict[str, Any]] | None:
     """The common tool requests, recognised without a model (used when the model router is unavailable)."""
+    if hit := rule_settings(text):
+        return hit
     for pattern, tool in _RULES:
         m = pattern.search(text or "")
         if not m:

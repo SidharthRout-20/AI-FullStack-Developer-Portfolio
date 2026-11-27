@@ -1,0 +1,57 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The release key comes from CI secrets (TARA_ANDROID_KEYSTORE, TARA_ANDROID_KEY_PASSWORD), never from the repo.
+// Its SHA-256 fingerprint is published in frontend/public/.well-known/assetlinks.json, which is what lets the app
+// open the site full-screen without a browser bar.
+def keystorePath = System.getenv('TARA_KEYSTORE_PATH')
+
+android {
+    namespace 'io.github.sidharthrout20.tara'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'io.github.sidharthrout20.tara'
+        minSdk 21
+        targetSdk 34
+        versionCode Integer.parseInt(System.getenv('TARA_VERSION_CODE') ?: '1')
+        versionName "1.0.${System.getenv('TARA_VERSION_CODE') ?: '0'}"
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storeType 'pkcs12'
+                storePassword System.getenv('TARA_KEY_PASSWORD')
+                keyAlias 'tara'
+                keyPassword System.getenv('TARA_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystorePath ? signingConfigs.release : null
+        }
+    }
+
+    // There is no app code to lint (the library supplies the activity); don't let lint block a release build.
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // Google's helper library for Trusted Web Activities: the launcher activity, browser fallback and
+    // notification delegation. No app code of our own is needed.
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}

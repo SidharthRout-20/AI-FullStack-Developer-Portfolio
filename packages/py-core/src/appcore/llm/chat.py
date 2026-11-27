@@ -75,9 +75,9 @@ class ClaudeLLM:
             "max_tokens": 4096 if short else self._s.claude_max_tokens,
             "output_config": {"effort": "low" if short else self._s.claude_effort},
             "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
-            "betas": [FALLBACK_BETA],
-            "fallbacks": "default",
         }
+        if "haiku" not in self._s.claude_model:  # Haiku has no server-side fallback model
+            params["betas"], params["fallbacks"] = [FALLBACK_BETA], "default"
         if system:
             params["system"] = system
         return params
@@ -93,6 +93,7 @@ class ClaudeLLM:
 
     async def complete(self, system: str | None, messages: Sequence[ChatTurn], *, short: bool = False) -> str:
         msg = await self._client.beta.messages.create(**self._params(system, messages, short=short))
+        self.last_usage = msg.usage  # input/output tokens, read by the spend meter
         self._check(msg)
         return "".join(b.text for b in msg.content if b.type == "text")
 
@@ -100,7 +101,9 @@ class ClaudeLLM:
         async with self._client.beta.messages.stream(**self._params(system, messages, short=False)) as stream:
             async for text in stream.text_stream:
                 yield text
-            self._check(await stream.get_final_message())
+            final = await stream.get_final_message()
+            self.last_usage = final.usage
+            self._check(final)
 
 
 # ── LangChain-backed providers (Groq / Ollama) ─────────────────────────────
