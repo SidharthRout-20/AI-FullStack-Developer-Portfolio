@@ -67,3 +67,37 @@ def test_a_partial_run_is_resumed_only_for_the_same_recent_cases(client):
     # Stored answers never leave the server.
     latest = client.get("/api/evals/latest").json()["results"]
     assert all("answers" not in r and "fingerprint" not in r for r in latest)
+
+
+def test_scores_carry_their_interval_and_per_label_quality():
+    from app.evals import macro_f1, wilson
+
+    lo, hi = wilson(10, 12)
+    assert 0.55 < lo < 0.6 and 0.95 < hi <= 0.98  # 10/12 could be anywhere from ~55% to ~97%
+    assert wilson(0, 0) == [0.0, 1.0]
+    f1, worst = macro_f1([("a", "a"), ("a", "b"), ("b", "b"), ("c", "c")])
+    assert f1 == round((2 / 3 + 2 / 3 + 1) / 3, 3) and worst[0]["label"] in ("a", "b")
+
+
+def test_the_security_controls_all_hold_and_each_names_its_standard(client):
+    out = client.post("/api/evals/run", json={"product": "platform"}).json()["results"]
+    sec = next(r for r in out if r["suite"] == "platform.security")
+    controls = sec["extra"]["controls"]
+    assert sec["status"] == "ok" and len(controls) == sec["total"] == 13
+    assert sec["value"] == 1.0, [c["name"] for c in controls if not c["passed"]]
+    assert all(c["standards"] for c in controls) and any("OWASP LLM01" in c["standards"] for c in controls)
+
+
+def test_history_and_regressions_are_tracked_run_over_run(client):
+    from app import evals
+
+    for _ in range(2):
+        client.post("/api/evals/run", json={"product": "safarnaama"})
+    hist = client.get("/api/evals/history", params={"suite": "safarnaama.moments"}).json()["runs"]
+    assert len(hist) >= 2 and hist[0]["ci95"] and hist[0]["ran_at"]
+    latest = {r["suite"]: r for r in client.get("/api/evals/latest").json()["results"]}
+    trend = latest["safarnaama.moments"]["trend"]
+    assert trend["values"][-1] == 1.0 and trend["delta"] == 0 and trend["regression"] is False
+    docs = [{"suite": "x", "value": v, "status": "ok", "ran_at": str(i)} for i, v in enumerate([0.7, 0.9, 0.95])]
+    assert evals._trends(docs)["x"]["regression"] is True  # newest first: 0.7 after 0.9 is a 20-point drop
+    assert all(s["standards"] for s in client.get("/api/evals/suites").json())

@@ -311,13 +311,13 @@ function Glance() {
   const stats = [
     { value: `${SITE.years}+`, label: 'years building software' },
     { value: `${PORTFOLIO.length}`, label: 'AI products in the portfolio' },
-    { value: `${SITE.clients.length}`, label: 'enterprise clients served' },
+    { value: `${SITE.clientCount}`, label: 'enterprise clients served' },
   ]
   const facts = [
     { k: 'Role', v: SITE.role },
     { k: 'Currently', v: SITE.current },
     { k: 'Based in', v: SITE.location },
-    { k: 'Clients', v: SITE.clients.join(', ') },
+    { k: 'Industries', v: SITE.industries.join(', ') },
     { k: 'Focus', v: 'Generative AI, RAG and agents · React · Python APIs' },
   ]
   return (

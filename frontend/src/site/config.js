@@ -29,11 +29,16 @@ export const SITE = {
   headline: "I build AI products, from the model to the last pixel.",
   /** One line under the Studio headline. Keep it true; empty hides it. */
   availability: "Open to AI product engineering roles and collaborations",
-  /** Enterprise clients you have worked for (shown as a count and a list in the Studio). */
-  clients: ["HP", "Telefónica", "HSBC", "USAA"],
+  /**
+   * Client work, without client names: the site never names a client served through an employer (the résumé does;
+   * the backend redacts it too, see backend/app/rag/redact.py). Shown as a count and as industries.
+   */
+  clientCount: 4,
+  industries: ["Technology", "Telecom", "Banking", "Financial services"],
   /** The Studio's scroll-lit statement: the short story of your career, in your own words. */
   statement:
-    "I started on COBOL mainframes for USAA, moved into React interfaces for HP, Telefónica and HSBC, and today " +
+    "I started on COBOL mainframes for a US financial-services client, moved into React interfaces for global " +
+    "technology, telecom and banking clients, and today " +
     "deliver Generative-AI proofs of concept at Deloitte. In my own time I build AI products end to end: the model, " +
     "the API, and every pixel in between.",
   /** Shown as the hero stat and in the intro: keep in step with the resume. */
@@ -54,7 +59,7 @@ export const EXPERTISE = [
     title: "Frontend & UI engineering",
     icon: "ui",
     text:
-      "UI developer for enterprise clients (HP, Telefónica, HSBC): landing pages with skeleton loading, lazy loading " +
+      "UI developer for global technology, telecom and banking clients: landing pages with skeleton loading, lazy loading " +
       "and mobile responsiveness, ContentStack CMS integrations, and legacy code brought up to modern standards.",
     stack: [
       "React",
@@ -91,7 +96,7 @@ export const EXPERTISE = [
     icon: "api",
     text:
       "Python (Flask) backends and REST API integrations for GenAI POCs, delivered with Agile tooling. Started my " +
-      "career on COBOL mainframe systems for USAA.",
+      "career on COBOL mainframe systems for a US financial-services client.",
     stack: [
       "Python",
       "Flask",
@@ -126,7 +131,7 @@ export const TIMELINE = [
   {
     period: "Apr 2022 – Sep 2023",
     title: "Senior Software Engineer",
-    org: "Wipro · UI Developer for HP and Telefónica",
+    org: "Wipro · UI Developer for technology and telecom clients",
     place: "Bengaluru, India",
     kind: "work",
     points: [
@@ -139,12 +144,12 @@ export const TIMELINE = [
   {
     period: "May 2019 – Mar 2022",
     title: "Project Engineer",
-    org: "Wipro · clients HSBC and USAA",
+    org: "Wipro · banking and financial-services clients",
     place: "Hyderabad, India",
     kind: "work",
     points: [
-      "Front-end developer for HSBC (May 2021 – Mar 2022), building MERN-stack projects while moving into web development.",
-      "COBOL developer for USAA (May 2019 – Nov 2020): defined requirements with clients and mentored newer engineers.",
+      "Front-end developer for a global bank (May 2021 – Mar 2022), building MERN-stack projects while moving into web development.",
+      "COBOL developer for a US financial-services client (May 2019 – Nov 2020): defined requirements with clients and mentored newer engineers.",
     ],
     tags: ["React", "Node", "MongoDB", "COBOL", "JCL", "Core Java"],
   },

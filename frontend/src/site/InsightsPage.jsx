@@ -67,7 +67,10 @@ export function InsightsPage() {
     <div className="min-h-full">
       <SiteHeader />
       <main className="mx-auto max-w-6xl px-4 pt-26 pb-20 sm:px-5 sm:pt-30">
-        <Link to="/" className="inline-flex items-center gap-1.5 text-[13px] text-ink-400 hover:text-white"><ArrowLeft className="size-4" /> Home</Link>
+        <div className="flex flex-wrap items-center gap-4 text-[13px]">
+          <Link to="/" className="inline-flex items-center gap-1.5 text-ink-400 hover:text-white"><ArrowLeft className="size-4" /> Home</Link>
+          <Link to="/control" className="text-ink-400 hover:text-white">Control room</Link>
+        </div>
         <header className="mt-4">
           <p className="text-[12px] font-semibold tracking-[0.18em] text-cyan-300 uppercase">Insights · owner only</p>
           <h1 className="mt-2 text-[32px] leading-tight font-semibold text-white sm:text-[44px]">Who’s visiting, and from where.</h1>

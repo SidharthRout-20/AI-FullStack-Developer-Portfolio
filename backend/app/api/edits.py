@@ -58,12 +58,21 @@ async def status(request: Request, key: OwnerKey = None) -> dict[str, Any]:
 @router.post("/plan")
 @limiter.limit("20/day")
 async def plan(request: Request, body: PlanIn, key: OwnerKey = None) -> dict[str, Any]:
+    _proposals_on(request)
     return await _edits(request, key).plan(body.request.strip())
+
+
+def _proposals_on(request: Request) -> None:
+    from app.control import current
+
+    if not current(request).tara.code_proposals:
+        raise HTTPException(503, "Code proposals are turned off in the control room.")
 
 
 @router.post("/propose")
 @limiter.limit("10/day")
 async def propose(request: Request, body: PlanBody, key: OwnerKey = None) -> dict[str, Any]:
+    _proposals_on(request)
     try:
         return await _edits(request, key).propose(body.model_dump())
     except EditError as exc:

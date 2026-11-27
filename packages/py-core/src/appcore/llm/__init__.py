@@ -68,5 +68,7 @@ def routed_llm(settings: Settings, task: str) -> RoutedLLM:
 
 
 def for_task(llm: Any, task: str) -> Any:
-    """Re-bind a routed LLM to a declared task; any other ChatLLM (tests, Ollama, Claude) is returned unchanged."""
-    return llm.for_task(task) if isinstance(llm, RoutedLLM) else llm
+    """Re-bind an LLM that routes per task (the Groq router, the control room's switch) to a declared task; any other
+    ChatLLM (tests, Ollama, Claude) is returned unchanged."""
+    bind = getattr(llm, "for_task", None)
+    return bind(task) if callable(bind) else llm

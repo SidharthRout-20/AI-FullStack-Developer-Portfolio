@@ -202,7 +202,7 @@ export function ActionCard({ action }) {
       </div>
       <a href={action.url} target={sameTab ? undefined : '_blank'} rel="noopener noreferrer"
         className="shrink-0 rounded-full bg-gradient-to-r from-fuchsia-500 to-orange-400 px-4 py-2 text-[13px] font-semibold text-on-accent shadow-lg">
-        {action.type === 'call' ? 'Call' : action.type === 'message' || action.type === 'email' ? 'Review & send' : 'Open'}
+        {action.cta ?? (action.type === 'call' ? 'Call' : action.type === 'message' || action.type === 'email' ? 'Review & send' : 'Open')}
       </a>
     </div>
   )

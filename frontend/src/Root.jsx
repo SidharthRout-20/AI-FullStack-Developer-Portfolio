@@ -1,4 +1,5 @@
 import { MotionConfig } from 'motion/react'
+import { API_BASE } from './lib/apiBase'
 import { LITE } from './lib/lite'
 import { trackView, watchClicks } from './lib/visits'
 import { lazy, Suspense, useEffect } from 'react'
@@ -19,6 +20,9 @@ const KeeperApp = lazy(() => import('./products/keeper/KeeperApp'))
 const ProductPage = lazy(() => import('./site/ProductPage').then((m) => ({ default: m.ProductPage })))
 const QualityPage = lazy(() => import('./site/QualityPage').then((m) => ({ default: m.QualityPage })))
 const InsightsPage = lazy(() => import('./site/InsightsPage').then((m) => ({ default: m.InsightsPage })))
+const ControlPage = lazy(() => import('./site/ControlPage').then((m) => ({ default: m.ControlPage })))
+// Hidden preview of a playful theme for the personal space: not linked anywhere, kept out of search (robots + noindex).
+const PlayfulSpace = lazy(() => import('./site/playful/PlayfulSpace').then((m) => ({ default: m.PlayfulSpace })))
 
 // Every product is its own code-split chunk, loaded only when opened.
 const APPS = [
@@ -49,6 +53,7 @@ export function Root() {
       <Routes />
       <CommandPalette />
       <SkinWelcome />
+      {import.meta.env.DEV && <DevBackend />}
     </ShellProvider>
   )
 }
@@ -58,6 +63,7 @@ function Routes() {
   useEffect(() => trackView(path), [path])
   useEffect(() => watchClicks(SITE.resume), [])
 
+  if (path === '/preview/playful' || path === '/preview/playful/') return <PlayfulRoute />
   if (path === '/documind' || path.startsWith('/documind/')) return <DocuMindRoute />
   if (path === '/keeper' || path.startsWith('/keeper/')) return <KeeperRoute />
   const renamed = Object.keys(RENAMED).find((p) => path === p || path.startsWith(`${p}/`))
@@ -74,7 +80,7 @@ function Routes() {
     <MotionConfig reducedMotion={LITE ? 'always' : 'user'}>
       <Backdrop />
       <Suspense fallback={<PageSkeleton />}>
-        {path === '/' ? <Hub /> : path === '/quality' || path === '/quality/' ? <Quality /> : path === '/insights' || path === '/insights/' ? <Insights /> : product ? <Preview slug={product.slug} /> : <NotFound />}
+        {path === '/' ? <Hub /> : path === '/quality' || path === '/quality/' ? <Quality /> : path === '/insights' || path === '/insights/' ? <Insights /> : path === '/control' || path === '/control/' ? <Control /> : product ? <Preview slug={product.slug} /> : <NotFound />}
       </Suspense>
     </MotionConfig>
   )
@@ -88,6 +94,20 @@ function Hub() {
 function Quality() {
   useTitle(`Quality · ${SITE.owner}`)
   return <QualityPage />
+}
+
+function PlayfulRoute() {
+  useTitle(`Playful preview · ${SITE.owner}`)
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#fff' }} />}>
+      <PlayfulSpace />
+    </Suspense>
+  )
+}
+
+function Control() {
+  useTitle(`Control room · ${SITE.owner}`)
+  return <ControlPage />
 }
 
 function Insights() {
@@ -154,5 +174,19 @@ function NotFound() {
         </Link>
       </div>
     </div>
+  )
+}
+
+/** Development only: which backend this page talks to. `npm run dev` uses the DEPLOYED one, so backend changes made
+ * on this machine are not in it; `npm run dev:local` (with the backend running) uses the local code. */
+function DevBackend() {
+  const local = /127\.0\.0\.1|localhost/.test(API_BASE)
+  return (
+    <p
+      title={local ? 'Using the backend running on this machine.' : 'Backend changes on this machine are NOT used. Run the backend and `npm run dev:local` to try them.'}
+      style={{ position: 'fixed', left: 8, bottom: 8, zIndex: 80, margin: 0, padding: '3px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, fontFamily: 'system-ui', background: local ? '#065f46' : '#92400e', color: '#fff', opacity: 0.9, pointerEvents: 'auto' }}
+    >
+      API: {local ? 'local backend' : 'deployed backend (local backend changes not used)'}
+    </p>
   )
 }

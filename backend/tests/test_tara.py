@@ -136,3 +136,104 @@ def test_a_wordy_model_is_trimmed_not_thrown_away():
 
     c = Command(action="add", kind="stash", title="Passport " * 40, note="detail " * 200)
     assert len(c.title) <= 120 and len(c.note) <= 500  # still a usable command, not a fallback to rules
+
+
+# ── Product first: Tara hands a request to the site's product built for it ─────────────────────────────────
+TRIP = "I want you to give me an itinerary for nearby places in Bangalore"
+
+
+def test_a_trip_goes_to_safarnaama_not_a_made_up_itinerary(tmp_path):
+    # The model treats it as small talk; the product inventory still wins, and nothing is written by the model.
+    llm = _Seen(['{"action": "chat", "persona": "travel"}'])
+    agent = KeeperAgent(KeeperStore(tmp_path), llm, tools=ToolBox())
+    out = asyncio.run(agent.run(TRIP, NOW))
+    assert out["client_action"]["url"] == "/safarnaama?to=Bangalore"
+    assert out["client_action"]["label"] == "Plan Bangalore in Safarnaama" and out["client_action"]["auto"] is False
+    assert "Safarnaama" in out["reply"] and len(llm.prompts) == 1  # no chat answer was generated
+    assert '"safarnaama": plans trips' in llm.prompts[0][0]  # the router sees the product inventory
+
+
+def test_products_are_used_even_when_the_model_is_down(tmp_path):
+    agent = KeeperAgent(KeeperStore(tmp_path), _Seen([]), tools=ToolBox())
+    out = asyncio.run(agent.run("plan a trip to goa next weekend", NOW))
+    assert out["client_action"]["url"] == "/safarnaama?to=Goa"
+    out = asyncio.run(agent.run("my CI build failed with an error", NOW))
+    assert out["client_action"]["url"] == "/jasoos"
+
+
+def test_naming_a_product_or_saying_yes_hands_over_the_earlier_request(tmp_path):
+    offer = "If you'd like a more elaborate Safarnaama itinerary, just let me know!"
+    history = [{"role": "user", "text": TRIP}, {"role": "assistant", "text": offer}]
+    llm = _Seen(['{"action": "chat"}'])
+    agent = KeeperAgent(KeeperStore(tmp_path), llm, tools=ToolBox())
+    out = asyncio.run(agent.run("Why didn't you use Safarnaama for this ?", NOW, history=history))
+    assert out["client_action"]["url"] == "/safarnaama?to=Bangalore"
+    quiet = _Seen([])  # a "yes" to the offer needs no model at all
+    agent = KeeperAgent(KeeperStore(tmp_path), quiet, tools=ToolBox())
+    out = asyncio.run(agent.run("Yes I want one", NOW, history=history))
+    assert out["client_action"]["url"] == "/safarnaama?to=Bangalore" and quiet.prompts == []
+
+
+def test_everyday_requests_are_not_mistaken_for_products(tmp_path):
+    from app.keeper.tools import rule_product
+
+    for text in ("remind me to the new health insurance in March", "where did I put my travel bag",
+                 "I have a test tomorrow and I am failing to focus", "weather in Mumbai", "plan my day tomorrow"):  # fmt: skip
+        assert rule_product(text) is None, text
+    agent = KeeperAgent(KeeperStore(tmp_path), _Seen([]), tools=ToolBox())
+    out = asyncio.run(agent.run("remind me to the new health insurance in March", NOW))
+    assert out["command"].action == "add"
+
+
+def test_the_travel_tips_conversation_goes_to_safarnaama_at_every_turn(tmp_path):
+    """The exact conversation that went wrong: every turn ends in Safarnaama, never a made-up trip or directions."""
+    prefs = {"city": "Bengaluru"}
+    # 1. The model wants to answer as the travel planner in chat: Safarnaama takes it, with the user's city.
+    llm = _Seen(['{"action": "chat", "persona": "travel"}'])
+    out = asyncio.run(
+        KeeperAgent(KeeperStore(tmp_path), llm, tools=ToolBox()).run("Give me travel tips nearby", NOW, prefs=prefs)
+    )
+    assert out["client_action"]["url"] == "/safarnaama?to=Bengaluru" and out["client_action"]["cta"] == "Plan it"
+    assert len(llm.prompts) == 1  # no chat answer was written
+    said = [{"role": "user", "text": "Give me travel tips nearby"},
+            {"role": "assistant", "text": "Remember Safarnaama can plan the whole trip for you."}]  # fmt: skip
+    # 2. "I want you to do it" accepts the offer (the model would have given directions to somewhere).
+    quiet = _Seen([])
+    out = asyncio.run(
+        KeeperAgent(KeeperStore(tmp_path), quiet, tools=ToolBox()).run(
+            "I want you to do it", NOW, history=said, prefs=prefs
+        )
+    )
+    assert out["client_action"]["url"] == "/safarnaama?to=Bengaluru" and quiet.prompts == []
+    # 3. Even if the model routes the follow-up to directions, the product wins.
+    llm = _Seen(['{"action": "assist", "tool": "directions", "args": {"destination": "Munnar"}}'])
+    out = asyncio.run(
+        KeeperAgent(KeeperStore(tmp_path), llm, tools=ToolBox()).run(
+            "Why didn't you use safarnaama to give it ?", NOW, history=said, prefs=prefs
+        )
+    )
+    assert out["client_action"]["url"] == "/safarnaama?to=Bengaluru"
+
+
+@pytest.mark.parametrize(
+    ("text", "url"),
+    [
+        ("Give me list of places I can visit nearby this weekend", "/safarnaama?to=Bengaluru"),
+        ("Give me travel tips nearby", "/safarnaama?to=Bengaluru"),
+        ("what can I do in Goa this weekend", "/safarnaama?to=Goa"),
+        ("plan a tour of Jaipur", "/safarnaama?to=Jaipur"),
+        ("weekend getaway from Bangalore", "/safarnaama?to=Bangalore"),
+    ],
+)
+def test_trip_requests_reach_safarnaama_even_when_the_model_offers_a_web_search(tmp_path, text, url):
+    llm = _Seen([f'{{"action": "assist", "tool": "search", "args": {{"query": "{text}"}}}}'])
+    out = asyncio.run(
+        KeeperAgent(KeeperStore(tmp_path), llm, tools=ToolBox()).run(text, NOW, prefs={"city": "Bengaluru"})
+    )
+    assert out["client_action"]["url"] == url
+
+
+def test_nearby_is_never_used_as_a_destination(tmp_path):
+    llm = _Seen(['{"action": "assist", "tool": "product", "args": {"product": "safarnaama", "place": "nearby"}}'])
+    out = asyncio.run(KeeperAgent(KeeperStore(tmp_path), llm, tools=ToolBox()).run("Give me travel tips nearby", NOW))
+    assert out["client_action"]["url"] == "/safarnaama" and "nearby as the destination" not in out["reply"]

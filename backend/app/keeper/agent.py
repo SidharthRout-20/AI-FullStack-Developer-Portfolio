@@ -21,12 +21,23 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from app.config import PROJECT_ROOT
+from app.control import active
 from app.keeper import personas, schedule
 from app.keeper.models import KINDS, Command, Entry
 from app.keeper.parser import rule_parse
 from app.keeper.repo import RepoIndex
 from app.keeper.store import KeeperStore
-from app.keeper.tools import ACTIONS, TOOLS, ToolBox, ToolError, rule_settings, rule_tool
+from app.keeper.tools import (
+    ACTIONS,
+    TOOLS,
+    ToolBox,
+    ToolError,
+    accepted_offer,
+    products_menu,
+    rule_product,
+    rule_settings,
+    rule_tool,
+)
 from appcore.llm import for_task
 from appcore.llm.chat import ChatLLM
 from appcore.llm.structured import complete_json
@@ -59,6 +70,7 @@ tool (only for assist) and args:
         "settings"   {"setting": "voice"|"speed"|"pitch"|"tone"|"length"|"name"|"language"|"wake"|"speak"|"sounds"|
                       "keep"|"city"|"open", "value": e.g. "female", "faster", "lower", "professional", "short", "Sid",
                       "Hindi", "off", "Pune"} (the user's own preferences for how Tara talks and behaves)
+        "product"    {"product": one of this site's products below, "place": the destination for a trip, if named}
         "edit"       {"request": the change the user wants made to THIS site's own code, in their words, complete}
         "open"       {"target": app or website name or domain, or a product on this site: Safarnaama, CodeLens, Tara,
                       Jasoos, Quality}
@@ -84,12 +96,21 @@ title, place, person, date (YYYY-MM-DD, resolve relative dates from today), time
 recurring ("none"|"weekly"|"monthly"|"yearly"), subscription, every_days, every_months, times, subject,
 category, items, gift_idea, query (for find), note.
 
+This site's products (PRODUCT FIRST: when a request is what one of these does, hand it over with assist + product,
+never answer it yourself in chat):
+{products}
+
 Conventions:
+- Itineraries, trip plans, places to visit or things to do somewhere, day trips, getaways → assist + product
+  "safarnaama" with the place (never write an itinerary yourself: Safarnaama plans with real places and weather).
+- A GitHub repo or codebase to understand → product "codelens". A failing build, CI run, tests or a stack trace →
+  product "jasoos". How well the site's AI works, its evals or scores → product "quality".
+- A short "yes / sure / ok / I want one" right after Tara offered something → do exactly what was offered.
 - Questions like "where is X / where did I put X" → action "find", query "X". Statements of where something is
   ("passport is in the top drawer", "I parked on level 2, B14") → add (stash / parking). "find" is only for the
   user's OWN saved things: "who/what is <a public person, place or thing>" → assist + wiki.
 - "where did I park" → find + kind parking.  "what's due / my day" → brief.  "shopping list" → list + pantry.
-- "X returned the Y" / "got Y back" → done + loan.  "bought milk" → done + pantry.  "AC was serviced" → done + appliance.
+- "I lent X to Y" / "borrowed X from Y" → add + loan. "X returned the Y" / "got Y back" → done + loan.  "bought milk" → done + pantry.  "AC was serviced" → done + appliance.
 - "remind me to X at/on T" → add + care (subject "other", title X, date/time) — a one-off reminder.
 - Weather, news, "who/what is X", rates, live facts → assist with weather/news/wiki/web/currency/time.
 - "open / launch / go to X" → open. "play X" → play. "navigate / directions / take me to X" → directions.
@@ -113,7 +134,7 @@ Today is {today} ({weekday}); the user's local time is {time}."""
 ASSISTANT_SYSTEM = """You are Tara, a {tone} personal assistant. For this question you answer as {persona}.
 Your reply may be read aloud, so answer in {length} of plain speech (no markdown, lists, emojis or URLs), lead
 with the answer, and be specific. {name} Use the user's saved items and today's agenda below when relevant; never invent their data, bookings,
-messages or events. If a LOOK-UP RESULT is given, answer from it only and mention where it came from in a few words; when it is source
+messages or events, and never make up itineraries, schedules, prices or opening hours. If a LOOK-UP RESULT is given, answer from it only and mention where it came from in a few words; when it is source
 code, explain what it does in plain words and name the files and functions that matter instead of reading code out.
 Tara can look up weather, news, facts, exchange rates and the time anywhere, and open apps, play music, give
 directions, prepare calls, messages and emails, set timers and add calendar events: never say you have no internet or
@@ -223,7 +244,20 @@ class KeeperAgent:
         now = state["now"]
         rules = rule_parse(state["text"], now.date())
         command, routed_by, router_error, retry_after = rules, "rules", None, None
-        if (hit := rule_tool(state["text"])) and rules.action in ("help", "find", "chat"):
+        history = state.get("history") or []
+        home = str((state.get("prefs") or {}).get("city") or "")
+        handoff = active().tara.product_handoff  # the owner can turn "products first" off in the control room
+        if handoff and (
+            offer := accepted_offer(state["text"], history, home)
+        ):  # "yes" to a product Tara just offered: open it
+            command = Command(action="assist", tool=offer[0], args=offer[1])
+            detail = f"assist · {offer[1]['product']} (accepted offer)"
+            return {"command": command, "routed_by": "rules", "router_error": None, "router_retry_after": None,
+                    "trace": _trace(state, "understand", start, detail)}  # fmt: skip
+        product = rule_product(state["text"], history, home) if handoff else None
+        # A tool request beats the "X is in Y" storage pattern: "weather in Pune" is a look-up, not where weather is kept.
+        stash_guess = rules.action == "add" and rules.kind == "stash"
+        if (hit := product or rule_tool(state["text"])) and (rules.action in ("help", "find", "chat") or stash_guess):
             command = Command(action="assist", tool=hit[0], args=hit[1])  # tools still work without the model
         try:
             # Plain replacement, not str.format: the prompt contains JSON braces.
@@ -232,6 +266,7 @@ class KeeperAgent:
                 .replace("{weekday}", now.strftime("%A"))
                 .replace("{time}", now.strftime("%H:%M"))
                 .replace("{personas}", personas.router_menu())
+                .replace("{products}", products_menu())
             )
             llm_cmd = await asyncio.wait_for(
                 complete_json(for_task(self._get_llm(), "keeper.command"), system, _with_history(state), Command),
@@ -242,6 +277,19 @@ class KeeperAgent:
                 # "Change your voice" is a personal setting, never a code change (which only the owner may ask for).
                 if command.tool == "edit" and (hit := rule_settings(state["text"])):
                     command = command.model_copy(update={"tool": hit[0], "args": hit[1]})
+                # Product first: a request a product is built for never gets a made-up answer in chat or a web search.
+                # And if the model picked the travel planner persona to answer in chat, that is Safarnaama's job.
+                if handoff and not product and command.action == "chat" and command.persona == "travel":
+                    product = ("product", {"product": "safarnaama", **({"place": home.title()} if home else {})})
+                if product and (
+                    command.action == "chat" or command.tool in ("search", "web", "wiki", "product", "directions")
+                ):
+                    # The place read from the user's own words wins; the model's guess only fills a gap.
+                    args = {
+                        **{k: v for k, v in (command.args or {}).items() if v and command.tool == "product"},
+                        **product[1],
+                    }
+                    command = command.model_copy(update={"action": "assist", "tool": "product", "args": args})
         except Exception as exc:  # noqa: BLE001 - any LLM failure → rules
             router_error = type(exc).__name__
             retry_after = getattr(exc, "retry_after", None)  # the provider's own "try again in" hint, if any
@@ -399,6 +447,15 @@ class KeeperAgent:
     async def _use_tool(self, cmd: Command, state: KeeperState) -> dict[str, Any]:
         tool, args, now = cmd.tool or "", cmd.args or {}, state["now"]
         prefs = state.get("prefs") or {}
+        tara = active().tara
+        if tool == "edit" and not tara.code_proposals:
+            return {"client_action": None, "tool_facts": "", "tool_error": "Code proposals are turned off on this site.",
+                    "reply": "Code proposals are turned off on this site."}  # fmt: skip
+        if tool not in ACTIONS and tool not in ("code", "portfolio") and not tara.lookups:
+            return {
+                "tool_error": "Look-ups (weather, news, facts, rates) are turned off on this site.",
+                "tool_facts": "",
+            }
         if tool in ACTIONS:
             action, said = ToolBox.action(tool, args, now)
             if action:
@@ -551,7 +608,8 @@ def drop_name(text: str, name: str) -> str:
 
 def _with_history(state: KeeperState) -> str:
     """The message, with the last few turns so follow-ups ("remind me about that tomorrow") make sense."""
-    turns = [t for t in state.get("history") or [] if t.get("text")][-6:]
+    n = active().tara.history_turns
+    turns = [t for t in state.get("history") or [] if t.get("text")][-n:] if n else []
     if not turns:
         return state["text"]
     lines = [f"{'User' if t.get('role') == 'user' else 'Tara'}: {str(t['text'])[:300]}" for t in turns]
@@ -569,6 +627,8 @@ def _plausible(c: Command) -> bool:
     if c.action in ("add", "list") and not c.kind:
         return False
     if c.action == "assist" and c.tool not in TOOLS:
+        return False
+    if c.tool == "product" and not (c.args or {}).get("product"):
         return False
     if c.action == "add" and c.kind == "pantry" and not (c.items or c.title):
         return False
