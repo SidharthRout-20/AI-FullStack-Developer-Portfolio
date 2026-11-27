@@ -1,7 +1,7 @@
 /**
- * Playful space (PREVIEW, hidden): a bright, condensed-type take on the personal space, inspired by the motion of
- * illustrator portfolios but built around this site's own products and skills. Not linked from anywhere, kept out
- * of search (robots.txt + noindex); open it at /preview/playful while it is being developed.
+ * The personal space ("Off the clock"): a bright, condensed-type, playful side of the site, built around its own
+ * products and skills. The Studio (ShowcaseHub) stays the calm default for recruiters; the skin switch moves between
+ * them. Section ids match the links other pages use (/#about, /#expertise, /#experience, /#projects, /#contact).
  *
  * Motion, all transform/opacity (cheap to draw), paused off-screen, and off with reduced motion or lite mode:
  *  - name and headings rise word by word; letters of the name spring when hovered
@@ -39,7 +39,6 @@ import { ThemeToggle } from '../../theme/ThemeToggle'
 import { openPalette } from '../CommandPalette'
 import { EXPERTISE, SITE, TIMELINE } from '../config'
 import { FROZEN, PORTFOLIO, productHref, STATUSES } from '../products'
-import { SkillsChat } from '../SkillsChat'
 
 // Colours come from CSS variables so the page follows the site's light / dark theme (see THEME below).
 const INK = 'var(--pl-ink)'
@@ -293,7 +292,7 @@ function Featured({ palette, still }) {
 
   const cur = PORTFOLIO[at]
   return (
-    <section id="pl-work" aria-label="Featured work" style={{ marginTop: 170, textAlign: 'center', scrollMarginTop: 80 }}>
+    <section id="projects" aria-label="Featured work" style={{ marginTop: 170, textAlign: 'center', scrollMarginTop: 80 }}>
       <Rise text="Featured work" style={{ ...HEAD, fontSize: 'clamp(40px, 5.4vw, 76px)', lineHeight: 1, color: INK }} />
       <p style={{ margin: '10px 0 0', fontSize: 16, fontWeight: 500 }}>Four AI products, each solving one real problem end to end</p>
       <div
@@ -364,7 +363,7 @@ const TILT = [-3, 2.5, -1.5]
 
 function Skills({ palette }) {
   return (
-    <section id="pl-skills" aria-label="What I do" style={{ scrollMarginTop: 80, maxWidth: 1240, margin: '190px auto 0', padding: '0 20px', textAlign: 'center' }}>
+    <section id="expertise" aria-label="What I do" style={{ scrollMarginTop: 80, maxWidth: 1240, margin: '190px auto 0', padding: '0 20px', textAlign: 'center' }}>
       <Rise text="What I do" style={{ ...HEAD, fontSize: 'clamp(40px, 5.4vw, 76px)', lineHeight: 1, color: INK }} />
       <p style={{ margin: '10px 0 0', fontSize: 16, fontWeight: 500 }}>From interface to inference: {SITE.years}+ years, three disciplines</p>
       <div className="pl-skills" style={{ marginTop: 60, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 40, textAlign: 'left' }}>
@@ -474,7 +473,7 @@ function Experience() {
   const jobs = TIMELINE.filter((t) => t.kind === 'work')
   const [open, setOpen] = useState(0)
   return (
-    <section id="pl-exp" aria-label="Experience" style={{ maxWidth: 1040, margin: '180px auto 0', padding: '0 20px', scrollMarginTop: 80 }}>
+    <section id="experience" aria-label="Experience" style={{ maxWidth: 1040, margin: '180px auto 0', padding: '0 20px', scrollMarginTop: 80 }}>
       <div style={{ textAlign: 'center' }}>
         <Rise text="Experience" style={{ ...HEAD, fontSize: 'clamp(40px, 5.4vw, 76px)', lineHeight: 1, color: INK }} />
         <p style={{ margin: '10px 0 0', fontSize: 16, fontWeight: 500 }}>{SITE.current} · {SITE.years}+ years</p>
@@ -525,7 +524,7 @@ function Contact({ still }) {
     SITE.links.github && { href: SITE.links.github, label: 'GitHub' },
   ].filter(Boolean)
   return (
-    <footer ref={ref} id="pl-contact" style={{ marginTop: 180, background: 'var(--pl-band)', scrollMarginTop: 80, padding: '110px 16px 44px', textAlign: 'center', overflow: 'hidden' }}>
+    <footer ref={ref} id="contact" style={{ marginTop: 180, background: 'var(--pl-band)', scrollMarginTop: 80, padding: '110px 16px 44px', textAlign: 'center', overflow: 'hidden' }}>
       <motion.p aria-label="Contact" style={{ ...HEAD, fontWeight: 700, margin: 0, fontSize: 'clamp(84px, 25vw, 420px)', lineHeight: 0.8, letterSpacing: '-0.03em', color: INK, scaleY: still ? 1 : scaleY, transformOrigin: '50% 100%' }}>
         {[...'Contact'].map((ch, i) => (
           <motion.span key={i} aria-hidden="true" style={{ display: 'inline-block', transformOrigin: '50% 100%' }} whileHover={{ scaleY: 1.14, scaleX: 0.92, y: -6 }} transition={{ type: 'spring', stiffness: 420, damping: 10 }}>
@@ -589,10 +588,12 @@ function ContactForm() {
 
 /** Section links, search, the theme and Personal / Studio switch; a "preview" mark while this page is unreleased. */
 function TopNav() {
-  const links = [['pl-work', 'Work'], ['pl-skills', 'Skills'], ['pl-exp', 'Experience'], ['pl-contact', 'Contact']]
+  const links = [['projects', 'Work'], ['expertise', 'Skills'], ['experience', 'Experience'], ['contact', 'Contact']]
   return (
     <nav aria-label="Sections" style={{ position: 'fixed', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 30, display: 'flex', alignItems: 'center', gap: 4, padding: 5, borderRadius: 999, background: 'color-mix(in srgb, var(--pl-bg) 82%, transparent)', backdropFilter: 'blur(12px)', boxShadow: '0 10px 30px rgba(0,0,0,0.12)', border: '1px solid var(--pl-line)', maxWidth: 'calc(100vw - 96px)' }}>
-      <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '5px 9px', borderRadius: 999, background: INK, color: 'var(--pl-bg)', whiteSpace: 'nowrap' }}>Preview</span>
+      <a href="#about" aria-label={`${SITE.owner}: back to the top`} style={{ ...HEAD, fontSize: 13, letterSpacing: '0.04em', padding: '5px 10px', borderRadius: 999, background: INK, color: 'var(--pl-bg)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+        {SITE.owner.split(' ').map((w) => w[0]).join('')}
+      </a>
       {links.map(([id, label]) => (
         <a key={id} href={`#${id}`} className="pl-navlink" style={{ ...HEAD, letterSpacing: '0.04em', fontSize: 13.5, color: INK, textDecoration: 'none', padding: '6px 10px', borderRadius: 999 }}>{label}</a>
       ))}
@@ -635,7 +636,7 @@ function ScrollAids({ still }) {
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-export function PlayfulSpace() {
+export function PersonalSpace() {
   const reduce = useReducedMotion()
   const still = Boolean(reduce || LITE)
   const [pal, setPal] = useState(0)
@@ -643,15 +644,27 @@ export function PlayfulSpace() {
   const spin = useMotionValue(0)
   const time = useOwnerTime()
 
-  // This page only: the condensed headline font, and keep the preview out of search results.
+  // Links like /#experience from other pages: this space loads after the page, so scroll to the section once it exists.
+  useEffect(() => {
+    const go = () => {
+      const id = decodeURIComponent(window.location.hash.slice(1))
+      if (id) window.requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }))
+    }
+    const t = window.setTimeout(go, 80)
+    window.addEventListener('hashchange', go)
+    window.addEventListener('popstate', go)
+    return () => {
+      window.clearTimeout(t)
+      window.removeEventListener('hashchange', go)
+      window.removeEventListener('popstate', go)
+    }
+  }, [])
+
+  // The condensed headline font, loaded only when this space is open (the Studio never downloads it).
   useEffect(() => {
     const link = Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap' })
-    const robots = Object.assign(document.createElement('meta'), { name: 'robots', content: 'noindex, nofollow' })
-    document.head.append(link, robots)
-    return () => {
-      link.remove()
-      robots.remove()
-    }
+    document.head.append(link)
+    return () => link.remove()
   }, [])
 
   const recolour = () => {
@@ -673,12 +686,12 @@ export function PlayfulSpace() {
           @media (max-width: 480px) { .pl-more { grid-template-columns: minmax(0,1fr) !important } }
         `}</style>
 
-        <a href="#pl-work" className="sr-only focus:not-sr-only" style={{ position: 'fixed', top: 8, left: 8, zIndex: 50, padding: '8px 14px', borderRadius: 999, background: INK, color: 'var(--pl-bg)' }}>Skip to the work</a>
+        <a href="#projects" className="sr-only focus:not-sr-only" style={{ position: 'fixed', top: 8, left: 8, zIndex: 50, padding: '8px 14px', borderRadius: 999, background: INK, color: 'var(--pl-bg)' }}>Skip to the work</a>
         <ScrollAids still={still} />
         <TopNav />
-        <Link to="/" aria-label="Back to the main site" style={{ position: 'fixed', top: 14, right: 14, zIndex: 30, width: 50, height: 50, borderRadius: '50%', overflow: 'hidden', background: 'var(--pl-chip)', boxShadow: '0 12px 30px rgba(0,0,0,0.16)', display: 'block' }}>
+        <a href="#contact" aria-label="Get in touch" style={{ position: 'fixed', top: 14, right: 14, zIndex: 30, width: 50, height: 50, borderRadius: '50%', overflow: 'hidden', background: 'var(--pl-chip)', boxShadow: '0 12px 30px rgba(0,0,0,0.16)', display: 'block' }}>
           <img src={SITE.avatarFace || SITE.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-        </Link>
+        </a>
         <motion.button type="button" onClick={recolour} aria-label="Change the colours" whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.9 }} style={{ position: 'fixed', bottom: 14, right: 14, zIndex: 30, width: 50, height: 50, borderRadius: '50%', border: 0, background: 'var(--pl-chip)', color: INK, boxShadow: '0 12px 30px rgba(0,0,0,0.16)', display: 'grid', placeItems: 'center', cursor: 'pointer', rotate: spin }}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.5-.2-.8-.5-1.1-.3-.3-.5-.7-.5-1.2 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5Z" />
@@ -687,7 +700,7 @@ export function PlayfulSpace() {
         </motion.button>
 
         <main>
-          <header style={{ maxWidth: 1440, margin: '0 auto', padding: '92px 16px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+          <header id="about" style={{ scrollMarginTop: 80, maxWidth: 1440, margin: '0 auto', padding: '92px 16px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
             <Rise as="p" onView={false} text={SITE.location} style={{ ...HEAD, letterSpacing: '0.09em', fontSize: 14 }} />
             <p style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px 14px', margin: '4px 0 0', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: MUTED }}>
               {time && <span>{time.text} here</span>}
@@ -734,7 +747,6 @@ export function PlayfulSpace() {
           <Experience />
         </main>
         <Contact still={still} />
-        <SkillsChat />
       </div>
     </MotionConfig>
   )

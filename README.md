@@ -7,6 +7,7 @@ proofs of concept as an LLM Engineer).**
 [Live site](https://ai-full-stack-developer-portfolio-p-ruby.vercel.app) ·
 [Quality (evals)](https://ai-full-stack-developer-portfolio-p-ruby.vercel.app/quality) ·
 [API health](https://ai-full-stack-developer-portfolio-b.vercel.app/api/health) ·
+[How it works](docs/HOW_IT_WORKS.md) ·
 [Roadmap](ROADMAP.md)
 
 ![CI](https://github.com/SidharthRout-20/AI-FullStack-Developer-Portfolio/actions/workflows/ci.yml/badge.svg)
@@ -27,7 +28,7 @@ The single source of truth for product identity, status and visibility is
 | --- | --- | --- | --- |
 | 1 | **Safarnaama** (`/safarnaama`) | Planning a trip means juggling a dozen tabs and apps | Plans, places and moments in one story-like flow; Google sign-in (Neon Auth) to keep trips across devices; a "did you book it?" return prompt after provider hand-offs. Live prices and in-app booking need provider partnerships |
 | 2 | **CodeLens** (`/codelens`) | Joining a new codebase and waiting days for KT sessions | Paste a public GitHub repo: symbol-aware chunking, hybrid search (BM25 + embeddings, fused with RRF), an import graph and a guided onboarding pack, with live progress while it indexes |
-| 3 | **Tara** (`/tara`) | An assistant that actually gets things done, by voice or text | Voice-first assistant: "Hey Tara" and pause-aware listening, weather/news/facts/rates, device actions, memory and phone reminders, 20 expert personas picked per question, answers about this site's own code and documents, and owner-only code changes proposed as reviewed pull requests |
+| 3 | **Tara** (`/tara`) | An assistant that actually gets things done, by voice or text | Voice-first assistant: "Hey Tara" and pause-aware listening, weather/news/facts/rates, device actions, memory and phone reminders, 20 expert personas picked per question. **Products first**: trips go to Safarnaama (with the place filled in), repos to CodeLens, failing builds to Jasoos. Answers about this site's own code and documents, and owner-only code changes proposed as reviewed pull requests |
 | 4 | **Jasoos** (`/jasoos`) | A build, test or deploy failed and the log is thousands of lines long | Parses CI logs and stack traces into evidence, then reasons to a likely cause and fix |
 
 Frozen (shown as "in development"): Pramaan, Vaada, CareerPilot, FlowForge, Evolve. Their working code stays in the
@@ -36,9 +37,24 @@ repository (DocuMind RAG Studio at `/documind`, MeetingMind at `/meetingmind`) a
 Statuses follow one rule: **Live** only when the principal workflow works end to end, persists, is access-controlled
 where needed and is tested. The featured products are in **beta**.
 
-**Quality.** `/quality` runs evaluation suites per product or for the whole app: deterministic app checks (retrieval
-hit@k, parsers, rules, device actions) and live-model evals (routing, emotion, expert choice) with latency and fallback
-rates, stored with their date.
+**Quality.** `/quality` runs evaluation suites per product or for the whole app:
+- **App checks:** deterministic suites covering retrieval, parsers, rules, device actions and **13 security controls**.
+- **Live-model evals:** routing, emotion and expert choice.
+- **Metrics:** each score comes with a 95% interval, macro-F1, MRR/nDCG for retrieval, p50/p95 latency and coverage.
+- **History:** every run is kept, with trend lines, the change since the last run and regression flags.
+- **Standards:** each metric names the standard it follows (ISO/IEC 25010, NIST AI RMF, OWASP Top 10 for LLM apps and
+  OWASP API Top 10; aligned with, not certified).
+
+**Two faces of the home page.** The **Studio** (default) is calm and recruiter-first. **Off the clock**, the personal
+space, is bright and playful: a self-shuffling deck of product cards, a swipeable product strip, and scroll-driven
+type. The skin switch moves between them, and both follow light/dark mode.
+
+**Owner pages** (owner key, not linked or indexed):
+- `/control`, the control room: the AI provider (Groq free tier or Claude within a monthly budget), pausing products,
+  Tara's switches, and an audited change history.
+- `/insights`: cookie-free visit analytics with advice.
+
+How all of this works, including the logic behind the animations, is in **[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)**.
 
 ---
 
@@ -276,9 +292,15 @@ A monorepo: the portfolio, the shared core it is built on, and products that are
 │   │   ├── keeper/       # agent, parser, reminders, notify (ntfy/Telegram), vision
 │   │   ├── efi/          # Engineering Failure Investigator
 │   │   ├── products/     # careerpilot, codelens, evolve, flowforge, meetingmind, contact
+│   │   ├── control.py    # control room: provider switch + budget meter, product pause, Tara switches, audit
+│   │   ├── evals.py      # Quality: suites, statistics, history, security controls
+│   │   ├── visits.py     # cookie-free visit analytics (owner summary)
 │   │   └── llm_tasks.py  # the portfolio's LLM tasks, registered with the shared router
 │   └── tests/
-├── frontend/             # portfolio web app (React): hub, product pages, product apps; embeds Safarnaama
+├── frontend/             # portfolio web app (React): Studio + personal space (src/site/personal), product pages and
+│                         # apps, Quality / Insights / Control pages; embeds Safarnaama
+├── android/              # Tara as an Android app (Trusted Web Activity), built in CI
+├── docs/HOW_IT_WORKS.md  # the architecture and frontend-methods explainer
 ├── packages/
 │   ├── py-core/          # appcore: storage (SQLite / Postgres), doc store, LLM router + clients, security, settings
 │   └── web-core/         # @appcore/web: UI primitives, router, HTTP / SSE, light-dark mode, design system

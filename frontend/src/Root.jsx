@@ -9,6 +9,7 @@ import { CommandPalette } from './site/CommandPalette'
 import { Link, usePath } from '@appcore/web/router'
 import { ShellProvider } from '@appcore/web/ui'
 import { SITE } from './site/config'
+import { setSkin } from './theme/theme'
 import { HubPage } from './site/HubPage'
 import { productBySlug } from './site/products'
 import { SkinWelcome } from './theme/SkinWelcome'
@@ -21,8 +22,6 @@ const ProductPage = lazy(() => import('./site/ProductPage').then((m) => ({ defau
 const QualityPage = lazy(() => import('./site/QualityPage').then((m) => ({ default: m.QualityPage })))
 const InsightsPage = lazy(() => import('./site/InsightsPage').then((m) => ({ default: m.InsightsPage })))
 const ControlPage = lazy(() => import('./site/ControlPage').then((m) => ({ default: m.ControlPage })))
-// Hidden preview of a playful theme for the personal space: not linked anywhere, kept out of search (robots + noindex).
-const PlayfulSpace = lazy(() => import('./site/playful/PlayfulSpace').then((m) => ({ default: m.PlayfulSpace })))
 
 // Every product is its own code-split chunk, loaded only when opened.
 const APPS = [
@@ -63,7 +62,8 @@ function Routes() {
   useEffect(() => trackView(path), [path])
   useEffect(() => watchClicks(SITE.resume), [])
 
-  if (path === '/preview/playful' || path === '/preview/playful/') return <PlayfulRoute />
+  // The old preview address of the personal space: open the personal space itself.
+  if (path === '/preview/playful' || path === '/preview/playful/') return <ToPersonal />
   if (path === '/documind' || path.startsWith('/documind/')) return <DocuMindRoute />
   if (path === '/keeper' || path.startsWith('/keeper/')) return <KeeperRoute />
   const renamed = Object.keys(RENAMED).find((p) => path === p || path.startsWith(`${p}/`))
@@ -96,13 +96,9 @@ function Quality() {
   return <QualityPage />
 }
 
-function PlayfulRoute() {
-  useTitle(`Playful preview · ${SITE.owner}`)
-  return (
-    <Suspense fallback={<div style={{ minHeight: '100vh', background: '#fff' }} />}>
-      <PlayfulSpace />
-    </Suspense>
-  )
+function ToPersonal() {
+  useEffect(() => setSkin('personal'), [])
+  return <Redirect to="/" />
 }
 
 function Control() {
