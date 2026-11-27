@@ -21,6 +21,7 @@ from app.efi.parsers import ArtifactError
 from app.efi.reasoning import EFIModelError, EFIQuotaError
 from app.efi.service import BusyError, EFIService, LimitError, NotFoundError
 from app.efi.store import ConflictError
+from app.identity import account
 from appcore.llm.chat import LLMNotConfiguredError
 from appcore.security import limiter
 
@@ -33,7 +34,15 @@ def get_efi(request: Request) -> EFIService:
     return request.app.state.efi
 
 
-def owner_id(request: Request, x_efi_owner: Annotated[str | None, Header()] = None) -> str:
+def owner_id(
+    request: Request,
+    x_efi_owner: Annotated[str | None, Header()] = None,
+    authorization: Annotated[str | None, Header()] = None,
+) -> str:
+    """Signed in: your account (the same investigations on every device). Otherwise this browser's owner token."""
+    if who := account(request, authorization):
+        get_efi(request).maybe_purge()
+        return hashlib.sha256(b"efi-account|" + who.encode()).hexdigest()
     if not x_efi_owner or not _TOKEN.match(x_efi_owner):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing or invalid EFI owner token (X-EFI-Owner).")
     get_efi(request).maybe_purge()

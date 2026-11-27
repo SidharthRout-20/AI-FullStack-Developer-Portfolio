@@ -138,6 +138,7 @@ def create_app(
             "X-Trip-Owner",
             "X-Trip-Share",
             "X-Tara-Owner-Key",
+            "X-Visitor",
             "Authorization",
         ],
         allow_credentials=False,

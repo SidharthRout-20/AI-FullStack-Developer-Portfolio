@@ -2,7 +2,7 @@ import { MotionConfig } from 'motion/react'
 import { API_BASE } from './lib/apiBase'
 import { LITE } from './lib/lite'
 import { trackView, watchClicks } from './lib/visits'
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Backdrop } from './components/shell/Backdrop'
 import { AppSkeleton, PageSkeleton } from './components/Skeleton'
 import { CommandPalette } from './site/CommandPalette'
@@ -14,6 +14,7 @@ import { HubPage } from './site/HubPage'
 import { productBySlug } from './site/products'
 import { SkinWelcome } from './theme/SkinWelcome'
 import { ThemeToggle } from './theme/ThemeToggle'
+import { AccountButton } from './site/AccountButton'
 
 // Each product app is its own code-split chunk: the hub never downloads DocuMind's code.
 const DocuMindApp = lazy(() => import('./App'))
@@ -25,11 +26,11 @@ const ControlPage = lazy(() => import('./site/ControlPage').then((m) => ({ defau
 
 // Every product is its own code-split chunk, loaded only when opened.
 const APPS = [
-  { prefix: '/careerpilot', title: 'CareerPilot · Job-hunt copilot', label: 'CareerPilot', App: lazy(() => import('./products/careerpilot/CareerPilotApp')) },
-  { prefix: '/meetingmind', title: 'MeetingMind · Meeting intelligence', label: 'MeetingMind', App: lazy(() => import('./products/meetingmind/MeetingMindApp')) },
+  { labs: true, prefix: '/careerpilot', title: 'CareerPilot · Job-hunt copilot', label: 'CareerPilot', App: lazy(() => import('./products/careerpilot/CareerPilotApp')) },
+  { labs: true, prefix: '/meetingmind', title: 'MeetingMind · Meeting intelligence', label: 'MeetingMind', App: lazy(() => import('./products/meetingmind/MeetingMindApp')) },
   { prefix: '/codelens', title: 'CodeLens · Onboard onto any codebase', label: 'CodeLens', App: lazy(() => import('./products/codelens/CodeLensApp')) },
-  { prefix: '/flowforge', title: 'FlowForge · AI automation builder', label: 'FlowForge', App: lazy(() => import('./products/flowforge/FlowForgeApp')) },
-  { prefix: '/evolve', title: 'Evolve · Self-improving prompts', label: 'Evolve', App: lazy(() => import('./products/evolve/EvolveApp')) },
+  { labs: true, prefix: '/flowforge', title: 'FlowForge · AI automation builder', label: 'FlowForge', App: lazy(() => import('./products/flowforge/FlowForgeApp')) },
+  { labs: true, prefix: '/evolve', title: 'Evolve · Self-improving prompts', label: 'Evolve', App: lazy(() => import('./products/evolve/EvolveApp')) },
   { prefix: '/jasoos', title: 'Jasoos · Build-failure detective', label: 'Jasoos', App: lazy(() => import('./products/efi/EFIApp')) },
   // Safarnaama lives in products/safarnama/web (its own app); the portfolio embeds it at /safarnaama.
   { prefix: '/safarnaama', title: 'Safarnaama · Travel companion', label: 'Safarnaama', App: lazy(() => import('@safarnama/web/App')), props: { basePath: '/safarnaama' } },
@@ -43,12 +44,21 @@ function useTitle(title) {
   }, [title])
 }
 
-// Every product page gets the portfolio's backdrop, its skin-aware theme toggle and a link back to the hub.
+// Every product page gets the portfolio's backdrop, sign-in, its skin-aware theme toggle and a link back to the hub.
+function HeaderControls() {
+  return (
+    <div className="flex items-center gap-2">
+      <AccountButton />
+      <ThemeToggle />
+    </div>
+  )
+}
+
 const HOME = { to: '/', label: 'All products', short: 'Products' }
 
 export function Root() {
   return (
-    <ShellProvider backdrop={Backdrop} controls={ThemeToggle} home={HOME}>
+    <ShellProvider backdrop={Backdrop} controls={HeaderControls} home={HOME}>
       <Routes />
       <CommandPalette />
       <SkinWelcome />
@@ -128,14 +138,49 @@ function DocuMindRoute() {
   )
 }
 
-function ProductRoute({ title, label, App, props }) {
+function ProductRoute({ title, label, App, props, labs = false }) {
   useTitle(title)
+  const open = useLabsOpen(labs)
+  if (labs && open === false) return <Paused label={label} />
   return (
     <Suspense
       fallback={<AppSkeleton label={`Opening ${label}`} />}
     >
       <App {...props} />
     </Suspense>
+  )
+}
+
+/** The in-development apps keep one shared store for every visitor, so they are paused until they have per-person
+ * data (the owner can open them in the control room). null while asking; true if the API doesn't say. */
+function useLabsOpen(labs) {
+  const [open, setOpen] = useState(labs ? null : true)
+  useEffect(() => {
+    if (!labs) return
+    let live = true
+    fetch(`${API_BASE}/api/control/public`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => live && setOpen(d?.products?.labs !== false))
+      .catch(() => live && setOpen(true))
+    return () => {
+      live = false
+    }
+  }, [labs])
+  return open
+}
+
+function Paused({ label }) {
+  return (
+    <main className="mx-auto grid min-h-[70vh] max-w-xl place-items-center px-6 text-center">
+      <div>
+        <p className="text-[12px] font-semibold tracking-[0.18em] text-cyan-300 uppercase">In development</p>
+        <h1 className="mt-3 text-[28px] font-semibold text-white">{label} is paused for now</h1>
+        <p className="mt-3 text-[15px] text-ink-300">
+          It opens again once it keeps each person's data separate, like the four featured products. Until then, try one of those.
+        </p>
+        <Link to="/" className="mt-6 inline-block rounded-full bg-white/[0.08] px-5 py-2.5 text-[14px] font-semibold text-white hover:bg-white/[0.14]">See the products</Link>
+      </div>
+    </main>
   )
 }
 

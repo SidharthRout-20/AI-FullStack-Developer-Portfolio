@@ -29,11 +29,12 @@ from typing import Annotated, Any
 
 import httpx
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from rank_bm25 import BM25Okapi
 
+from app.identity import OWNER, account, browser, tenant
 from app.rag.retriever import reciprocal_rank_fusion, tokenize
 from appcore.ai import Lenient, ask_json, ask_text, clip, llm_failure, sse
 from appcore.docstore import DocStore, new_id
@@ -65,6 +66,24 @@ SYMBOL_START = re.compile(
     r"type\s+(\w+)\s*=|const\s+(\w+)\s*=\s*(?:async\s*)?\(|func\s+(?:\([^)]*\)\s*)?(\w+)|"
     r"(?:public|private|protected|static|\s)+[\w<>\[\],\s]+\s+(\w+)\s*\([^)]*\)\s*\{|fn\s+(\w+)|def\s+(\w+))"
 )
+# Definitions that don't start with a keyword: `morgan.format('dev', function …)`, `exports.parse = …`,
+# `Router.prototype.handle = function …`.
+REGISTERED = re.compile(
+    r"^\s*(?:[\w$]+\.)+\w+\(\s*['\"]([\w:-]+)['\"]\s*,\s*(?:async\s+)?(?:function|\()|"
+    r"^\s*(?:module\.)?exports\.([\w$]+)\s*=|^\s*(?:[\w$]+\.)+([\w$]+)\s*=\s*(?:async\s+)?function"
+)
+# Control-flow words the method pattern would otherwise take for names (`  if (x) {` is not a function called "if").
+NOT_SYMBOLS = {"if", "else", "for", "while", "switch", "catch", "return", "do", "try", "with", "new", "typeof", "await"}
+
+
+def symbol_at(line: str) -> str | None:
+    """The name a line starts defining, or None (control flow is never a definition)."""
+    for pattern in (SYMBOL_START, REGISTERED):
+        if m := pattern.match(line):
+            name = next((g for g in m.groups() if g), None)
+            if name and name not in NOT_SYMBOLS:
+                return name
+    return None
 
 
 class RepoIn(BaseModel):
@@ -116,9 +135,11 @@ class Pack(Lenient):
     questions: list[str] = Field(default_factory=list, max_length=6)
 
 
-ASK_SYSTEM = """You are a senior engineer explaining a codebase. Answer using ONLY the numbered code excerpts.
+ASK_SYSTEM = """You are a senior engineer explaining a codebase. The numbered excerpts below were retrieved from the
+repository for this question (the user did not write them); answer using ONLY them.
 Cite every claim with [n] (the excerpt number). Mention file paths and function names. Use short paragraphs or
-bullets and fenced code only when quoting. If the excerpts don't answer the question, say what's missing."""
+bullets and fenced code only when quoting. Name only files that appear in the excerpts: never guess a path.
+If the excerpts don't answer the question, say so plainly and say which of the excerpted files is the closest lead."""
 
 TOUR_SYSTEM = """You create onboarding tours for engineers new to a repository.
 Reply with ONE JSON object: {"overview": str (what the project is, its architecture, 4-6 sentences),
@@ -175,11 +196,55 @@ def chunk_python(path: str, source: str) -> list[dict[str, Any]]:
     return chunks
 
 
+DOC_FILE = re.compile(r"(?i)\.(md|mdx|rst|txt|adoc)$|(^|/)(readme|license|contributing|code_of_conduct)[^/]*$")
+CHANGELOG = re.compile(r"(?i)(^|/)(changelog|history|changes|news|releases?)[^/]*$")
+ABOUT_DOCS = re.compile(r"(?i)\b(readme|docs?|documentation|install|setup|usage|changelog|history|release|license)\b")
+
+
+def select(chunks: list[dict[str, Any]], fused: list[tuple[str, float]], query: str, k: int) -> list[tuple[str, float]]:
+    """The top k by fused rank, but a question about the code gets code: at most 2 doc excerpts and 1 changelog
+    excerpt (they mention every feature by name, so they outrank the code that implements it)."""
+    caps = (4, 2) if ABOUT_DOCS.search(query) else (2, 1)
+    docs = logs = 0
+    out = []
+    for i, score in fused:
+        path = chunks[int(i)]["path"]
+        if CHANGELOG.search(path):
+            if logs >= caps[1]:
+                continue
+            logs += 1
+        elif DOC_FILE.search(path):
+            if docs >= caps[0]:
+                continue
+            docs += 1
+        out.append((i, score))
+        if len(out) == k:
+            break
+    return out
+
+
+def focus(text: str, query: str, limit: int = 1800) -> str:
+    """A long excerpt cut to the lines that match the question (not just its first lines)."""
+    if len(text) <= limit:
+        return text
+    terms = {t for t in code_tokens(query) if len(t) > 2}
+    lines = text.splitlines()
+    best = max(range(len(lines)), key=lambda n: sum(t in lines[n].lower() for t in terms), default=0)
+    start = end = best
+    size = len(lines[best]) if lines else 0
+    while size < limit and (start > 0 or end < len(lines) - 1):
+        if start > 0:
+            start -= 1
+            size += len(lines[start]) + 1
+        if end < len(lines) - 1 and size < limit:
+            end += 1
+            size += len(lines[end]) + 1
+    return ("…\n" if start else "") + "\n".join(lines[start : end + 1]) + ("\n…" if end < len(lines) - 1 else "")
+
+
 def chunk_generic(path: str, source: str) -> list[dict[str, Any]]:
     lines = source.splitlines()
-    starts = [
-        (i + 1, next((g for g in m.groups() if g), None)) for i, ln in enumerate(lines) if (m := SYMBOL_START.match(ln))
-    ]
+    starts = [(i + 1, name) for i, ln in enumerate(lines) if (name := symbol_at(ln))]
     chunks: list[dict[str, Any]] = []
     if not starts:
         for i in range(0, len(lines), WINDOW_LINES):
@@ -370,13 +435,13 @@ class CodeService:
         sims = (vecs @ q) / (np.linalg.norm(vecs, axis=1) * (np.linalg.norm(q) or 1) + 1e-9)
         dense = [str(i) for i in np.argsort(-sims)[:40]]
         lexical = [str(i) for i in np.argsort(-bm25.get_scores(code_tokens(query)))[:40]]
-        fused = sorted(reciprocal_rank_fusion([dense, lexical]).items(), key=lambda kv: -kv[1])[:k]
-        return [{**chunks[int(i)], "score": round(s, 4)} for i, s in fused]
+        fused = sorted(reciprocal_rank_fusion([dense, lexical]).items(), key=lambda kv: -kv[1])
+        return [{**chunks[int(i)], "score": round(s, 4)} for i, s in select(chunks, fused, query, k)]
 
     async def ask(self, repo: dict[str, Any], question: str) -> dict[str, Any]:
         hits = await self.search(repo["id"], question)
         context = "\n\n".join(
-            f"[{n}] {h['path']} L{h['start']}-{h['end']} ({h['symbol'] or 'block'})\n```\n{clip(h['text'], 1800)}\n```"
+            f"[{n}] {h['path']} L{h['start']}-{h['end']} ({h['symbol'] or 'block'})\n```\n{focus(h['text'], question)}\n```"
             for n, h in enumerate(hits, start=1)
         )
         answer = await ask_text(
@@ -500,12 +565,24 @@ def _repo(svc: CodeService, repo_id: str) -> dict[str, Any]:
     return doc
 
 
+# Whose list a repository is on. Indexed code is public GitHub code, so a repo page opens for anyone with its link
+# (share it with a new joiner); the list and deleting are per person (app.identity).
+Who = Annotated[str, Depends(tenant)]
+
+
+def _mine(doc: dict[str, Any], who: str) -> bool:
+    tenants = doc.get("tenants")
+    return who in tenants if tenants is not None else who == OWNER  # made before identities: the site owner's
+
+
 @router.post("/repos")
 @limiter.limit("5/minute")
-async def index_repo(request: Request, body: RepoIn, svc: Code) -> StreamingResponse:
+async def index_repo(request: Request, body: RepoIn, svc: Code, who: Who) -> StreamingResponse:
     async def events() -> AsyncIterator[str]:
         try:
             async for ev in svc.index(body.url):
+                if ev.get("event") == "done" and ev.get("repo", {}).get("id"):
+                    svc.db.patch("repos", ev["repo"]["id"], {"tenants": [who]})
                 yield sse(ev.pop("event"), ev)
         except HTTPException as exc:
             yield sse("error", {"message": exc.detail})
@@ -521,9 +598,30 @@ async def index_repo(request: Request, body: RepoIn, svc: Code) -> StreamingResp
     )
 
 
+@router.post("/claim")
+def claim_repos(
+    request: Request,
+    svc: Code,
+    authorization: Annotated[str | None, Header()] = None,
+    x_visitor: Annotated[str | None, Header()] = None,
+) -> dict[str, int]:
+    """Just signed in: the repos this browser indexed join the account's list (on every device)."""
+    to, came_from = account(request, authorization), browser(x_visitor)
+    if not to:
+        raise HTTPException(401, "Sign in first.")
+    moved = 0
+    for r in svc.db.list("repos", limit=500):
+        tenants = r.get("tenants") or []
+        if came_from in tenants and to not in tenants:
+            svc.db.patch("repos", r["id"], {"tenants": [t for t in tenants if t != came_from] + [to]})
+            moved += 1
+    return {"moved": moved}
+
+
 @router.get("/repos")
-def list_repos(svc: Code) -> list[dict[str, Any]]:
-    return [public(r) for r in svc.db.list("repos", limit=50)]
+def list_repos(svc: Code, who: Who) -> list[dict[str, Any]]:
+    """Your repositories (each person sees only the ones they indexed)."""
+    return [public(r) for r in svc.db.list("repos", limit=500) if _mine(r, who)][:50]
 
 
 @router.get("/repos/{repo_id}")
@@ -532,8 +630,11 @@ def get_repo(repo_id: str, svc: Code) -> dict[str, Any]:
 
 
 @router.delete("/repos/{repo_id}", status_code=204)
-def delete_repo(repo_id: str, svc: Code) -> None:
-    _repo(svc, repo_id)
+def delete_repo(repo_id: str, svc: Code, who: Who) -> None:
+    """Only the person who indexed it can remove it (anyone else gets 404, as if it weren't there)."""
+    doc = _repo(svc, repo_id)
+    if not _mine(doc, who):
+        raise HTTPException(404, "Repository not indexed.")
     svc.delete(repo_id[:40])
 
 

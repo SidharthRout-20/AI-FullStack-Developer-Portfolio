@@ -315,6 +315,25 @@ place_query for map search). Reply with ONE JSON object:
 
 
 # ── Tools ────────────────────────────────────────────────────────────────
+def _fold(s: Any) -> str:
+    """Lower case without accents: "Goā" and "goa" compare equal."""
+    import unicodedata
+
+    return (
+        "".join(c for c in unicodedata.normalize("NFKD", str(s or "")) if not unicodedata.combining(c)).lower().strip()
+    )
+
+
+def _same(a: Any, b: Any) -> bool:
+    return bool(a) and bool(b) and _fold(a) == _fold(b)
+
+
+def _significant(x: dict[str, Any]) -> bool:
+    """A city or town people travel to, not a hamlet that shares the name: a capital or seat, or 5,000+ people."""
+    code = str(x.get("feature_code") or "")
+    return code.startswith(("PPLA", "PPLC", "ADM")) or (x.get("population") or 0) >= 5000
+
+
 def _near(hit: dict[str, Any], near: tuple[float, float]) -> dict[str, Any] | None:
     """Reject matches > ~100 km from the destination (same-name places elsewhere)."""
     return hit if abs(hit["lat"] - near[0]) <= 1.0 and abs(hit["lng"] - near[1]) <= 1.0 else None
@@ -342,20 +361,46 @@ class Tools:
         return self._client
 
     async def geocode_city(self, name: str, country: str | None) -> dict[str, Any] | None:
-        r = await self.client.get("https://geocoding-api.open-meteo.com/v1/search", params={"name": name, "count": 5})
+        """The destination's coordinates. Never a place in another country, and never a hamlet that merely shares the
+        name: "Goa" alone matches Genoa (Italy) first in Open-Meteo, and its Indian matches are villages, because Goa
+        is a state. Open-Meteo first (it gives the timezone), then OpenStreetMap, which knows states and regions."""
+        r = await self.client.get("https://geocoding-api.open-meteo.com/v1/search", params={"name": name, "count": 10})
         results = r.json().get("results") or []
         if country:
-            results = sorted(results, key=lambda x: country.lower() not in str(x.get("country", "")).lower())
-        if not results:
-            return None
-        x = results[0]
-        return {
-            "name": x["name"],
-            "country": x.get("country"),
-            "lat": x["latitude"],
-            "lng": x["longitude"],
-            "timezone": x.get("timezone"),
-        }
+            results = [x for x in results if _same(country, x.get("country"))]
+        good = [x for x in results if _same(name, x.get("name")) and _significant(x)]
+        if good:
+            x = max(good, key=lambda x: x.get("population") or 0)
+            return {"name": x["name"], "country": x.get("country"), "lat": x["latitude"], "lng": x["longitude"],
+                    "timezone": x.get("timezone")}  # fmt: skip
+        if hit := await self._nominatim_city(name, country):
+            return hit
+        x = results[0] if results else None  # last resort, still in the right country
+        return {"name": x["name"], "country": x.get("country"), "lat": x["latitude"], "lng": x["longitude"],
+                "timezone": x.get("timezone")} if x else None  # fmt: skip
+
+    async def _nominatim_city(self, name: str, country: str | None) -> dict[str, Any] | None:
+        query = f"{name}, {country}" if country else name
+        async with self._nominatim_lock:
+            started = time.monotonic()
+            try:
+                r = await self.client.get(
+                    "https://nominatim.openstreetmap.org/search",
+                    params={"q": query, "format": "jsonv2", "limit": 3, "addressdetails": 1},
+                    timeout=httpx.Timeout(10, connect=5),
+                )
+                rows = r.json() if r.status_code == 200 else []
+            except (httpx.HTTPError, ValueError):
+                rows = []
+            finally:
+                await asyncio.sleep(max(0.0, 1.05 - (time.monotonic() - started)))
+        for row in rows:
+            got_country = (row.get("address") or {}).get("country")
+            if country and not _same(country, got_country):
+                continue
+            return {"name": name.strip().title() if name.islower() else name.strip(), "country": got_country or country,
+                    "lat": float(row["lat"]), "lng": float(row["lon"]), "timezone": None}  # fmt: skip
+        return None
 
     async def geocode_place(self, query: str, near: tuple[float, float]) -> dict[str, Any] | None:
         """Photon first (fast, typo-tolerant); if it misses, fails or throttles us (shared hosting IPs often are),

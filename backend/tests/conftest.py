@@ -75,8 +75,20 @@ def service_factory():
     return lambda s: RAGService(s, llm_factory=fake_llm_factory, embedder=FakeEmbedder())
 
 
+def as_visitor(c, open_labs: bool = True):
+    """What a real browser and the owner would do: send a browser identity (app.identity), and open the in-development
+    apps in the control room (they are paused by default) so their own tests can exercise them."""
+    from app.control import ControlConfig
+
+    c.headers["X-Visitor"] = "test-browser-0000000001"
+    if open_labs:
+        cfg = ControlConfig()
+        c.app.state.control.save(cfg.model_copy(update={"products": {**cfg.products, "labs": True}}))
+    return c
+
+
 @pytest.fixture
 def client(settings, service_factory):
     app = create_app(settings, service_factory=service_factory)
     with TestClient(app) as c:
-        yield c
+        yield as_visitor(c)

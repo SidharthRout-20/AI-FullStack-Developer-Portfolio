@@ -13,7 +13,9 @@
     "./device": "./src/device.js",
     "./theme": "./src/theme.js",
     "./styles/core.css": "./src/styles/core.css",
-    "./styles/theme-light.css": "./src/styles/theme-light.css"
+    "./styles/theme-light.css": "./src/styles/theme-light.css",
+    "./account": "./src/account.js",
+    "./identity": "./src/identity.js"
   },
   "scripts": {
     "lint": "eslint ."

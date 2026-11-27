@@ -47,13 +47,14 @@ export function sessionError(product, status, base) {
   return `${product}: couldn't start a session (${status}).`
 }
 
-/** JSON + SSE helpers bound to one backend base URL. */
-export function createClient(base) {
+/** JSON + SSE helpers bound to one backend base URL. `options.headers()` (sync or async) adds headers to every call. */
+export function createClient(base, options = {}) {
+  const extra = async () => (options.headers ? await options.headers() : {})
   async function http(method, path, body, headers = {}) {
     const isRaw = body instanceof Blob
     const res = await fetch(`${base}${path}`, {
       method,
-      headers: { Accept: 'application/json', ...(body !== undefined && !isRaw ? { 'Content-Type': 'application/json' } : {}), ...headers },
+      headers: { Accept: 'application/json', ...(body !== undefined && !isRaw ? { 'Content-Type': 'application/json' } : {}), ...(await extra()), ...headers },
       body: body === undefined ? undefined : isRaw ? body : JSON.stringify(body),
     })
     if (!res.ok) throw await failure(res)
@@ -64,7 +65,7 @@ export function createClient(base) {
   async function streamPost(path, body, onEvent, signal) {
     const res = await fetch(`${base}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...(await extra()) },
       body: JSON.stringify(body),
       signal,
     })

@@ -54,6 +54,10 @@ type. The skin switch moves between them, and both follow light/dark mode.
   Tara's switches, and an audited change history.
 - `/insights`: cookie-free visit analytics with advice.
 
+**One sign-in, private data.** A **Sign in** button (Google, or an emailed link, through Neon Auth) sits in every
+product. It's optional, because each product already keeps every visitor's data private to their browser. Signed in,
+your Tara items, CodeLens repos, Jasoos investigations and Safarnaama trips follow you to every device.
+
 How all of this works, including the logic behind the animations, is in **[docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md)**.
 
 ---

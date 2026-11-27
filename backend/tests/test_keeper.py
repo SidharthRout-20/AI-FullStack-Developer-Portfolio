@@ -264,7 +264,9 @@ def test_access_key_and_llm_router(settings):
         assert c.get("/api/keeper/entries").status_code == 401
         assert c.get("/api/keeper/entries", headers={"X-Keeper-Key": "wrong"}).status_code == 401
         r = c.post(
-            "/api/keeper/command", json={"text": "got the ladder from sam"}, headers={"X-Keeper-Key": "s3cret-key"}
+            "/api/keeper/command",
+            json={"text": "got the ladder from sam"},
+            headers={"X-Keeper-Key": "s3cret-key", "X-Visitor": "test-browser-0000000001"},
         )
         body = r.json()
         assert body["routed_by"] == "llm" and body["entries"][0]["data"]["direction"] == "borrowed"
@@ -454,7 +456,7 @@ def test_tijori_answers_the_weather_instead_of_refusing(tmp_path):
     agent = KeeperAgent(KeeperStore(tmp_path), llm, tools=ToolBox(_fake_fetch))
     out = asyncio.run(agent.run("how's the weather in Pune today?", dt.datetime(2030, 5, 1, 9, 0)))
     assert out["reply"] == "It's 27 degrees and partly cloudy in Pune." and out["card"]["type"] == "weather"
-    assert "LOOK-UP RESULT: Weather for Pune" in llm.prompts[1][0]
+    assert "LOOK-UP RESULT: (Source: Open-Meteo) Weather for Pune" in llm.prompts[1][0]
     assert "never say you have no internet" in llm.prompts[1][0]
 
 

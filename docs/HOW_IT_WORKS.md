@@ -19,6 +19,7 @@ root.
   - [3.4 Retrieval (RAG) and confidentiality](#34-retrieval-rag-and-confidentiality)
   - [3.5 Evaluations, history and security controls](#35-evaluations-history-and-security-controls)
   - [3.6 Visits, reminders and code proposals](#36-visits-reminders-and-code-proposals)
+  - [3.7 Identity, sign-in and per-person data](#37-identity-sign-in-and-per-person-data)
 - [4. Running and testing it](#4-running-and-testing-it)
 
 ---
@@ -147,9 +148,11 @@ with the look computed from the scroll position:
   `scale = 1 − min(|d|, 1) × 0.12`. Centred cards stand upright; neighbours tilt away and sink.
 - **Which one is centred** (for the live screen and labels): `round(scrollX / step)`, updated by `useMotionValueEvent`.
   React only re-renders when that whole number changes.
-- **Mouse drag.** Touch and trackpads scroll natively. For a mouse, `pointerdown` captures the pointer and turns snapping
-  off. `pointermove` sets `scrollLeft` directly. On release the strip scrolls smoothly to the nearest step and snapping
-  is restored. A click right after a drag is swallowed, so a drag never opens a product.
+- **Mouse drag.** Touch and trackpads scroll natively. For a mouse, a press only becomes a drag once the pointer has
+  moved more than 6 px. Only then does the strip capture the pointer and turn snapping off, and `pointermove` sets
+  `scrollLeft` directly. On release it scrolls smoothly to the nearest step and snapping is restored. A plain click is
+  never captured, so *Try it* and *Details* open normally; only the click that ends a real drag is swallowed. (Capturing
+  on press, as an earlier version did, sent every click to the strip instead of the link, so no product opened.)
 - **The live screen.** The centred card's screenshot is 125% tall and pans `0 → −16%` and back over 9 s, like a screen
   recording. Only the centred card pans, and only while on screen.
 
@@ -344,6 +347,37 @@ hand-off with its link already filled in, e.g. `/safarnaama?to=Bengaluru`).
 
   It then starts a GitHub workflow that opens a pull request, and a review job checks it. Branch protection means only a
   human merge reaches `main`.
+
+### 3.7 Identity, sign-in and per-person data
+
+Every product keeps each person's data apart. `backend/app/identity.py` decides who is calling, in this order:
+
+1. **The site owner:** a valid owner key (`X-Tara-Owner-Key`), sent from the owner's own browser once it has been
+   unlocked in Insights, the control room or Tara.
+2. **A signed-in account:** Google or an emailed link through Neon Auth. The browser sends the short-lived JWT as
+   `Authorization: Bearer …`; the server verifies it against Neon's public keys (`appcore.accounts`).
+3. **A browser:** a random id the browser makes once (`X-Visitor`, from `packages/web-core/src/identity.js`).
+
+Only hashes are used as ids; tokens, JWTs and user ids are never stored, and nothing in a request body can choose who
+you are.
+
+- **Tara:** every row has an `owner` column (added without touching existing rows, which become the owner's). Each
+  request sets whose data it is in a context variable (`app.keeper.store.OWNER`), and every read and write filters on
+  it. Even with another person's entry id you get 404. Work outside a request (the reminder tick, the morning brief)
+  sees only the owner's data, so phone pushes are the owner's alone; other people's reminders ring inside Tara.
+- **CodeLens:** each repository records who indexed it. "All repos" lists only yours and only you can delete yours;
+  a repo's link still opens for anyone (share it with a new joiner). Indexed code is public GitHub code.
+- **Jasoos:** signed in, investigations belong to the account; otherwise to this browser's owner token.
+- **Safarnaama:** trips work the same way (it was the first to have sign-in).
+- **FlowForge:** a flow's Tara step saves into the Tara of whoever runs the flow; webhooks have no caller and use the
+  owner's.
+- **One sign-in for everything.** The Neon Auth client lives in `packages/web-core/src/account.js`, shared by every
+  product, so signing in anywhere signs you in everywhere. The **Sign in** button sits in every product header and in
+  Tara's sidebar (`frontend/src/site/AccountButton.jsx`). It's optional: everything works without it, for that browser.
+- **Claiming.** On signing in, `claimAll()` asks Tara, CodeLens and Safarnaama to move what this browser made into the
+  account (`POST /api/keeper/claim`, `/api/code/claim`, `/api/trips/claim`), so it follows you to every device.
+- **In-development apps** (CareerPilot, FlowForge, Evolve, MeetingMind) still keep one shared store, so they are paused
+  by default (the control room can open them for a demo) and their pages say so.
 
 ---
 

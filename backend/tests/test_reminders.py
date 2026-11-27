@@ -99,8 +99,10 @@ def cron_client(settings, service_factory, monkeypatch):
         sent.append({"topic": topic, "title": title, "urgent": urgent, "actions": actions})
 
     monkeypatch.setattr(notify, "send_ntfy", fake_ntfy)
-    s = settings.model_copy(update={"cron_secret": SecretStr("tick-secret"), "background_jobs": False})
+    s = settings.model_copy(update={"cron_secret": SecretStr("tick-secret"), "background_jobs": False,
+                                    "tara_owner_key": SecretStr("owner-key")})  # fmt: skip
     with TestClient(create_app(s, service_factory=service_factory)) as c:
+        c.headers["X-Tara-Owner-Key"] = "owner-key"  # phone reminders are the site owner's (app.identity)
         c.sent = sent  # type: ignore[attr-defined]
         yield c
 

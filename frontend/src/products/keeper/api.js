@@ -1,4 +1,5 @@
 /** Typed client for /api/keeper. Sends the local timezone offset and the optional access key. */
+import { identityHeaders } from '@appcore/web/identity'
 import { API_BASE as BASE } from '../../lib/apiBase'
 
 const KEY_STORAGE = 'keeper-access-key'
@@ -32,9 +33,15 @@ async function call(path, init = {}) {
   if (init.body) headers.set('Content-Type', 'application/json')
   const key = getAccessKey()
   if (key) headers.set('X-Keeper-Key', key)
+  // Whose Tara this is: the site owner's browser, the signed-in account, or this browser.
+  for (const [k, v] of Object.entries(await identityHeaders())) headers.set(k, v)
+  if (getOwnerKey()) headers.set('X-Tara-Owner-Key', getOwnerKey())
 
   const res = await fetch(`${BASE}/api/keeper${path}`, { ...init, headers })
-  if (res.status === 401) throw new KeyRequiredError()
+  if (res.status === 401) {
+    const detail = await res.clone().json().then((b) => b.detail).catch(() => '')
+    if (/access key/i.test(String(detail))) throw new KeyRequiredError()
+  }
   if (!res.ok) {
     const detail = await res
       .json()
@@ -95,10 +102,14 @@ export const keeperApi = {
     return call('/reminders/settings', { method: 'PUT', body: JSON.stringify(body) })
   },
   testReminder: () => post('/reminders/test'),
+  /** Just signed in: move what this browser saved into the account (so it follows you to every device). */
+  claim: () => post('/claim'),
   /** Photos go through fetch (not <img src>) so the access-key header is sent; returns an object URL. */
   photoUrl: async (id) => {
     const key = getAccessKey()
-    const res = await fetch(`${BASE}/api/keeper/photos/${id}`, { headers: key ? { 'X-Keeper-Key': key } : {} })
+    const owner = getOwnerKey()
+    const headers = { ...(await identityHeaders()), ...(key ? { 'X-Keeper-Key': key } : {}), ...(owner ? { 'X-Tara-Owner-Key': owner } : {}) }
+    const res = await fetch(`${BASE}/api/keeper/photos/${id}`, { headers })
     if (!res.ok) throw new Error('Photo unavailable')
     return URL.createObjectURL(await res.blob())
   },

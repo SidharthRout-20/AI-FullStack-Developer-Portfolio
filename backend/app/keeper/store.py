@@ -1,7 +1,14 @@
-"""Keeper storage: entries, settings and photos in one database (local SQLite file, or shared Postgres)."""
+"""Keeper storage: entries, settings and photos in one database (local SQLite file, or shared Postgres).
+
+Every row belongs to one person (`owner`): the site owner ("owner"), a signed-in account ("u:…") or a browser
+("b:…"), see app.identity. Each request sets whose data it is (`OWNER`, a context variable set by the API), and every
+read and write here filters on it, so one person's things are invisible to everyone else. Work that runs outside a
+request (the reminder tick, the morning brief) sees only the site owner's data: phone pushes are the owner's alone.
+"""
 
 from __future__ import annotations
 
+import contextvars
 import datetime as dt
 import json
 import re
@@ -12,6 +19,9 @@ from typing import Any
 
 from app.keeper.models import Entry, EntryIn
 from appcore.db import open_db
+
+# Whose data this request is about. Outside a request: the site owner.
+OWNER: contextvars.ContextVar[str] = contextvars.ContextVar("keeper_owner", default="owner")
 
 _SCHEMA = (
     """CREATE TABLE IF NOT EXISTS {entries} (
@@ -78,10 +88,31 @@ class KeeperStore:
     def __init__(self, root: Path, url: str | None = None) -> None:
         self.db = open_db("keeper", root / "keeper.sqlite3", url)
         self.db.migrate(_SCHEMA)
+        self._add_owner()
+
+    def _add_owner(self) -> None:
+        """Add the `owner` column to stores made before identities (additive; existing rows become the owner's)."""
+        for table in ("entries", "photos"):
+            exists = "IF NOT EXISTS " if self.db.dialect == "postgres" else ""
+            try:
+                with self.db.tx() as c:
+                    c.execute(f"ALTER TABLE {{{table}}} ADD COLUMN {exists}owner TEXT")
+            except Exception as exc:  # noqa: BLE001 - SQLite has no IF NOT EXISTS here: "duplicate column" means done
+                if "duplicate" not in str(exc).lower() and "exists" not in str(exc).lower():
+                    raise
+        with self.db.tx() as c:
+            c.execute("UPDATE {entries} SET owner = 'owner' WHERE owner IS NULL")
+            c.execute("UPDATE {photos} SET owner = 'owner' WHERE owner IS NULL")
+            c.execute("CREATE INDEX IF NOT EXISTS {ix_entries_owner} ON {entries}(owner, kind, status)")
+
+    @staticmethod
+    def _owner() -> str:
+        return OWNER.get()
 
     @staticmethod
     def _row(r: Any) -> Entry:
         d = dict(r)
+        d.pop("owner", None)
         d["data"] = json.loads(d["data"] or "{}")
         return Entry.model_validate(d)
 
@@ -98,6 +129,7 @@ class KeeperStore:
             "data": json.dumps(e.get("data") or {}),
             "created_at": now,
             "updated_at": now,
+            "owner": self._owner(),
         }
         if isinstance(row["due"], dt.date):
             row["due"] = row["due"].isoformat()
@@ -111,7 +143,7 @@ class KeeperStore:
 
     def get(self, entry_id: str) -> Entry | None:
         with self.db.tx() as c:
-            r = c.execute("SELECT * FROM {entries} WHERE id = ?", (entry_id,)).fetchone()
+            r = c.execute("SELECT * FROM {entries} WHERE id = ? AND owner = ?", (entry_id, self._owner())).fetchone()
         return self._row(r) if r else None
 
     def update(self, entry_id: str, changes: dict[str, Any]) -> Entry | None:
@@ -125,8 +157,8 @@ class KeeperStore:
         sets["updated_at"] = _now()
         with self.db.tx() as c:
             c.execute(
-                f"UPDATE {{entries}} SET {', '.join(f'{k} = ?' for k in sets)} WHERE id = ?",  # noqa: S608 - whitelisted columns
-                (*sets.values(), entry_id),
+                f"UPDATE {{entries}} SET {', '.join(f'{k} = ?' for k in sets)} WHERE id = ? AND owner = ?",  # noqa: S608 - whitelisted columns
+                (*sets.values(), entry_id, self._owner()),
             )
         return self.get(entry_id)
 
@@ -135,13 +167,13 @@ class KeeperStore:
         if entry is None:
             return False
         with self.db.tx() as c:
-            c.execute("DELETE FROM {entries} WHERE id = ?", (entry_id,))
+            c.execute("DELETE FROM {entries} WHERE id = ? AND owner = ?", (entry_id, self._owner()))
         if entry.photo_id:
             self.delete_photo(entry.photo_id)
         return True
 
     def list(self, kind: str | None = None, *, include_done: bool = False) -> list[Entry]:
-        sql, args = "SELECT * FROM {entries} WHERE 1=1", []
+        sql, args = "SELECT * FROM {entries} WHERE owner = ?", [self._owner()]
         if kind:
             sql += " AND kind = ?"
             args.append(kind)
@@ -168,20 +200,36 @@ class KeeperStore:
 
     def counts(self) -> dict[str, int]:
         with self.db.tx() as c:
-            rows = c.execute("SELECT kind, COUNT(*) n FROM {entries} WHERE status = 'active' GROUP BY kind").fetchall()
+            rows = c.execute(
+                "SELECT kind, COUNT(*) n FROM {entries} WHERE status = 'active' AND owner = ? GROUP BY kind",
+                (self._owner(),),
+            ).fetchall()
         return {r["kind"]: r["n"] for r in rows}
 
+    def claim(self, from_owner: str, to_owner: str) -> int:
+        """Move everything one browser made into the account that signed in on it (nothing else is touched)."""
+        if not from_owner.startswith("b:") or not to_owner.startswith("u:"):
+            return 0
+        with self.db.tx() as c:
+            n = c.execute("UPDATE {entries} SET owner = ? WHERE owner = ?", (to_owner, from_owner)).rowcount
+            c.execute("UPDATE {photos} SET owner = ? WHERE owner = ?", (to_owner, from_owner))
+        return n
+
     # ── Meta (small key/value: last timezone seen, last brief sent) ────────
+    def _key(self, key: str) -> str:
+        owner = self._owner()
+        return key if owner == "owner" else f"{owner}|{key}"
+
     def get_meta(self, key: str) -> str | None:
         with self.db.tx() as c:
-            r = c.execute("SELECT value FROM {meta} WHERE key = ?", (key,)).fetchone()
+            r = c.execute("SELECT value FROM {meta} WHERE key = ?", (self._key(key),)).fetchone()
         return r["value"] if r else None
 
     def set_meta(self, key: str, value: str) -> None:
         with self.db.tx() as c:
             c.execute(
                 "INSERT INTO {meta}(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (key, value),
+                (self._key(key), value),
             )
 
     # ── Photos ─────────────────────────────────────────────────────────────
@@ -192,7 +240,8 @@ class KeeperStore:
         photo_id = uuid.uuid4().hex
         with self.db.tx() as c:
             c.execute(
-                "INSERT INTO {photos}(id, mime, data, created_at) VALUES(?,?,?,?)", (photo_id, kind[1], blob, _now())
+                "INSERT INTO {photos}(id, mime, data, created_at, owner) VALUES(?,?,?,?,?)",
+                (photo_id, kind[1], blob, _now(), self._owner()),
             )
         return photo_id
 
@@ -201,7 +250,9 @@ class KeeperStore:
         if not PHOTO_ID.match(photo_id):
             return None
         with self.db.tx() as c:
-            r = c.execute("SELECT data, mime FROM {photos} WHERE id = ?", (photo_id,)).fetchone()
+            r = c.execute(
+                "SELECT data, mime FROM {photos} WHERE id = ? AND owner = ?", (photo_id, self._owner())
+            ).fetchone()
         return (bytes(r["data"]), r["mime"]) if r else None
 
     def prune_photos(self, older_than_hours: float = 24) -> int:
@@ -216,4 +267,4 @@ class KeeperStore:
 
     def delete_photo(self, photo_id: str) -> None:
         with self.db.tx() as c:
-            c.execute("DELETE FROM {photos} WHERE id = ?", (photo_id,))
+            c.execute("DELETE FROM {photos} WHERE id = ? AND owner = ?", (photo_id, self._owner()))
