@@ -26,6 +26,7 @@ def owned(settings, service_factory):
         update={"tara_owner_key": SecretStr("owner-secret"), "anthropic_api_key": SecretStr("sk-test-not-real")}
     )
     with TestClient(create_app(s, service_factory=service_factory)) as c:
+        c.headers["X-Visitor"] = "test-browser-0000000001"
         yield c
     set_active(None)
 

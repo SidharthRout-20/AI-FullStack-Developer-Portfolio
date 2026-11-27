@@ -76,7 +76,9 @@ class TaraConfig(BaseModel):
 class ControlConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ai: AIConfig = Field(default_factory=AIConfig)
-    products: dict[Product, bool] = Field(default_factory=lambda: dict.fromkeys(PRODUCTS, True))
+    # The in-development apps keep one shared store for every visitor, so they stay paused until they have per-person
+    # data like the four featured products (the owner can open them here for a demo).
+    products: dict[Product, bool] = Field(default_factory=lambda: {**dict.fromkeys(PRODUCTS, True), "labs": False})
     tara: TaraConfig = Field(default_factory=TaraConfig)
 
 

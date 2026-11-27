@@ -215,3 +215,29 @@ def test_lenient_schemas_coerce_common_model_quirks():
     out = Out.model_validate({"name": "abcdefgh", "notes": "hi", "who": 2, "tags": "x, y, z"})
     assert (out.name, out.note, out.who, out.tags) == ("abcde", "hi", "2", ["x", "y"])
     assert Out.model_validate({"name": "a", "note": None}).note == ""  # null → the default
+
+
+def test_codelens_finds_definitions_not_control_flow():
+    from app.products.codelens import chunk_generic, focus, select, symbol_at
+
+    assert symbol_at("    if (typeof format === 'function') {") is None  # control flow is not a function called "if"
+    assert symbol_at("morgan.format('dev', function developmentFormatLine (tokens, req, res) {") == "dev"
+    assert (
+        symbol_at("exports.parse = parse") == "parse" and symbol_at("function morgan (format, options) {") == "morgan"
+    )
+    src = "function a () {\n  if (x) {\n    return 1\n  }\n}\nmorgan.format('dev', function () {\n  return 2\n})\n"
+    assert [c["symbol"] for c in chunk_generic("index.js", src)] == ["a", "dev"]
+    # Docs and changelogs can't crowd the code out of a code question.
+    chunks = [{"path": p} for p in ("HISTORY.md", "HISTORY.md", "README.md", "README.md", "README.md", "index.js")]
+    fused = [(str(i), 1.0 - i / 10) for i in range(6)]
+    assert [chunks[int(i)]["path"] for i, _ in select(chunks, fused, "where is dev defined?", 4)] == [
+        "HISTORY.md",
+        "README.md",
+        "README.md",
+        "index.js",
+    ]
+    # A long excerpt is cut around the lines that match the question.
+    long = (
+        "\n".join(f"line {n} filler filler filler" for n in range(200)) + "\nmorgan.format('dev', fn)\n" + "tail\n" * 50
+    )
+    assert "morgan.format('dev'" in focus(long, "where is the dev format defined", limit=400)

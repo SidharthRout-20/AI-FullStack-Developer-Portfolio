@@ -15,7 +15,7 @@ from app.products.codelens import chunk_generic, chunk_python, imports_of, read_
 from app.products.flowforge import FlowIn, check, render, safe_http, validate
 from app.products.meetingmind import text_to_segments, windows
 from app.rag.service import RAGService
-from tests.conftest import FakeEmbedder
+from tests.conftest import FakeEmbedder, as_visitor
 from tests.test_api import parse_sse
 
 TAILOR = {"headline": "Backend AI engineer", "summary": "Builds RAG systems.", "cover_letter": "Dear team,\n\nHello.",
@@ -97,7 +97,7 @@ def app_client(settings):
             return make_zip()
 
         suite.code.fetcher = fetch
-        yield c
+        yield as_visitor(c)
 
 
 # ── CareerPilot ──────────────────────────────────────────────────────────
@@ -261,7 +261,9 @@ def test_flow_run_branches_and_webhook(app_client):
     hook = c.post("/api/flows", json=templates[1]).json()
     r = c.post(f"/api/hooks/{hook['hook_token']}", json={"text": "Electricity bill ₹1,840 due on the 15th"})
     assert r.status_code == 200 and r.json()["output"].startswith("Saved to Keeper")
-    assert c.get("/api/keeper/entries?kind=bill").json()[0]["title"].lower().startswith("electricity")
+    # A webhook has no caller, so its Tara step saves into the site owner's Tara (outside a request: the owner's data).
+    assert c.app.state.keeper.store.list("bill")[0].title.lower().startswith("electricity")
+    assert c.get("/api/keeper/entries?kind=bill").json() == []  # and never into a visitor's
     assert c.post("/api/hooks/not-a-token", json={}).status_code == 404
     bad = {**templates[0], "nodes": templates[0]["nodes"][:1]}
     assert c.post("/api/flows", json=bad).status_code == 422

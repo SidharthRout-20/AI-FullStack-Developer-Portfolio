@@ -2,6 +2,7 @@
  * Client for /api/efi. There are no user accounts in this portfolio, so the server issues this browser an
  * unguessable owner token, kept in localStorage and sent as X-EFI-Owner. History belongs to that token only.
  */
+import { accountToken } from '@appcore/web/account'
 import { API_BASE as BASE } from '../../lib/apiBase'
 import { ApiError, sessionError } from '../shared/http'
 
@@ -38,9 +39,10 @@ async function ownerToken() {
 
 async function call(method, path, body) {
   const token = await ownerToken()
+  const jwt = await accountToken() // signed in: the account owns the investigations, on every device
   const res = await fetch(`${BASE}/api/efi${path}`, {
     method,
-    headers: { Accept: 'application/json', 'X-EFI-Owner': token, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { Accept: 'application/json', 'X-EFI-Owner': token, ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (!res.ok) {

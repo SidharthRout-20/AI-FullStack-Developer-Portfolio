@@ -268,26 +268,35 @@ function Featured({ palette, still }) {
   const moved = useRef(false)
 
   // Mouse drag-to-swipe (touch and trackpads scroll natively). Snapping pauses while dragging, then settles.
+  // A press only becomes a drag once the mouse has moved: capturing the pointer on press would send the click to the
+  // strip instead of the "Try it" / "Details" link under it (links would never open).
   const onDown = (e) => {
-    if (e.pointerType !== 'mouse' || !track.current) return
-    drag.current = { x: e.clientX, left: track.current.scrollLeft }
+    if (e.pointerType !== 'mouse' || e.button !== 0 || !track.current) return
+    drag.current = { x: e.clientX, left: track.current.scrollLeft, id: e.pointerId, active: false }
     moved.current = false
-    track.current.style.scrollSnapType = 'none'
-    track.current.setPointerCapture(e.pointerId)
   }
   const onMove = (e) => {
-    if (!drag.current) return
-    const dx = e.clientX - drag.current.x
-    if (Math.abs(dx) > 4) moved.current = true
-    track.current.scrollLeft = drag.current.left - dx
+    const d = drag.current
+    if (!d) return
+    const dx = e.clientX - d.x
+    if (!d.active) {
+      if (Math.abs(dx) <= 6) return // still a click
+      d.active = true
+      moved.current = true
+      track.current.style.scrollSnapType = 'none'
+      track.current.setPointerCapture(d.id)
+    }
+    track.current.scrollLeft = d.left - dx
   }
   const onUp = () => {
-    if (!drag.current) return
+    const d = drag.current
+    drag.current = null
+    if (!d?.active) return // a plain click: let it reach the link
     const el = track.current
     const target = Math.round(el.scrollLeft / step) * step
-    drag.current = null
     el.scrollTo({ left: target, behavior: still ? 'auto' : 'smooth' })
     window.setTimeout(() => (el.style.scrollSnapType = 'x mandatory'), 450)
+    window.setTimeout(() => (moved.current = false), 0) // only the click that ends this drag is swallowed
   }
 
   const cur = PORTFOLIO[at]

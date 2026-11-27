@@ -16,6 +16,8 @@ import { currentPosition, notify, registerServiceWorker } from '@appcore/web/dev
 import { EntryCard } from './EntryCard'
 import { AlarmBanner, ReminderSettingsCard, useAlarms } from './Reminders'
 import { localISO, MODULES, moduleOf } from './modules'
+import { onAccount } from '@appcore/web/account'
+import { AccountButton } from '../../site/AccountButton'
 import { ScanSheet } from './ScanSheet'
 import { TodayView } from './TodayView'
 
@@ -57,6 +59,17 @@ export default function KeeperApp() {
       handle(err)
     }
   }, [handle])
+
+  // Signing in or out changes whose Tara this is; a claim moves this browser's things into the account: reload.
+  useEffect(() => {
+    const reload = () => void refresh()
+    window.addEventListener('account-claimed', reload)
+    const off = onAccount(reload)
+    return () => {
+      window.removeEventListener('account-claimed', reload)
+      off()
+    }
+  }, [refresh])
 
   // Timed reminders: chime + read aloud + notification while Keeper is open.
   const alarms = useAlarms(!!status && !needKey, () => void refresh())
@@ -258,6 +271,7 @@ export default function KeeperApp() {
             })}
           </nav>
           <div className="mt-auto space-y-1">
+            <div className="px-2 pb-1"><AccountButton /></div>
             <button type="button" onClick={() => openSettings(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-ink-300 hover:bg-white/[0.04] hover:text-white"><Settings2 className="size-4.5" /> Voice & personality</button>
             {status && (
               <p className="flex items-center gap-2 px-3 py-1 text-[11.5px] text-ink-500">

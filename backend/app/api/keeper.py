@@ -14,10 +14,12 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.identity import account, browser, tenant
 from app.keeper import reminders, schedule
 from app.keeper.models import KINDS, AgendaItem, Entry, EntryIn, EntryPatch, ScanResult
 from app.keeper.reminders import ReminderSettings
 from app.keeper.service import KeeperService
+from app.keeper.store import OWNER
 from appcore.guardrails import normalize
 from appcore.llm.chat import user_facing_error
 from appcore.security import limiter, rate_limit_value
@@ -46,7 +48,20 @@ def local_now(request: Request, x_tz_offset: Annotated[int | None, Header()] = N
     return schedule.local_now(offset)
 
 
-router = APIRouter(prefix="/api/keeper", dependencies=[Depends(require_keeper_key)], tags=["keeper"])
+async def scope(who: Annotated[str, Depends(tenant)]) -> None:
+    """Every Tara request reads and writes only the caller's own things (app.identity, app.keeper.store.OWNER)."""
+    OWNER.set(who)
+
+
+def owner_only() -> None:
+    """Phone pushes (ntfy / Telegram) are the site owner's; others get their reminders inside Tara."""
+    if OWNER.get() != "owner":
+        raise HTTPException(
+            403, "Phone reminders are for the site owner for now. Your reminders still show here in Tara."
+        )
+
+
+router = APIRouter(prefix="/api/keeper", dependencies=[Depends(require_keeper_key), Depends(scope)], tags=["keeper"])
 Keeper = Annotated[KeeperService, Depends(get_keeper)]
 Now = Annotated[dt.datetime, Depends(local_now)]
 
@@ -250,7 +265,7 @@ async def get_brief(request: Request, keeper: Keeper, now: Now) -> dict[str, Any
     return await keeper.brief(now)
 
 
-@router.post("/brief/telegram", status_code=202)
+@router.post("/brief/telegram", status_code=202, dependencies=[Depends(owner_only)])
 @limiter.limit("5/minute")
 async def send_brief(request: Request, keeper: Keeper, now: Now) -> dict[str, str]:
     if not keeper.telegram_ready:
@@ -371,19 +386,33 @@ def get_reminder_settings(keeper: Keeper) -> dict[str, Any]:
     return _settings_out(keeper)
 
 
-@router.put("/reminders/settings", response_model=ReminderSettingsOut)
+@router.put("/reminders/settings", response_model=ReminderSettingsOut, dependencies=[Depends(owner_only)])
 def put_reminder_settings(body: ReminderSettings, keeper: Keeper) -> dict[str, Any]:
     keeper.save_reminder_settings(body)
     return _settings_out(keeper)
 
 
-@router.post("/reminders/test")
+@router.post("/reminders/test", dependencies=[Depends(owner_only)])
 @limiter.limit("5/minute")
 async def test_reminder(request: Request, keeper: Keeper) -> dict[str, list[str]]:
     sent = await keeper.test_channels(keeper.reminder_settings())
     if not sent:
         raise HTTPException(422, "No phone channel accepted the test. Set an ntfy topic (or configure Telegram).")
     return {"sent": sent}
+
+
+@router.post("/claim")
+def claim(
+    request: Request,
+    keeper: Keeper,
+    authorization: Annotated[str | None, Header()] = None,
+    x_visitor: Annotated[str | None, Header()] = None,
+) -> dict[str, int]:
+    """Just signed in: move what this browser saved into the account (so it follows you to every device)."""
+    to = account(request, authorization)
+    if not to:
+        raise HTTPException(401, "Sign in first.")
+    return {"moved": keeper.store.claim(browser(x_visitor) or "", to)}
 
 
 @router.get("/reminders/due", response_model=list[AlertOut])

@@ -11,7 +11,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { '@appcore/web': here('../../../packages/web-core/src') },
-    dedupe: ['react', 'react-dom', 'lucide-react', 'motion', 'leaflet', 'react-markdown', 'remark-gfm', '@fontsource-variable/fraunces'],
+    dedupe: ['react', 'react-dom', 'lucide-react', 'motion', 'leaflet', 'react-markdown', 'remark-gfm', '@fontsource-variable/fraunces', '@neon/auth'],
   },
   server: { port: 5175, fs: { allow: [here('../../..')] } },
   build: { sourcemap: false },

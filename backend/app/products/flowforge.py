@@ -25,6 +25,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.api.keeper import scope as keeper_scope
 from appcore.ai import ask_text, clip, llm_failure, sse
 from appcore.docstore import DocStore
 from appcore.llm.structured import extract_json
@@ -398,7 +399,9 @@ def get_flows(request: Request) -> FlowService:
 
 
 Flows = Annotated[FlowService, Depends(get_flows)]
-router = APIRouter(prefix="/api/flows", tags=["flowforge"])
+# A flow's Tara step saves into the Tara of whoever runs it (app.identity); webhook and scheduled runs have no
+# caller and use the site owner's (the in-development apps are paused for the public by default).
+router = APIRouter(prefix="/api/flows", tags=["flowforge"], dependencies=[Depends(keeper_scope)])
 hooks = APIRouter(prefix="/api/hooks", tags=["flowforge"])
 
 

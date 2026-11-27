@@ -464,7 +464,9 @@ async def _platform_security(request: Request) -> Result:  # noqa: C901 - one fl
             "OWASP API8",
             evil.headers.get("x-content-type-options") == "nosniff" and "referrer-policy" in evil.headers,
         )
-        big = await c.post("/api/keeper/command", json={"text": "x" * 5000})
+        big = await c.post(
+            "/api/keeper/command", json={"text": "x" * 5000}, headers={"X-Visitor": "security-check-0000001"}
+        )
         control(
             "limits",
             "Oversized input is refused before any model sees it",

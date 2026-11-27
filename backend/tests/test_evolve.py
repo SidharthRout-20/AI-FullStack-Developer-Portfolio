@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from app.products.evolve import Validators, run_checks
 from app.rag.service import RAGService
-from tests.conftest import FakeEmbedder
+from tests.conftest import FakeEmbedder, as_visitor
 from tests.test_api import parse_sse
 
 BETTER_PROMPT = (
@@ -64,7 +64,7 @@ def client(settings):
         settings, service_factory=lambda s: RAGService(s, llm_factory=lambda _: llm, embedder=FakeEmbedder())
     )
     with TestClient(app) as c:
-        yield c
+        yield as_visitor(c)
 
 
 def test_checks():

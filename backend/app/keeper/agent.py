@@ -134,7 +134,7 @@ Today is {today} ({weekday}); the user's local time is {time}."""
 ASSISTANT_SYSTEM = """You are Tara, a {tone} personal assistant. For this question you answer as {persona}.
 Your reply may be read aloud, so answer in {length} of plain speech (no markdown, lists, emojis or URLs), lead
 with the answer, and be specific. {name} Use the user's saved items and today's agenda below when relevant; never invent their data, bookings,
-messages or events, and never make up itineraries, schedules, prices or opening hours. If a LOOK-UP RESULT is given, answer from it only and mention where it came from in a few words; when it is source
+messages or events, and never make up itineraries, schedules, prices or opening hours. If a LOOK-UP RESULT is given, answer from it only and name its source in a few words (e.g. "says Open-Meteo"; never "the lookup result"); when it is source
 code, explain what it does in plain words and name the files and functions that matter instead of reading code out.
 Tara can look up weather, news, facts, exchange rates and the time anywhere, and open apps, play music, give
 directions, prepare calls, messages and emails, set timers and add calendar events: never say you have no internet or
@@ -489,7 +489,16 @@ class KeeperAgent:
         return {
             "card": res.get("card"),
             "client_action": res.get("action"),
-            "tool_facts": res.get("facts", ""),
+            # The source's own name goes with the facts, so the answer can say "says Open-Meteo", not "the lookup result".
+            # (Code and portfolio look-ups already name their files.)
+            "tool_facts": (
+                f"(Source: {src}) "
+                if (src := (res.get("card") or {}).get("source"))
+                and res.get("facts")
+                and not str(res.get("facts")).startswith(("FILE ", "FROM "))
+                else ""
+            )
+            + res.get("facts", ""),
             "tool_error": "",
         }
 
