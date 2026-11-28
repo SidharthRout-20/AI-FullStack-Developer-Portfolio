@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { setBase } from './base'
-import { dayPart, endTime, groupByPart, groupTrips, hostOf, money, nextUp, pct, placeToSaved, placeToStop, safeLink, shareUrl } from './logic'
+import { dayPart, endTime, groupByPart, groupTrips, hostOf, money, nextUp, pct, placeToSaved, placeToStop, safeLink, shareUrl, stopsCentre } from './logic'
 
 describe('TripWeaver itinerary helpers', () => {
   it('groups stops into morning, afternoon and evening, keeping indexes', () => {
@@ -130,5 +130,17 @@ describe('Safarnaama itinerary presentation', async () => {
     expect(c.timing).toBe(1)
     expect(c.unmapped).toBe(1)
     expect(c.tips[0].important).toBe(true)
+  })
+})
+
+describe('where a destination’s days happen', () => {
+  it('is the middle of its mapped stops, or the destination itself', () => {
+    const dest = { id: 'd1', lat: 10, lng: 20, start_day: 1, end_day: 2 }
+    const trip = { days: [
+      { day: 1, destination: 'd1', activities: [{ lat: 11, lng: 21 }, { lat: 13, lng: 23 }, { lat: null, lng: null }] },
+      { day: 3, destination: 'd2', activities: [{ lat: 50, lng: 50 }] },
+    ] }
+    expect(stopsCentre(trip, dest)).toEqual({ lat: 12, lng: 22 })
+    expect(stopsCentre({ days: [{ day: 1, activities: [] }] }, dest)).toEqual({ lat: 10, lng: 20 })
   })
 })

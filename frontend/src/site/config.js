@@ -43,6 +43,7 @@ export const SITE = {
     "the API, and every pixel in between.",
   /** Shown as the hero stat and in the intro: keep in step with the resume. */
   years: 6,
+  /** Kept on purpose, not shown anywhere (owner's decision, Nov 2026). {products} is filled by fillCounts(). */
   intro:
     "6 years of software development for global clients: I started on COBOL, moved into React UI development, and " +
     "today deliver Generative-AI proofs of concept at Deloitte as an LLM Engineer, with React frontends and Python " +

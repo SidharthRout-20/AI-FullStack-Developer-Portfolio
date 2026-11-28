@@ -1,6 +1,6 @@
 import {
   Bot, CalendarCheck, Check, CalendarDays, ChevronDown, ChevronUp, CloudRain, CloudSun, Compass, Copy, ExternalLink, FileText,
-  History, Landmark, Lightbulb, MapPin, PencilLine, Pin, PiggyBank, Plus, RefreshCw, Route, Share2, Shuffle,
+  History, Landmark, Lightbulb, Luggage, MapPin, PencilLine, Pin, PiggyBank, Plus, RefreshCw, Route, Settings2, Share2, Shuffle, Wallet as WalletIcon,
   Soup, Star, ThumbsDown, ThumbsUp, TrainFront, Trash2, Trees, Umbrella, Users, UtensilsCrossed, Wand2, WifiOff, X, Zap, TriangleAlert,
 } from 'lucide-react'  // prettier-ignore
 import { AnimatePresence, motion } from 'motion/react'
@@ -30,6 +30,13 @@ import { setAwayTrip } from './away'
 import { AwayCheck } from './AwayCheck'
 import { AccountBar } from './AccountBar'
 import { fmtMin, NearbyPanel } from './Travel'
+import { cardColour, usePersonal, usePersonalLook } from './skin'
+import { PaletteButton } from './PaletteButton'
+import { useMoney, Wallet } from './Wallet'
+import { shortMoney } from './money'
+import { BudgetPlan } from './BudgetPlan'
+import { Guidebook } from './Guidebook'
+import { TripPack } from './TripPack'
 
 const TripMap = lazy(() => import('./TripMap').then((m) => ({ default: m.TripMap })))
 const KIND_ICON = { outdoor: Trees, indoor: Landmark, food: UtensilsCrossed, transit: TrainFront }
@@ -42,14 +49,20 @@ const CACHE = 'tripweaver-last'
 const PART_LABEL = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' }
 const PARTY_LABEL = { solo: 'Solo', couple: 'Couple', family: 'Family', friends: 'Friends', group: 'Group' }
 const HERO_BTN = 'inline-flex items-center gap-1.5 rounded-full bg-[#fff]/15 px-3 py-1.5 text-[12.5px] font-medium text-[#fff] backdrop-blur-md transition hover:bg-[#fff]/25'
+const HERO_PILL = 'pc-pill inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-semibold'
+// In the personal space "Things to do" leads with sights, experiences and nature; the rest follow.
+const TODO_ORDER = ['sights', 'experiences', 'nature', 'food', 'shopping', 'family', 'indoor', 'nightlife', 'transport', 'services']
 
 /** Safarnaama. `basePath` is where it is mounted: '' on its own site, '/safarnaama' inside the portfolio. */
 export default function SafarnamaApp({ basePath = '' }) {
   setBase(basePath)
   const path = usePath()
   const tripId = path.startsWith(`${getBase()}/`) ? (path.slice(getBase().length + 1).match(/^([\w-]+)/)?.[1] ?? null) : null
+  const personal = usePersonal()
+  const look = usePersonalLook(personal)
   return (
-    <ProductShell name="Safarnaama" tagline="Plan, book and keep every journey in one place" icon={Route} accent={ACCENT} product="safarnama">
+    <ProductShell name="Safarnaama" tagline={personal ? 'Tell it your budget, get the whole trip' : 'Plan, book and keep every journey in one place'} icon={Luggage} product="safarnama"
+      right={personal ? <PaletteButton onClick={look.recolour} /> : null}>
       {tripId ? <TripView key={tripId} id={tripId} /> : <MyTrips />}
     </ProductShell>
   )
@@ -78,6 +91,7 @@ function useStorageWarning() {
 }
 
 function MyTrips() {
+  const personal = usePersonal()
   const [mode, setMode] = useState('quick')
   const [trips, setTrips] = useState(null)
   const [error, setError] = useState(null)
@@ -88,13 +102,21 @@ function MyTrips() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-8">
-      <header className="pt-2 text-center">
-        <p className="pa-ink text-[12px] font-semibold tracking-[0.18em] uppercase">Safarnaama · your travelogue</p>
-        <h1 className="pa-display mt-2 text-[44px] leading-[1.02] font-semibold text-white sm:text-[64px]">
-          Where to <span className="pa-gradient-text">next?</span>
-        </h1>
-        <p className="mx-auto mt-3 max-w-xl text-[15px] text-ink-400">Four taps to a day-by-day plan with real places, weather and routes. Then book, budget and keep your documents in one place.</p>
-      </header>
+      {personal ? (
+        <header className="pt-4 text-center">
+          <p className="pc-head text-[14px] tracking-[0.09em] text-white">Safarnaama · your travelogue</p>
+          <h1 className="pc-head mt-3 text-[48px] leading-[0.92] text-white sm:text-[84px]">Where to <span className="pa-gradient-text">next?</span></h1>
+          <p className="mx-auto mt-4 max-w-xl text-[16px] font-medium text-ink-300">Tell it where, when, who and your budget. Get the whole trip: a day-by-day plan, places to stay, things to do, a budget plan and a trip pack to share.</p>
+        </header>
+      ) : (
+        <header className="pt-2 text-center">
+          <p className="pa-ink text-[12px] font-semibold tracking-[0.18em] uppercase">Safarnaama · your travelogue</p>
+          <h1 className="pa-display mt-2 text-[44px] leading-[1.02] font-semibold text-white sm:text-[64px]">
+            Where to <span className="pa-gradient-text">next?</span>
+          </h1>
+          <p className="mx-auto mt-3 max-w-xl text-[15px] text-ink-400">Four taps to a day-by-day plan with real places, weather and routes. Then book, budget and keep your documents in one place.</p>
+        </header>
+      )}
       <AccountBar onTrips={load} />
       <DestinationStrip />
       {storageWarning && (
@@ -118,8 +140,22 @@ function MyTrips() {
         groups.map((g) => (
           <section key={g.phase}>
             <h2 className="pa-display mb-3 text-[22px] font-semibold text-white">{PHASE_LABEL[g.phase]}</h2>
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {g.trips.map((t) => (
+            <ul className={`grid sm:grid-cols-2 lg:grid-cols-3 ${personal ? 'gap-6 pt-2' : 'gap-4'}`}>
+              {g.trips.map((t, i) => personal ? (
+                <li key={t.id} className="group relative">
+                  <button type="button" onClick={() => navigate(appPath(`/${t.id}`))} className="pc-card block w-full p-2.5 text-left" style={{ ...cardColour(i), transform: `rotate(${[-1.5, 1.2, -0.8][i % 3]}deg)` }}>
+                    <span className="block h-36 overflow-hidden rounded-[18px]"><PlaceImage name={t.destinations[0]} /></span>
+                    <span className="block px-2 pt-3 pb-1.5">
+                      <span className="pc-head block pr-6 text-[20px] leading-[1.02]">{t.title}</span>
+                      <span className="mt-1 block text-[12.5px] font-medium opacity-80">{t.start ? dateRange(t.start, plusDays(t.start, t.days - 1)) : 'No dates yet'} · {t.days} day{t.days === 1 ? '' : 's'}</span>
+                    </span>
+                  </button>
+                  <button type="button" aria-label={`Delete ${t.title}`} onClick={() => window.confirm(`Delete “${t.title}” with its bookings, expenses and documents?`) && void tripApi(t.id).remove().then(load)}
+                    className="pc-pill absolute top-4 right-4 grid size-8 place-items-center rounded-full sm:opacity-0 sm:group-hover:opacity-100">
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </li>
+              ) : (
                 <li key={t.id} className="group relative">
                   <button type="button" onClick={() => navigate(appPath(`/${t.id}`))} className="block w-full overflow-hidden rounded-3xl border border-white/[0.07] bg-ink-900/60 text-left shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:shadow-xl">
                     <span className="relative block h-36 overflow-hidden">
@@ -239,6 +275,7 @@ function useVoter() {
 }
 
 function TripView({ id }) {
+  const personal = usePersonal()
   const api = useMemo(() => {
     const share = new URLSearchParams(window.location.search).get('share')
     if (share) rememberShareKey(id, share)
@@ -253,6 +290,7 @@ function TripView({ id }) {
   const [chat, setChat] = useState(false)
   const [pins, setPins] = useState([])
   const [bookingPrefill, setBookingPrefill] = useState(null)
+  const [spent, setSpent] = useState(0) // bumps when money changes, so every money view reloads
   useEffect(() => {
     setAwayTrip(id)
     return () => setAwayTrip(null)
@@ -339,20 +377,32 @@ function TripView({ id }) {
       </div>
     )
   if (!trip) return <Spinner label="Loading trip…" />
+  return <TripScreen {...{ trip, api, personal, offline, error, setError, note, setNote, live, tab, setTab, chat, setChat, pins, setPins, bookingPrefill, setBookingPrefill, keep, copy, spent, setSpent }} />
+}
+
+function TripScreen({ trip, api, personal, offline, error, setError, note, setNote, live, tab, setTab, chat, setChat, pins, setPins, bookingPrefill, setBookingPrefill, keep, copy, spent, setSpent }) {
+  // The page ends with room (pb-20) for the floating companion button, so nothing stays hidden under it.
   const owner = trip.role === 'owner'
   const member = trip.role === 'member'
+  const money = useMoney(api, trip)
+  const onSpent = () => {
+    void money.reload()
+    setSpent((n) => n + 1)
+  }
+  const left = money.sum?.budget_total != null ? money.sum.remaining_after_estimates ?? money.sum.remaining : null
   // Four tabs, like the travel planners people already know: the plan (with the trip at a glance on top), places to
   // explore, bookings with their documents, and the budget. The companion is a button that's there on every tab, and
-  // the summary appears on the plan once the trip is over.
+  // the summary appears on the plan once the trip is over. In the personal space the whole trip is laid out the way
+  // a traveller asks for it: the plan, where to stay, things to do, money, bookings.
   const tabs = [
-    { id: 'plan', label: 'Plan', icon: CalendarDays },
-    { id: 'explore', label: 'Explore', icon: Compass },
-    ...(owner ? [{ id: 'bookings', label: 'Bookings', icon: CalendarCheck }] : []),
-    ...(owner || member ? [{ id: 'budget', label: 'Budget', icon: PiggyBank }] : []),
+        { id: 'plan', label: 'Plan', icon: CalendarDays },
+        { id: 'explore', label: 'Explore', icon: Compass },
+        ...(owner ? [{ id: 'bookings', label: 'Bookings', icon: CalendarCheck }] : []),
+        ...(owner || member ? [{ id: 'budget', label: 'Budget', icon: PiggyBank }] : []),
   ]
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-20">
       <button type="button" className="text-[12.5px] text-ink-400 hover:text-white" onClick={() => navigate(appPath())}>← My trips</button>
       <TripHero
         trip={trip}
@@ -360,50 +410,79 @@ function TripView({ id }) {
           {trip.days[0]?.date && <HeroChip><CalendarDays className="size-3" /> {dateRange(trip.days[0].date, trip.days.at(-1).date)}</HeroChip>}
           <HeroChip>{trip.days.length} day{trip.days.length === 1 ? '' : 's'}</HeroChip>
           {trip.party?.type && <HeroChip><Users className="size-3" /> {PARTY_LABEL[trip.party.type] ?? trip.party.type}{trip.party.travellers ? ` · ${trip.party.travellers}` : ''}</HeroChip>}
+          {personal && left != null && <button type="button" onClick={() => setTab('budget')} className="pc-chip hover:ring-1 hover:ring-current"><WalletIcon className="size-3" /> {left < 0 ? `${shortMoney(-left, money.sum.currency)} over budget` : `${shortMoney(left, money.sum.currency)} to spend`}</button>}
           {trip.weather_updated_at && <HeroChip><CloudSun className="size-3" /> {forecastFreshness(trip.weather_updated_at).label}</HeroChip>}
           {!owner && <HeroChip tone="warn">{member ? 'Shared with you' : 'Read-only (created before trip ownership)'}</HeroChip>}
           {live ? <HeroChip tone="good"><Users className="size-3" /> live</HeroChip> : offline && <HeroChip tone="warn"><WifiOff className="size-3" /> offline copy</HeroChip>}
         </>}
         actions={<>
           {owner && trip.share_key && (
-            <button type="button" className={HERO_BTN} onClick={() => void navigator.clipboard.writeText(shareUrl(location.origin, trip.id, trip.share_key)).then(() => setNote('Share link copied: people with it can view the itinerary, vote and add shared expenses. Documents and bookings stay private.'))}>
+            <button type="button" className={personal ? HERO_PILL : HERO_BTN} onClick={() => void navigator.clipboard.writeText(shareUrl(location.origin, trip.id, trip.share_key)).then(() => setNote('Share link copied: people with it can view the itinerary, vote and add shared expenses. Documents and bookings stay private.'))}>
               <Share2 className="size-3.5" /> Share
             </button>
           )}
-          {owner && <button type="button" className={HERO_BTN} title="Create a new share link (the old one stops working)" onClick={() => void api.rotateShare().then((t) => { keep(t); setNote('New share link created; the old one no longer works.') })}><RefreshCw className="size-3.5" /><span className="sr-only sm:not-sr-only">New link</span></button>}
-          {!owner && <button type="button" className={HERO_BTN} onClick={() => void copy()}><Copy className="size-3.5" /> Save a copy</button>}
-          {owner && trip.status !== 'archived' && trip.phase === 'past' && <button type="button" className={HERO_BTN} onClick={() => void api.update({ status: 'archived' }).then(keep)}>Archive</button>}
-          {owner && trip.status === 'archived' && <button type="button" className={HERO_BTN} onClick={() => void api.update({ status: 'planning' }).then(keep)}>Unarchive</button>}
+          {owner && <button type="button" className={personal ? HERO_PILL : HERO_BTN} title="Create a new share link (the old one stops working)" onClick={() => void api.rotateShare().then((t) => { keep(t); setNote('New share link created; the old one no longer works.') })}><RefreshCw className="size-3.5" /><span className="sr-only sm:not-sr-only">New link</span></button>}
+          {!owner && <button type="button" className={personal ? HERO_PILL : HERO_BTN} onClick={() => void copy()}><Copy className="size-3.5" /> Save a copy</button>}
+          {owner && trip.status !== 'archived' && trip.phase === 'past' && <button type="button" className={personal ? HERO_PILL : HERO_BTN} onClick={() => void api.update({ status: 'archived' }).then(keep)}>Archive</button>}
+          {owner && trip.status === 'archived' && <button type="button" className={personal ? HERO_PILL : HERO_BTN} onClick={() => void api.update({ status: 'planning' }).then(keep)}>Unarchive</button>}
         </>}
       />
 
-      <Tabs tabs={tabs} value={tab} onChange={(t) => { setTab(t); setPins([]); setNote(null) }} />
-      {note && <p className="rounded-xl bg-emerald-500/[0.08] px-3 py-2 text-[13px] text-emerald-200">{note} <button type="button" className="ml-2 text-emerald-300/70 hover:text-white" onClick={() => setNote(null)}>dismiss</button></p>}
+      {personal && note && <p role="status" className="sticky top-16 z-30 rounded-xl bg-emerald-500/[0.12] px-3 py-2 text-[13px] text-emerald-200 backdrop-blur">{note} <button type="button" className="ml-2 text-emerald-300/70 hover:text-white" onClick={() => setNote(null)}>dismiss</button></p>}
+      {personal ? (
+        <Guidebook trip={trip} api={api} owner={owner} member={member} keep={keep} setNote={setNote}
+          slots={{
+            editor: <Itinerary trip={trip} api={api} owner={owner} keep={keep} setNote={setNote} setError={setError} onBook={(p) => { setBookingPrefill(p); document.getElementById('g-pack')?.scrollIntoView({ behavior: 'smooth' }) }} setPins={setPins} simple />,
+            explore: <Explore trip={trip} api={api} owner={owner} onTrip={keep} onPins={setPins} setNote={setNote} initialGroup="sights" order={TODO_ORDER} />,
+            money: (owner || member) && (
+              <div className="space-y-4">
+                <Wallet trip={trip} api={api} owner={owner} onTrip={keep} setNote={setNote} money={money} onSpent={onSpent} />
+                <BudgetPlan trip={trip} api={api} owner={owner} onTrip={keep} money={money} onChanged={onSpent} setNote={setNote} />
+                <Budget key={spent} trip={trip} api={api} owner={owner} onTrip={keep} setNote={setNote} compact onChanged={onSpent} />
+              </div>
+            ),
+            pack: (owner || member) && <TripPack trip={trip} api={api} sum={money.sum} setNote={setNote} />,
+            bookings: owner && (
+              <div className="space-y-4">
+                <Bookings trip={trip} api={api} setNote={setNote} prefill={bookingPrefill} onUsedPrefill={() => setBookingPrefill(null)} />
+                <Documents trip={trip} api={api} onTrip={keep} setNote={setNote} />
+              </div>
+            ),
+          }} />
+      ) : (
+        <Tabs tabs={tabs} value={tab} onChange={(t) => { setTab(t); setPins([]); setNote(null) }} />
+      )}
+      {!personal && note && <p className="rounded-xl bg-emerald-500/[0.08] px-3 py-2 text-[13px] text-emerald-200">{note} <button type="button" className="ml-2 text-emerald-300/70 hover:text-white" onClick={() => setNote(null)}>dismiss</button></p>}
       <ErrorNote message={error} />
 
-      {tab === 'plan' && owner && trip.phase === 'past' && <Summary trip={trip} api={api} />}
-      {tab === 'plan' && <TripGlance trip={trip} api={api} owner={owner} goTab={setTab} />}
-      {tab === 'bookings' && owner && (
+      {!personal && (
         <>
-          <Bookings trip={trip} api={api} setNote={setNote} prefill={bookingPrefill} onUsedPrefill={() => setBookingPrefill(null)} />
-          <h2 className="pa-display flex items-center gap-2 pt-2 text-[19px] font-semibold text-white"><FileText className="pa-ink size-4" /> Documents & checklists</h2>
-          <Documents trip={trip} api={api} onTrip={keep} setNote={setNote} />
+          {tab === 'plan' && owner && trip.phase === 'past' && <Summary trip={trip} api={api} />}
+          {tab === 'plan' && <TripGlance trip={trip} api={api} owner={owner} goTab={setTab} />}
+          {tab === 'bookings' && owner && (
+            <>
+              <Bookings trip={trip} api={api} setNote={setNote} prefill={bookingPrefill} onUsedPrefill={() => setBookingPrefill(null)} />
+              <h2 className="pa-display flex items-center gap-2 pt-2 text-[19px] font-semibold text-white"><FileText className="pa-ink size-4" /> Documents & checklists</h2>
+              <Documents trip={trip} api={api} onTrip={keep} setNote={setNote} />
+            </>
+          )}
+          {tab === 'budget' && <Budget trip={trip} api={api} owner={owner} onTrip={keep} setNote={setNote} />}
+          {['plan', 'explore'].includes(tab) && (
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="order-2 min-w-0 lg:order-1">
+                {tab === 'plan' && <Itinerary trip={trip} api={api} owner={owner} keep={keep} setNote={setNote} setError={setError} onBook={(p) => { setBookingPrefill(p); setTab('bookings') }} setPins={setPins} />}
+                {tab === 'explore' && <Explore trip={trip} api={api} owner={owner} onTrip={keep} onPins={setPins} setNote={setNote} />}
+              </div>
+              <div className="order-1 h-[320px] overflow-hidden rounded-2xl border border-white/[0.07] sm:h-[380px] lg:sticky lg:top-22 lg:order-2 lg:h-[calc(100vh-8rem)]">
+                <Suspense fallback={<div className="grid size-full place-items-center"><Spinner label="Loading map…" /></div>}>
+                  <TripMapFor trip={trip} pins={pins} />
+                </Suspense>
+              </div>
+            </div>
+          )}
         </>
       )}
-      {tab === 'budget' && <Budget trip={trip} api={api} owner={owner} onTrip={keep} setNote={setNote} />}
-      {['plan', 'explore'].includes(tab) && (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="order-2 min-w-0 lg:order-1">
-            {tab === 'plan' && <Itinerary trip={trip} api={api} owner={owner} keep={keep} setNote={setNote} setError={setError} onBook={(p) => { setBookingPrefill(p); setTab('bookings') }} setPins={setPins} />}
-            {tab === 'explore' && <Explore trip={trip} api={api} owner={owner} onTrip={keep} onPins={setPins} setNote={setNote} />}
-          </div>
-          <div className="order-1 h-[320px] overflow-hidden rounded-2xl border border-white/[0.07] sm:h-[380px] lg:sticky lg:top-22 lg:order-2 lg:h-[calc(100vh-8rem)]">
-            <Suspense fallback={<div className="grid size-full place-items-center"><Spinner label="Loading map…" /></div>}>
-              <TripMapFor trip={trip} pins={pins} />
-            </Suspense>
-          </div>
-        </div>
-      )}
+      {personal && owner && trip.phase === 'past' && <Summary trip={trip} api={api} />}
       {owner && <AwayCheck key={trip.id} trip={trip} api={api} setNote={setNote} onDetails={(p) => { setBookingPrefill(p); setTab('bookings') }} />}
       {owner && (
         <CompanionDock open={chat} onOpen={setChat}>
@@ -475,7 +554,9 @@ function stopLinks(a) {
   ].filter((l) => l && safeLink(l.url)).map((l) => ({ ...l, source: 'OpenStreetMap' }))
 }
 
-function Itinerary({ trip, api, owner, keep, setNote, setError, onBook, setPins }) {
+function Itinerary({ trip, api, owner, keep, setNote, setError, onBook, setPins, simple = false }) {
+  const [askName, setAskName] = useState(false) // simple: the voting name is asked for only when someone votes
+  const [editOpen, setEditOpen] = useState(false) // simple: adding stops and re-planning sit behind one button
   const [day, setDay] = useState(null)
   const [event, setEvent] = useState('')
   const [scope, setScope] = useState([])
@@ -523,7 +604,10 @@ function Itinerary({ trip, api, owner, keep, setNote, setError, onBook, setPins 
   })
   const edit = (a, changes, msg) => run('Saving…', () => api.editActivity(a.id, changes), (t) => { keep(t); if (msg) setNote(msg) })
   const vote = async (a, value) => {
-    if (!voter.trim()) return setNote('Add your name (above the itinerary) to vote.')
+    if (!voter.trim()) {
+      setAskName(true)
+      return setNote('Add your name (above the itinerary) to vote.')
+    }
     const name = voter.trim()
     const next = (a.votes[name] ?? 0) === value ? 0 : value
     await api.vote({ activity_id: a.id, voter: name, value: next }).then(keep).catch((e) => setError(errorText(e)))
@@ -547,7 +631,7 @@ function Itinerary({ trip, api, owner, keep, setNote, setError, onBook, setPins 
             </button>
           ))}
         </div>
-        <input aria-label="Your name for voting" className={`${inputClass} !w-32 !py-1.5 text-[12.5px]`} placeholder="Your name" value={voter} onChange={(e) => setVoter(e.target.value)} />
+        {(!simple || askName || voter) && <input aria-label="Your name for voting" className={`${inputClass} !w-32 !py-1.5 text-[12.5px]`} placeholder="Your name" value={voter} onChange={(e) => setVoter(e.target.value)} />}
         {owner && <Button variant="ghost" className="!py-1.5" onClick={() => void checkWeather()} disabled={!!busy}><CloudSun className="size-4" /> Check weather</Button>}
         {owner && <Button variant="ghost" className="!py-1.5" onClick={() => void run('Finding restaurants…', () => api.meals(), (out) => { keep(out.trip); setNote(out.added ? `Added ${out.added} meal stop${out.added > 1 ? 's' : ''} near where you'll be.` : 'Every day already has its meals planned.') })} disabled={!!busy}><Soup className="size-4" /> Add meal stops</Button>}
       </div>
@@ -714,7 +798,12 @@ function Itinerary({ trip, api, owner, keep, setNote, setError, onBook, setPins 
         </Card>
       ))}
 
-      {owner && (
+      {owner && simple && !editOpen && (
+        <button type="button" onClick={() => setEditOpen(true)} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 px-4 py-3 text-[13.5px] font-medium text-ink-200 hover:border-white/30 hover:text-white">
+          <Settings2 className="size-4" /> Change the plan: add a stop or a place, or re-plan around something
+        </button>
+      )}
+      {owner && (!simple || editOpen) && (
         <Card>
           <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><Plus className="pa-ink size-4" /> Add a stop</p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -731,7 +820,7 @@ function Itinerary({ trip, api, owner, keep, setNote, setError, onBook, setPins 
         </Card>
       )}
 
-      {owner && (
+      {owner && (!simple || editOpen) && (
         <Card>
           <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><Wand2 className="pa-ink size-4" /> Something changed? Re-plan</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -756,7 +845,7 @@ function Itinerary({ trip, api, owner, keep, setNote, setError, onBook, setPins 
           <ul className="mt-2 list-disc space-y-1 pl-5 text-[13px] text-ink-200">{trip.tips.map((t) => <li key={t}>{t}</li>)}</ul>
         </Card>
       )}
-      {trip.history?.length > 0 && (
+      {!simple && trip.history?.length > 0 && (
         <Card>
           <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><History className="size-4 text-ink-300" /> Changes</p>
           <ol className="mt-2 space-y-2">

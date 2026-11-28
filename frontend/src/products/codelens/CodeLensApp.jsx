@@ -2,10 +2,11 @@
  * CodeLens: get a new joiner productive on a codebase in a week, without KT sessions.
  *
  * One story, one step at a time: paste a public GitHub repo → watch it being read → walk through the onboarding pack
- * chapter by chapter (what it is, how it's organised, what to read first, the week-one plan) → ask anything, with
- * answers that cite the exact files and lines. A pack has its own link, so a team can hand it to every new joiner.
+ * chapter by chapter (what it is, how it's organised, what to read first, the week-one plan) → check it's ready to
+ * hand over (a score with evidence, risks, a meeting plan, starter files) → ask anything, with answers that cite the
+ * exact files and lines. A pack has its own link, so a team can hand it to every new joiner.
  */
-import { ArrowLeft, ArrowRight, Check, ChevronDown, Code2, Copy, ExternalLink, FolderGit2, MessageSquareCode, Route as RouteIcon, Send, Sparkles, Terminal, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleAlert, CircleCheck, CircleHelp, CircleX, Code2, Copy, Download, ExternalLink, FileText, FolderGit2, MessageSquareCode, Printer, Route as RouteIcon, Send, ShieldCheck, Sparkles, Terminal, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Component, useCallback, useEffect, useMemo, useState } from 'react'
 import Markdown from 'react-markdown'
@@ -34,6 +35,7 @@ const CHAPTERS = [
   { id: 'areas', title: "How it's organised", icon: FolderGit2, blurb: 'The main parts of the code, and where each lives.' },
   { id: 'path', title: 'What to read first', icon: RouteIcon, blurb: 'An ordered reading path: entry points first.' },
   { id: 'week', title: 'Your first week', icon: Check, blurb: 'A five-day plan with checkpoints, from setup to first change.' },
+  { id: 'ready', title: 'Ready to hand over?', icon: ShieldCheck, blurb: 'A score with evidence: secrets, untested files, missing docs, and how to close each gap.' },
   { id: 'ask', title: 'Ask anything', icon: MessageSquareCode, blurb: 'Answers with the exact files and lines.' },
 ]
 
@@ -43,7 +45,7 @@ const repoIdFrom = (path) => (path.startsWith(`${BASE}/`) ? path.slice(BASE.leng
 export default function CodeLensApp() {
   const id = repoIdFrom(usePath())
   return (
-    <ProductShell name="CodeLens" tagline="Onboard onto any codebase in a week, without waiting for KT sessions" icon={Code2} accent={ACCENT}>
+    <ProductShell name="CodeLens" tagline="Onboard onto any codebase in a week, without waiting for KT sessions" icon={Code2}>
       <Boundary key={id ?? 'start'}>{id ? <PackView key={id} id={id} /> : <Start />}</Boundary>
     </ProductShell>
   )
@@ -154,7 +156,7 @@ function WhatYouGet() {
   return (
     <section>
       <p className="mb-3 text-center text-[13px] font-semibold text-ink-300">What a new joiner gets, in about a minute</p>
-      <ol className="grid gap-2 sm:grid-cols-5">
+      <ol className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
         {CHAPTERS.map((c, i) => {
           const Icon = c.icon
           return (
@@ -166,7 +168,7 @@ function WhatYouGet() {
           )
         })}
       </ol>
-      <p className="mt-3 text-center text-[12.5px] text-ink-500">One link per repo: share it with every new joiner on the team.</p>
+      <p className="mt-3 text-center text-[12.5px] text-ink-500">One link per repo: share it with every new joiner. Leaving a project? Download it as a hand-over document.</p>
     </section>
   )
 }
@@ -296,11 +298,11 @@ function Building({ stages, found }) {
   )
 }
 
-function CopyButton({ text }) {
+function CopyButton({ text, inline = false }) {
   const [done, setDone] = useState(false)
   return (
     <button type="button" onClick={() => void navigator.clipboard.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1500) })}
-      className="absolute top-2 right-2 inline-flex items-center gap-1 rounded-lg bg-white/[0.08] px-2 py-1 text-[11.5px] text-ink-200 hover:bg-white/[0.14]">
+      className={inline ? 'chip' : 'absolute top-2 right-2 inline-flex items-center gap-1 rounded-lg bg-white/[0.08] px-2 py-1 text-[11.5px] text-ink-200 hover:bg-white/[0.14]'}>
       {done ? <Check className="size-3" /> : <Copy className="size-3" />} {done ? 'Copied' : 'Copy'}
     </button>
   )
@@ -353,6 +355,7 @@ function PackView({ id }) {
           <p className="text-[12.5px] text-ink-400">Onboarding pack · {repo.files.length} files · {Object.keys(repo.languages).slice(0, 3).join(', ')}</p>
         </div>
         <button type="button" onClick={share} className="chip">{copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} {copied ? 'Link copied' : 'Share with a new joiner'}</button>
+        <HandoverButton id={id} />
         <a href={repo.url} target="_blank" rel="noopener noreferrer" className="chip"><ExternalLink className="size-3.5" /> GitHub</a>
       </div>
 
@@ -366,7 +369,7 @@ function PackView({ id }) {
         ))}
       </nav>
 
-      {!pack && chapter !== 'ask' ? (
+      {!pack && chapter !== 'ask' && chapter !== 'ready' ? (
         error ? (
           <Card><ErrorNote message={error} /><button type="button" className="chip mt-3" onClick={loadPack}>Try again</button></Card>
         ) : (
@@ -379,12 +382,13 @@ function PackView({ id }) {
             {chapter === 'areas' && <Areas pack={pack} open={open} />}
             {chapter === 'path' && <ReadingPath pack={pack} open={open} />}
             {chapter === 'week' && <Week repo={repo} pack={pack} open={open} />}
+            {chapter === 'ready' && <Readiness repo={repo} open={open} />}
             {chapter === 'ask' && <Ask repo={repo} pack={pack} open={open} />}
           </motion.div>
         </AnimatePresence>
       )}
 
-      {next && (pack || chapter === 'ask') && (
+      {next && (pack || chapter === 'ask' || chapter === 'ready') && (
         <div className="flex justify-end">
           <button type="button" onClick={() => go(next.id)} className={`inline-flex items-center gap-2 rounded-full bg-gradient-to-r ${ACCENT} px-5 py-2.5 text-[14px] font-semibold text-on-accent shadow-lg`}>
             Next: {next.title} <ArrowRight className="size-4" />
@@ -393,6 +397,224 @@ function PackView({ id }) {
       )}
       {file && <CodeViewer repo={repo} file={file} onClose={() => setFile(null)} />}
     </div>
+  )
+}
+
+/** Save a file the browser made (no server round trip for the download itself). */
+function saveFile(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }))
+  const a = Object.assign(document.createElement('a'), { href: url, download: name })
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 2000)
+}
+
+/**
+ * The hand-over document: everything in the pack plus facts read from the code (stack, dependencies, the environment
+ * variable names it reads, tests, CI, key files), with a checklist for what only the outgoing owner knows. Markdown for
+ * wikis and repos; HTML to print or save as PDF.
+ */
+function HandoverButton({ id }) {
+  const [open, setOpen] = useState(false)
+  const [doc, setDoc] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const load = async () => {
+    if (doc || busy) return doc
+    setBusy(true)
+    setError(null)
+    try {
+      const d = await post(`/api/code/repos/${id}/handover`)
+      setDoc(d)
+      return d
+    } catch (e) {
+      setError(errorText(e))
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }
+  const toggle = () => {
+    setOpen((o) => !o)
+    void load()
+  }
+  const print = () => {
+    const w = window.open('', '_blank')
+    if (!w) return setError('Allow pop-ups for this site to print, or download the HTML and open it.')
+    w.document.open()
+    w.document.write(doc.html)
+    w.document.close()
+    w.focus()
+    setTimeout(() => w.print(), 300)
+  }
+  const item = 'flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[13px] text-ink-200 hover:bg-white/[0.06] hover:text-white disabled:opacity-50'
+  return (
+    <div className="relative">
+      <button type="button" onClick={toggle} aria-expanded={open} className="chip"><FileText className="size-3.5" /> Hand-over document</button>
+      {open && (
+        <div role="dialog" aria-label="Hand-over document" className="absolute right-0 z-30 mt-2 w-[min(300px,calc(100vw-32px))] rounded-2xl border border-white/10 bg-ink-900 p-2 shadow-2xl shadow-black/40">
+          <p className="px-3 pt-1 pb-2 text-[12px] text-ink-400">A file to hand to the next owner: the pack, the readiness check and its risks, the stack, settings, tests and CI read from the code, a meeting plan, and a checklist for what only you know.</p>
+          {busy && <div className="px-3 py-2"><Spinner label="Putting it together…" /></div>}
+          {error && <div className="px-1"><ErrorNote message={error} /></div>}
+          <button type="button" className={item} disabled={!doc} onClick={() => saveFile(doc.filename, doc.markdown, 'text/markdown;charset=utf-8')}><Download className="size-4" /> Markdown (.md) <span className="ml-auto text-[11px] text-ink-500">wikis, GitHub</span></button>
+          <button type="button" className={item} disabled={!doc} onClick={() => saveFile(doc.html_filename, doc.html, 'text/html;charset=utf-8')}><Download className="size-4" /> Web page (.html) <span className="ml-auto text-[11px] text-ink-500">opens anywhere</span></button>
+          <button type="button" className={item} disabled={!doc} onClick={print}><Printer className="size-4" /> Print or save as PDF</button>
+          <button type="button" className="mt-1 w-full rounded-xl px-3 py-1.5 text-[12px] text-ink-500 hover:text-white" onClick={() => setOpen(false)}>Close</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Hand-over readiness ─────────────────────────────────────────────────────────
+const STATUS_UI = {
+  pass: { label: 'Done', icon: CircleCheck, cls: 'text-emerald-300' },
+  warn: { label: 'Partly', icon: CircleAlert, cls: 'text-amber-300' },
+  fail: { label: 'Missing', icon: CircleX, cls: 'text-rose-300' },
+  unknown: { label: 'Not checked', icon: CircleHelp, cls: 'text-ink-500' },
+}
+
+/** Is it ready to hand over? Fetched once per visit; every finding is read from the code (no model involved). */
+function Readiness({ repo, open }) {
+  const [report, setReport] = useState(null)
+  const [error, setError] = useState(null)
+  useEffect(() => {
+    get(`/api/code/repos/${repo.id}/readiness`).then(setReport).catch((e) => setError(errorText(e)))
+  }, [repo.id])
+  if (error) return <Card><ErrorNote message={error} /></Card>
+  if (!report) return <Card className="py-10 text-center"><Spinner label="Checking the code for the hand-over…" /></Card>
+  return <ReadinessReport repo={repo} report={report} open={open} />
+}
+
+function ReadinessReport({ repo, report, open }) {
+  const known = new Set(repo.files)
+  const at = (x) => `${x.path}${x.line ? `:${x.line}` : ''}`
+  const r = report.risks
+  const tone = report.score >= 80 ? 'text-emerald-300' : report.score >= 55 ? 'text-amber-300' : 'text-rose-300'
+  const gaps = report.checks.filter((c) => c.status === 'fail' || c.status === 'warn')
+  return (
+    <div className="space-y-4">
+      <Section title="Ready to hand over?" lead="What a new owner needs, checked against the code and the file list. Nothing here is estimated: every finding names its files.">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+          <p className={`text-[56px] leading-none font-semibold tabular-nums ${tone}`}>{report.score}<span className="text-[20px] text-ink-500">/100</span></p>
+          <div className="pb-1.5">
+            <p className="text-[17px] font-semibold text-white">{report.grade}</p>
+            <p className="text-[12.5px] text-ink-400">{gaps.length ? `${gaps.length} thing${gaps.length === 1 ? '' : 's'} to close before the hand-over` : 'Nothing left to close'}</p>
+          </div>
+        </div>
+        {!report.complete && <p className="rounded-xl bg-white/[0.04] px-3 py-2 text-[12.5px] text-ink-300">This repo was indexed before these checks existed, so lockfiles, licence and ownership aren't checked. Index it again for the full report.</p>}
+        <ul className="divide-y divide-white/[0.06]">
+          {report.checks.map((c) => {
+            const s = STATUS_UI[c.status]
+            const Icon = s.icon
+            return (
+              <li key={c.id} className="grid grid-cols-[22px_1fr] gap-x-3 py-3">
+                <Icon className={`mt-0.5 size-[18px] ${s.cls}`} aria-hidden />
+                <div className="min-w-0">
+                  <p className="text-[14px] font-semibold text-white">{c.title} <span className={`ml-1 text-[11.5px] font-medium ${s.cls}`}>{s.label}</span></p>
+                  <p className="mt-0.5 text-[13px] text-ink-300">{c.detail}</p>
+                  {c.fix && <p className="mt-1 text-[12.5px] text-ink-400"><span className="font-semibold text-ink-200">To do:</span> {c.fix}</p>}
+                  {c.evidence.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {c.evidence.map((e) => (known.has(e.split(':')[0]) ? <PathChip key={e} path={e.split(':')[0]} open={open} /> : <code key={e} className="rounded-lg bg-white/[0.05] px-2 py-1 font-mono text-[11.5px] text-ink-200">{e}</code>))}
+                    </div>
+                  )}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      </Section>
+
+      <Section title="Risks to know" lead="Where the new owner is most likely to get hurt, so you cover it together.">
+        <div className="grid gap-3 lg:grid-cols-2">
+          <RiskList title="Many files depend on these, and no test touches them" empty={r.graph ? 'None: every widely used file has a test.' : 'No imports between the indexed files were found (they’re mapped for Python and JavaScript/TypeScript).'}>
+            {r.untested_critical.map((x) => <li key={x.path} className="flex items-center gap-2"><PathChip path={x.path} open={open} /><span className="text-[12px] text-ink-400">used by {x.used_by}</span></li>)}
+          </RiskList>
+          <RiskList title="Biggest files" empty="No file over 400 lines.">
+            {r.large.map((x) => <li key={x.path} className="flex items-center gap-2"><PathChip path={x.path} open={open} /><span className="text-[12px] text-ink-400">{x.lines.toLocaleString()} lines</span></li>)}
+          </RiskList>
+          <RiskList title={`Possible secrets in the code${r.secrets.length ? ` (${r.secrets.length})` : ''}`} empty="None found." note={r.secrets.length ? 'Where, never what: the value isn’t stored or shown. Rotate anything real, then remove it from the history.' : null}>
+            {r.secrets.map((x) => <li key={at(x) + x.kind} className="flex flex-wrap items-center gap-2"><button type="button" onClick={() => open(x.path, x.line ? Math.max(1, x.line - 3) : undefined, x.line ? x.line + 3 : undefined)} className="font-mono text-[12px] text-rose-200 hover:underline">{at(x)}</button><span className="text-[12px] text-ink-400">{x.kind}{x.confidence === 'possible' ? ' (possible)' : ''}</span></li>)}
+          </RiskList>
+          <RiskList title={`TODO / FIXME / HACK notes${r.debt_total ? ` (${r.debt_total})` : ''}`} empty="None in the indexed code.">
+            {r.debt.slice(0, 8).map((x) => <li key={at(x)} className="text-[12.5px]"><button type="button" onClick={() => open(x.path, x.line ? Math.max(1, x.line - 3) : undefined, x.line ? x.line + 6 : undefined)} className="font-mono text-[12px] text-amber-200 hover:underline">{at(x)}</button> <span className="text-ink-300">{x.tag}: {x.text || '(no note)'}</span></li>)}
+          </RiskList>
+        </div>
+      </Section>
+
+      {report.modules.edges.length > 0 && (
+        <Section title="Which part uses which" lead="Folder to folder, from the imports. Changes in a folder many others use need the most care.">
+          <ModuleMap modules={report.modules} />
+          <details className="text-[12.5px] text-ink-400">
+            <summary className="cursor-pointer hover:text-white">As a Mermaid diagram (renders on GitHub, GitLab and most wikis)</summary>
+            <div className="relative mt-2"><pre className="overflow-x-auto rounded-xl bg-black/30 p-3 pr-20 font-mono text-[12px] text-ink-200">{report.modules.mermaid}</pre><CopyButton text={'```mermaid\n' + report.modules.mermaid + '\n```'} /></div>
+          </details>
+        </Section>
+      )}
+
+      <Section title="Hand-over sessions" lead="A plan for the meetings with the outgoing owner, built from everything above.">
+        <ol className="grid gap-3 md:grid-cols-2">
+          {report.sessions.map((m, i) => (
+            <li key={m.title + i} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
+              <p className="text-[12px] text-ink-500">Session {i + 1} · {m.minutes} min</p>
+              <p className="text-[15px] font-semibold text-white">{m.title}</p>
+              {m.goal && <p className="mt-1 text-[13px] text-ink-300">{m.goal}</p>}
+              {m.open.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{m.open.filter((p) => known.has(p)).map((p) => <PathChip key={p} path={p} open={open} />)}</div>}
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-[12.5px] text-ink-300">{m.ask.map((q) => <li key={q}>{q}</li>)}</ul>
+            </li>
+          ))}
+        </ol>
+      </Section>
+
+      {Object.keys(report.starter).length > 0 && (
+        <Section title="Starter files" lead="Drafted from the code to close the gaps above. Names and paths only, never a value.">
+          <div className="grid gap-3 md:grid-cols-2">
+            {Object.entries(report.starter).map(([name, text]) => (
+              <div key={name} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3">
+                <div className="flex items-center gap-2">
+                  <p className="flex-1 font-mono text-[13px] text-white">{name}</p>
+                  <CopyButton text={text} inline />
+                  <button type="button" className="chip" onClick={() => saveFile(name.startsWith('.') ? name.slice(1) : name, text, 'text/plain;charset=utf-8')}><Download className="size-3.5" /> Download</button>
+                </div>
+                <pre className="mt-2 max-h-48 overflow-auto rounded-xl bg-black/30 p-3 font-mono text-[11.5px] text-ink-200">{text}</pre>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11.5px] text-ink-500">The .env.example downloads as “env.example” (browsers drop a leading dot); rename it when you add it.</p>
+        </Section>
+      )}
+    </div>
+  )
+}
+
+function RiskList({ title, empty, note, children }) {
+  const items = [children].flat().filter(Boolean)
+  return (
+    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
+      <p className="text-[13.5px] font-semibold text-white">{title}</p>
+      {items.length ? <ul className="mt-2 space-y-1.5">{items}</ul> : <p className="mt-1 text-[12.5px] text-ink-400">{empty}</p>}
+      {note && <p className="mt-2 text-[11.5px] text-ink-500">{note}</p>}
+    </div>
+  )
+}
+
+/** Folder-to-folder imports as labelled bars: the longest bar is the busiest link. */
+function ModuleMap({ modules }) {
+  const max = Math.max(...modules.edges.map((e) => e.imports), 1)
+  return (
+    <ul className="space-y-1.5" aria-label="Imports between folders">
+      {modules.edges.slice(0, 12).map((e) => (
+        <li key={`${e.from}>${e.to}`} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] items-center gap-3 text-[12.5px] sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+          <span className="truncate font-mono text-ink-200" title={`${e.from} uses ${e.to}`}>{e.from} <span className="text-ink-500">→</span> {e.to}</span>
+          <span className="flex items-center gap-2">
+            <span className="h-2 rounded-full bg-amber-400/80" style={{ width: `${Math.max(4, (e.imports / max) * 100)}%` }} />
+            <span className="shrink-0 text-ink-400 tabular-nums">{e.imports}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -651,4 +873,4 @@ function CodeViewer({ repo, file, onClose }) {
   )
 }
 
-export const __test__ = { Building, Start, Overview, Areas, ReadingPath, Week, Ask }
+export const __test__ = { Building, Start, Overview, Areas, ReadingPath, Week, Ask, ReadinessReport }

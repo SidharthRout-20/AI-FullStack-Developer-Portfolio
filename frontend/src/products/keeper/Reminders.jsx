@@ -80,7 +80,7 @@ export function useAlarms(enabled, onChange) {
       const loud = !a.quiet || a.urgent
       if (loud) chime(a.urgent)
       if (loud && speakingEnabled()) window.setTimeout(() => speak(`Reminder. ${a.label}`), 700)
-      void notify(a.urgent ? '⚠ Keeper reminder' : 'Keeper reminder', a.label, a.key)
+      void notify(a.urgent ? 'Urgent: Tara reminder' : 'Tara reminder', a.label, a.key)
     }
     if (fresh.length) writeJSON(SHOWN_KEY, [...shown, ...fresh.map((a) => `${a.entry_id}|${a.key}`)].slice(-200))
     setActive(due)

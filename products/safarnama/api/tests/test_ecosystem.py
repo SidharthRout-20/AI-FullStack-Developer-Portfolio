@@ -35,6 +35,9 @@ TAGS = {
     "airports": [{"name": "Humberto Delgado Airport", "aeroway": "aerodrome", "iata": "LIS"}],
     "transport": [{"name": "Rossio", "railway": "station"}],
     "sights": [{"name": "Miradouro da Graça", "tourism": "viewpoint", "fee": "no"}],
+    "stay": [{"name": "Casa do Bairro", "tourism": "guest_house"}, {"name": "Palácio Hotel", "tourism": "hotel", "stars": "4S"},
+             {"name": "Lost Inn Hostel", "tourism": "hostel", "stars": "superior"},
+             {"name": "लक्ष्मी निवास", "name:en": "Laxmi Niwas", "tourism": "guest_house"}],
 }  # fmt: skip
 
 
@@ -42,7 +45,7 @@ class Tools(FakeTools):
     def __init__(self):
         self.discover_calls = 0
 
-    async def geocode_city(self, name, country):
+    async def geocode_city(self, name, country, region=None):
         if name.lower().startswith("porto"):
             return {"name": "Porto", "country": "Portugal", "lat": 41.15, "lng": -8.61, "timezone": "Europe/Lisbon"}
         return await super().geocode_city(name, country)
@@ -568,6 +571,20 @@ def test_quick_planner_choices_win_over_the_model(env):
     assert bad.status_code == 422
 
 
+def test_a_budget_given_while_planning_is_kept_in_the_travellers_currency(env):
+    c, _ = env
+    h = owner(c)
+    prompt = "2 days in Lisbon, Portugal, from 2030-05-01 to 2030-05-02, for a couple (2 travellers)."
+    body = {"prompt": prompt, "party": "couple", "travellers": 2, "budget": 60000, "currency": "inr"}
+    trip = parse_sse(c.post("/api/trips/plan", json=body, headers=h).text)[-1][1]["trip"]
+    assert trip["budget"]["total"] == 60000 and trip["budget"]["currency"] == "INR"  # rupees, even in Lisbon
+    cats = trip["budget"]["categories"]  # a suggested split of it: abroad, so getting there takes the biggest share
+    assert sum(cats.values()) == 60000 and cats["transport"] == 21000 and trip["budget"]["split"] == "auto"
+    money = c.get(f"/api/trips/{trip['id']}/budget", headers=h).json()
+    assert money["budget_total"] == 60000 and money["remaining"] == 60000
+    assert c.post("/api/trips/plan", json={**body, "budget": -5}, headers=h).status_code == 422
+
+
 def test_manual_trip_without_a_currency_uses_the_local_one(env):
     c, _ = env
     h = owner(c)
@@ -666,3 +683,48 @@ def test_a_failed_lookup_is_not_cached():
     assert asyncio.run(tools.geocode_place("Hawa Mahal, Jaipur", near)) is None  # both refused: unknown, not "absent"
     state["down"] = False
     assert asyncio.run(tools.geocode_place("Hawa Mahal, Jaipur", near)) is not None  # retried, found
+
+
+def test_the_budget_split_adds_up_and_a_day_trip_has_no_stay():
+    home = trip_logic.split_budget(40000, nights=3)
+    assert sum(home.values()) == 40000 and home["lodging"] == 14000 and home["transport"] == 10000
+    abroad = trip_logic.split_budget(40000, nights=3, abroad=True)
+    assert abroad["transport"] > home["transport"] and sum(abroad.values()) == 40000
+    day_trip = trip_logic.split_budget(999, nights=0)
+    assert day_trip["lodging"] == 0 and sum(day_trip.values()) == 999  # rounding lands in the buffer
+
+
+def test_a_suggested_split_follows_the_budget_until_the_traveller_sets_their_own(env):
+    c, _ = env
+    h = owner(c)
+    trip = manual(c, h)
+    t = f"/api/trips/{trip['id']}"
+    b = c.patch(t, json={"budget": 30000, "currency": "INR"}, headers=h).json()["budget"]
+    assert b["split"] == "auto" and sum(b["categories"].values()) == 30000
+    b = c.patch(t, json={"budget": 50000}, headers=h).json()["budget"]
+    assert sum(b["categories"].values()) == 50000  # followed the new total
+    own = {"lodging": 20000, "food": 10000, "transport": 15000, "activities": 5000, "shopping": 0, "other": 0}
+    b = c.patch(t, json={"budget_categories": own}, headers=h).json()["budget"]
+    assert b["split"] == "own"
+    b = c.patch(t, json={"budget": 60000}, headers=h).json()["budget"]
+    assert b["categories"] == own  # the traveller's own split is never overwritten
+    by_cat = c.get(f"{t}/budget", headers=h).json()["by_category"]
+    assert by_cat["lodging"]["budget"] == 20000
+
+
+def test_places_to_stay_come_from_the_map_with_only_mapped_star_ratings(env):
+    c, _ = env
+    h = owner(c)
+    trip = manual(c, h)
+    r = c.get(f"/api/trips/{trip['id']}/discover", params={"group": "stay"}, headers=h)
+    assert r.status_code == 200, r.text
+    places = {p["name"]: p for p in r.json()["places"]}
+    assert set(places) == {
+        "Casa do Bairro",
+        "Palácio Hotel",
+        "Lost Inn Hostel",
+        "Laxmi Niwas",
+    }  # English name when mapped
+    assert places["Palácio Hotel"]["stars"] == 4 and places["Palácio Hotel"]["category"] == "hotel"
+    assert places["Casa do Bairro"]["stars"] is None and places["Lost Inn Hostel"]["stars"] is None
+    assert all(p["group"] == "stay" for p in places.values())

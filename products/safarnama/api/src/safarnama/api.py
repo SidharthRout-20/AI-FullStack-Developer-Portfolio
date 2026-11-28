@@ -33,6 +33,8 @@ from appcore.accounts import Accounts, SignInError
 from appcore.ai import llm_failure, sse
 from appcore.guardrails import normalize
 from appcore.security import limiter, rate_limit_value
+from safarnama import guide as trip_guide
+from safarnama import liteapi as trip_live
 from safarnama import logic as trip_logic
 from safarnama.service import TripService
 
@@ -160,6 +162,10 @@ class PlanIn(In):
     # Choices the traveller made explicitly (the quick planner): they win over what the model reads from the prompt.
     party: Literal["solo", "couple", "family", "friends", "group"] | None = None
     travellers: int | None = Field(None, ge=1, le=50)
+    # The traveller's own budget for the whole trip, in their currency (the planner favours free and good-value
+    # places with it; Safarnaama never states prices).
+    budget: float | None = Field(None, gt=0, le=10_000_000)
+    currency: str | None = Field(None, pattern=CUR)
 
 
 class DestinationIn(In):
@@ -372,7 +378,10 @@ async def plan(request: Request, body: PlanIn, svc: Trips, w: Caller) -> Streami
     today = dt.date.today()
 
     async def events() -> AsyncIterator[dict[str, Any]]:
-        async for ev in svc.plan(normalize(body.prompt), today, owner, party=body.party, travellers=body.travellers):
+        async for ev in svc.plan(
+            normalize(body.prompt), today, owner, party=body.party, travellers=body.travellers,
+            budget=body.budget, currency=body.currency.upper() if body.currency else None,
+        ):  # fmt: skip
             if ev.get("event") == "done":
                 ev = {**ev, "trip": svc.view(ev["trip"], "owner")}  # never the owner hash
             yield ev
@@ -590,6 +599,84 @@ async def transport(
 ) -> dict[str, Any]:
     trip, _ = access(svc, trip_id, w, "member")
     return await _guard(svc.transport(trip, (destination or "")[:40] or None))
+
+
+class GuideIn(In):
+    origin: str | None = Field(None, max_length=80)  # where the traveller starts, for "getting there"
+    refresh: bool = False
+
+
+class GuideAddIn(In):
+    kind: Literal["thing", "food"]
+    destination: int = Field(0, ge=0, le=4)
+    index: int = Field(ge=0, le=20)
+    day: int = Field(ge=1, le=60)
+
+
+def _live(svc: TripService) -> dict[str, Any]:
+    return {"enabled": svc.live is not None, "sandbox": bool(svc.live and svc.live.sandbox),
+            "booking_site": bool(svc.live and svc.live.site)}  # fmt: skip
+
+
+@router.get("/{trip_id}/guide")
+def get_guide(trip_id: str, svc: Trips, w: Caller) -> dict[str, Any]:
+    """The trip's guide (stays, food, things to do, getting around and there) with what the trip will likely cost."""
+    trip, role = access(svc, trip_id, w, "member")
+    if not trip.get("guide"):
+        raise HTTPException(404, "No guide yet.")
+    return {"guide": trip["guide"], "estimate": trip_guide.estimates(trip), "live": _live(svc)}
+
+
+@router.post("/{trip_id}/guide")
+@limiter.limit("4/minute")
+async def make_guide(request: Request, trip_id: str, body: GuideIn, svc: Trips, w: Caller) -> dict[str, Any]:
+    trip, _ = access(svc, trip_id, w, "member")
+    await _guard(svc.guide(trip, body.origin, body.refresh))
+    fresh = svc.db.get("trips", trip["id"])
+    return {"guide": fresh["guide"], "estimate": trip_guide.estimates(fresh), "live": _live(svc)}
+
+
+@router.post("/{trip_id}/guide/add")
+@limiter.limit(rate_limit_value)
+async def add_from_guide(request: Request, trip_id: str, body: GuideAddIn, svc: Trips, w: Caller) -> dict[str, Any]:
+    trip, _ = access(svc, trip_id, w, "owner")
+    updated = await _guard(svc.add_from_guide(trip, body.kind, body.destination, body.index, body.day))
+    return {
+        "trip": svc.view(updated, "owner"),
+        "guide": updated["guide"],
+        "estimate": trip_guide.estimates(updated),
+        "live": _live(svc),
+    }
+
+
+@router.get("/{trip_id}/stays/live")
+@limiter.limit("6/minute")
+async def live_stays(
+    request: Request,
+    trip_id: str,
+    svc: Trips,
+    w: Caller,
+    destination: Annotated[int, Query(ge=0, le=4)] = 0,
+    nationality: Annotated[str | None, Query(pattern="^[A-Za-z]{2}$")] = None,
+) -> dict[str, Any]:
+    """Real hotels with live prices for a destination's stay (the trip's dates and guests), to book on the
+    whitelabel site. One LiteAPI search per request, cached for 30 minutes."""
+    trip, _ = access(svc, trip_id, w, "member")
+    if svc.live is None:
+        raise HTTPException(503, "Live hotel prices aren't set up yet.")
+    checkin, checkout = trip_live.stay_window(trip, destination)
+    centre = trip_live.plan_centre(trip, destination)
+    if not checkin or not checkout or centre is None:
+        raise HTTPException(422, "Live prices need dated nights at this destination.")
+    currency = ((trip.get("budget") or {}).get("currency") or "INR").upper()
+    people = int((trip.get("party") or {}).get("travellers") or 2)
+    try:
+        return await svc.live.rates(
+            lat=centre[0], lng=centre[1], checkin=checkin, checkout=checkout, people=people, currency=currency,
+            nationality=(nationality or trip_live.nationality_for(currency)).upper(),
+        )  # fmt: skip
+    except trip_live.LiveRatesError as exc:
+        raise HTTPException(502, str(exc)) from None
 
 
 @router.post("/{trip_id}/specialities")

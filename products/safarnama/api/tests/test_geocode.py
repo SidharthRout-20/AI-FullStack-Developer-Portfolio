@@ -43,3 +43,36 @@ def test_a_real_city_comes_straight_from_open_meteo_with_its_timezone():
 def test_never_a_place_in_another_country():
     hit = asyncio.run(_tools(OPEN_METEO, []).geocode_city("Goa", "India"))
     assert hit is None or hit["country"] == "India"
+
+
+# Open-Meteo's real answer for "Manali": a Chennai suburb first (more people), the Himachal hill town second.
+MANALI = {"results": [
+    {"name": "Manali", "country": "India", "admin1": "Tamil Nadu", "feature_code": "PPL", "population": 35248, "latitude": 13.17, "longitude": 80.27},
+    {"name": "Manali", "country": "India", "admin1": "Himachal Pradesh", "feature_code": "PPL", "population": 8096, "latitude": 32.26, "longitude": 77.17},
+]}  # fmt: skip
+
+
+def test_the_state_tells_namesakes_apart():
+    hit = asyncio.run(_tools(MANALI, []).geocode_city("Manali", "India", region="Himachal Pradesh"))
+    assert hit["lat"] == 32.26
+    assert asyncio.run(_tools(MANALI, []).geocode_city("Manali", "India", region="Himachal"))["lat"] == 32.26
+    assert asyncio.run(_tools(MANALI, []).geocode_city("Manali", "India"))["lat"] == 13.17  # no hint: the bigger town
+
+
+def test_country_names_as_geocoders_spell_them():
+    amsterdam = {"results": [
+        {"name": "Amsterdam", "country": "The Netherlands", "feature_code": "PPLC", "population": 741636, "latitude": 52.37, "longitude": 4.89},
+        {"name": "Amsterdam", "country": "United States", "feature_code": "PPL", "population": 18008, "latitude": 42.9, "longitude": -74.2},
+    ]}  # fmt: skip
+    hit = asyncio.run(_tools(amsterdam, []).geocode_city("Amsterdam", "Netherlands"))
+    assert hit["lat"] == 52.37
+    assert asyncio.run(_tools(amsterdam, []).geocode_city("Amsterdam", "USA"))["lat"] == 42.9
+
+
+def test_near_duplicates_prefer_the_exact_spelling():
+    twins = {"results": [
+        {"name": "Mahābaleshwar", "country": "India", "admin1": "Maharashtra", "feature_code": "PPL", "population": 13598, "latitude": 17.56, "longitude": 73.4},
+        {"name": "Mahabaleshwar", "country": "India", "admin1": "Maharashtra", "feature_code": "PPL", "population": 13393, "latitude": 17.92, "longitude": 73.66},
+    ]}  # fmt: skip
+    assert asyncio.run(_tools(twins, []).geocode_city("Mahabaleshwar", "India", region="Maharashtra"))["lat"] == 17.92
+    assert asyncio.run(_tools(twins, []).geocode_city("Mahabaleshwar", "India"))["lat"] == 17.92

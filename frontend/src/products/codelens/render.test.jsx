@@ -30,3 +30,26 @@ describe('the onboarding pack chapters render', () => {
     expect(() => renderToString(h(C[name], { repo, pack, open: () => {} }))).not.toThrow()
   })
 })
+
+describe('the hand-over readiness chapter renders', () => {
+  const repo = { id: 'r1', owner: 'acme', name: 'svc', url: 'https://github.com/acme/svc', files: ['app/main.py', 'app/db.py'], languages: { python: 100 } }
+  const check = (id, status, evidence = []) => ({ id, title: id, weight: 1, status, detail: 'd', fix: status === 'pass' ? '' : 'f', evidence })
+  const report = {
+    score: 62, grade: 'Nearly there', unknown: 1, complete: false,
+    checks: [check('run', 'pass'), check('config', 'warn', ['PAYMENT_API_KEY']), check('secrets', 'fail', ['app/main.py:6']), check('lock', 'unknown')],
+    risks: { untested_critical: [{ path: 'app/db.py', used_by: 3, lines: 3 }], graph: true, large: [], debt: [{ path: 'app/main.py', line: 10, tag: 'TODO', text: 'retry' }], debt_total: 1, secrets: [{ path: 'app/main.py', line: 6, kind: 'AWS access key', confidence: 'high' }] },
+    modules: { nodes: [{ id: 'app', files: 2 }, { id: 'tests', files: 1 }], edges: [{ from: 'tests', to: 'app', imports: 1 }], mermaid: 'graph LR' },
+    sessions: [{ title: 'Run it together', minutes: 45, goal: 'g', open: ['app/main.py'], ask: ['q'] }],
+    starter: { '.env.example': 'PAYMENT_API_KEY=', CODEOWNERS: '* @owner-to-fill' },
+  }
+  it('with gaps, risks and starter files', () => {
+    const html = renderToString(h(C.ReadinessReport, { repo, report, open: () => {} }))
+    expect(html).toContain('Nearly there')
+    expect(html).toContain('AWS access key')
+    expect(html).toContain('PAYMENT_API_KEY')
+  })
+  it('when everything passes and nothing is found', () => {
+    const clean = { ...report, score: 100, grade: 'Ready to hand over', complete: true, checks: [check('run', 'pass')], risks: { untested_critical: [], graph: false, large: [], debt: [], debt_total: 0, secrets: [] }, modules: { nodes: [], edges: [], mermaid: '' }, starter: {} }
+    expect(() => renderToString(h(C.ReadinessReport, { repo, report: clean, open: () => {} }))).not.toThrow()
+  })
+})

@@ -50,6 +50,10 @@ class CoreSettings(BaseSettings):
     # Groq / Ollama
     groq_api_key: SecretStr | None = None
     groq_model: str = "openai/gpt-oss-120b"
+    # Live hotel prices for Safarnaama (LiteAPI by Nuitee; the portfolio backend serves Safarnaama too). A sandbox key
+    # starts with "sand_" and returns test prices. The whitelabel URL is the booking site the traveller books on.
+    liteapi_key: SecretStr | None = None
+    liteapi_whitelabel_url: str | None = None
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
     llm_temperature: float = 0.1  # Groq/Ollama only (Claude Opus 5.5 doesn't take sampling params)

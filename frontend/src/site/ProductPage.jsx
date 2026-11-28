@@ -26,7 +26,7 @@ export function ProductPage({ product: p }) {
         </Link>
 
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mt-6 flex items-start gap-5">
-          <span className={`grid size-16 shrink-0 place-items-center rounded-2xl bg-gradient-to-br ${p.accent} text-on-accent shadow-2xl`}>
+          <span className="grid size-16 shrink-0 place-items-center rounded-2xl bg-white/[0.08] text-white ring-1 ring-white/10">
             <Icon className="size-8" />
           </span>
           <div className="min-w-0">

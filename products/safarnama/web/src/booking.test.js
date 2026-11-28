@@ -1,27 +1,32 @@
 import { describe, expect, it } from 'vitest'
-import { bookingLinks, dayAfter, stays } from './booking'
+import { bookingLinks, dayAfter, googleHotels, stays } from './booking'
 import { destinationInfo } from './choices'
 
 const jaipur = { name: 'Jaipur', country: 'India', checkin: '2026-11-23', checkout: '2026-11-26' }
 const find = (groups, id, provider) => groups.find((g) => g.id === id)?.items.find((i) => i.provider === provider)
 
 describe('Safarnaama booking hand-offs', () => {
-  it('works out each destination’s stay from the itinerary dates', () => {
+  it('works out each destination’s stay from the itinerary dates (the last day is the day you leave)', () => {
     const trip = {
-      destinations: [{ name: 'Lisbon', country: 'Portugal', start_day: 1, end_day: 2 }, { name: 'Porto', country: 'Portugal', start_day: 3, end_day: 3 }],
-      days: [{ day: 1, date: '2026-12-30' }, { day: 2, date: '2026-12-31' }, { day: 3, date: '2027-01-01' }],
+      destinations: [{ name: 'Lisbon', country: 'Portugal', start_day: 1, end_day: 2 }, { name: 'Porto', country: 'Portugal', start_day: 3, end_day: 4 }],
+      days: [{ day: 1, date: '2026-12-30' }, { day: 2, date: '2026-12-31' }, { day: 3, date: '2027-01-01' }, { day: 4, date: '2027-01-02' }],
     }
     expect(stays(trip)).toEqual([
       { name: 'Lisbon', country: 'Portugal', checkin: '2026-12-30', checkout: '2027-01-01', nights: 2 },
       { name: 'Porto', country: 'Portugal', checkin: '2027-01-01', checkout: '2027-01-02', nights: 1 },
-    ])
+    ]) // 4 days, 3 nights
+    const dayTrip = { destinations: [{ name: 'Agra', country: 'India', start_day: 1, end_day: 1 }], days: [{ day: 1, date: '2026-12-30' }] }
+    expect(stays(dayTrip)[0]).toMatchObject({ nights: 0, checkin: null, checkout: null })
     expect(dayAfter('2028-02-28')).toBe('2028-02-29')
     expect(stays({ city: { name: 'Goa' }, days: [{ day: 1, date: null }] })[0]).toMatchObject({ checkin: null, checkout: null })
   })
 
   it('pre-fills place, dates and guests on the providers that accept them', () => {
     const g = bookingLinks({ place: jaipur, adults: 2, info: destinationInfo('Jaipur') })
-    expect(find(g, 'stay', 'google').url).toBe('https://www.google.com/travel/search?q=hotels%20in%20Jaipur%2C%20India&checkin=2026-11-23&checkout=2026-11-26&adults=2')
+    // Google reads the dates from the query text (it ignores checkin/checkout parameters, and the guest count either way)
+    expect(decodeURIComponent(find(g, 'stay', 'google').url)).toBe('https://www.google.com/travel/search?q=hotels in Jaipur, India from 23 November 2026 to 26 November 2026')
+    expect(find(g, 'stay', 'google').prefilled).toBe('dates')
+    expect(decodeURIComponent(googleHotels('Hotel Arya, Jaipur'))).toBe('https://www.google.com/travel/search?q=Hotel Arya, Jaipur')
     expect(find(g, 'stay', 'airbnb').url).toBe('https://www.airbnb.com/s/Jaipur--India/homes?checkin=2026-11-23&checkout=2026-11-26&adults=2')
     expect(find(g, 'stay', 'booking').url).toContain('ss=Jaipur%2C%20India&checkin=2026-11-23&checkout=2026-11-26&group_adults=2')
   })

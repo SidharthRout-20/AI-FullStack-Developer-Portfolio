@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { composePrompt, customDestination, DESTINATIONS, isoDate, PARTIES, REQUESTS, suggestDestinations, whenOptions } from './choices'
+import { composePrompt, customDestination, DESTINATIONS, filterPool, isoDate, PARTIES, REQUESTS, searchDestinations, suggestDestinations, whenOptions } from './choices'
 
 const goa = DESTINATIONS.find((d) => d.name === 'Goa')
 const wed = new Date(2026, 10, 18) // Wednesday 18 Nov 2026
@@ -74,5 +74,34 @@ describe('Safarnaama quick planner: the request', () => {
   it('takes four taps at most: place, dates, party, plan (interests come pre-selected)', () => {
     expect(PARTIES).toHaveLength(4)
     expect(REQUESTS.every((r) => r.label && r.text)).toBe(true)
+  })
+})
+
+describe('finding a place among many', () => {
+  it('searches names first, then states and countries, then themes', () => {
+    expect(searchDestinations('mana')[0].name).toBe('Manali')
+    expect(searchDestinations('kerala').map((d) => d.name)).toEqual(expect.arrayContaining(['Kochi', 'Munnar', 'Varkala']))
+    expect(searchDestinations('japan').map((d) => d.name)).toEqual(expect.arrayContaining(['Kyoto', 'Tokyo']))
+    expect(searchDestinations('male')[0].name).toBe('Malé') // accents don't matter
+    expect(searchDestinations('x')).toEqual([])
+  })
+  it('filters by India, abroad or theme', () => {
+    expect(filterPool('india').every((d) => d.country === 'India')).toBe(true)
+    expect(filterPool('abroad').some((d) => d.country === 'India')).toBe(false)
+    expect(filterPool('beaches').every((d) => d.tags.includes('beaches'))).toBe(true)
+    expect(filterPool('all')).toHaveLength(DESTINATIONS.length)
+  })
+  it('sends the state with the place, so a namesake elsewhere never wins', () => {
+    const dest = DESTINATIONS.find((d) => d.name === 'Manali')
+    const when = { start: new Date(2026, 11, 5), days: 4 }
+    expect(composePrompt({ dest, when, party: 'couple' })).toContain('Manali, Himachal Pradesh, India')
+  })
+  it('keeps every destination well-formed and unique', () => {
+    expect(new Set(DESTINATIONS.map((d) => d.name)).size).toBe(DESTINATIONS.length)
+    for (const d of DESTINATIONS) {
+      expect(d.months.every((m) => m >= 1 && m <= 12)).toBe(true)
+      expect(d.days).toBeGreaterThanOrEqual(1)
+      if (d.iata) expect(d.iata).toMatch(/^[A-Z]{3}$/)
+    }
   })
 })

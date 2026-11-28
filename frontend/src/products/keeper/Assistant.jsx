@@ -7,7 +7,7 @@
  * Hands-free: say "Hey Tara" (or tap the orb), speak, and pause; Tara answers and then listens for a follow-up, so a
  * conversation never needs the mic button. Say "that's all" or press Esc to stop.
  */
-import { Camera, Check, ChevronDown, Copy, Mic, Send, Sparkles, Square, Volume2, X } from 'lucide-react'
+import { Camera, Check, ChevronDown, Copy, Mic, Music2, Radio, Send, Sparkles, Square, Volume2, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import { compressImage, currentPosition } from '@appcore/web/device'
@@ -19,6 +19,11 @@ import { moduleOf } from './modules'
 import { AUTO, GROUPS, PERSONAS, personaOf } from './personas'
 import { applySetting, readPrefs, replyPrefs, writePrefs } from './prefs'
 import { track } from '../../lib/visits'
+import { saveChat, turnsOf, useChats } from './chats'
+import { useSkin } from '../../theme/theme'
+import { ambient, resolveStyle, STYLES } from './ambient'
+import { Hud, useClock } from './Hud'
+import { sceneOf, usePhase } from './Sky'
 import { canSpeak, chime, hearingMode, hush, isGoodbye, primeSpeech, say, useVoice, useVoices, wakeSupported } from './voice'
 
 const GRAD = 'from-fuchsia-500 via-pink-500 to-orange-400'
@@ -38,6 +43,18 @@ const MOOD_GRAD = {
   happy: 'from-amber-400 via-orange-500 to-pink-500', excited: 'from-amber-400 via-orange-500 to-pink-500', grateful: 'from-amber-400 via-orange-500 to-pink-500',
 }  // prettier-ignore
 const WEATHERY = /\b(weather|rain|temperature|forecast|humid|sunny|hot|cold|umbrella)\b/i
+// "Play something calm", "put on some soothing music" → Tara's own background music; "stop the music" stops it.
+const MUSIC_ON = /\b(play|start|put on|turn on)\b.*\b(calm|soothing|relaxing|slow|soft|ambient|background|sleep|rain|night|ocean|piano)\b.*\b(music|songs?|sounds?|something)\b|\b(background|ambient|soothing|relaxing) music\b/i
+const MUSIC_OFF = /\b(stop|pause|turn off|switch off|no more|kill)\b.*\b(music|songs?|sounds?)\b|\bmute( the)? music\b/i
+const MUSIC_KIND = [[/rain/i, 'rain'], [/piano/i, 'piano'], [/night|sleep/i, 'night'], [/ocean|wave|sea/i, 'ocean'], [/calm|pad/i, 'calm']]
+
+/** A short spoken briefing, Jarvis-style: the time of day, the weather, what's due. Built here from what's on screen. */
+export function briefText({ name, glance, due, hour = new Date().getHours() }) {
+  const hi = `${greeting(hour)}${name ? `, ${name}` : ''}.`
+  const sky = glance ? ` It's ${glance.temp} degrees and ${String(glance.text).toLowerCase()} in ${glance.place}.` : ''
+  const todo = due.length === 0 ? ' Nothing is due today.' : due.length === 1 ? ` One thing is due today: ${due[0].label}.` : ` ${due.length} things are due today: ${due.slice(0, 3).map((d) => d.label).join(', ')}${due.length > 3 ? ', and more' : ''}.`
+  return `${hi}${sky}${todo} Say “Hey Tara” whenever you need me.`
+}
 
 const greeting = (h) => (h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening')
 let lastFix = null // { lat, lng, at }: reuse a location for 10 minutes instead of asking the device every time
@@ -50,12 +67,26 @@ async function where(prefs) {
   return pos
 }
 
-export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settingsOpen, onSettings, onWake }) {
-  const [thread, setThread] = useState([]) // [{ id, role, text, card?, action?, entries?, kind?, saved?, undone?, error?, persona? }]
+export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settingsOpen, onSettings, onWake, onGlance }) {
+  const personal = useSkin() === 'personal'
+  // The conversation on screen is one of Tara's chats (chats.js): new, or reopened from the list in the sidebar.
+  const { current: chatId } = useChats()
+  const [loaded, setLoaded] = useState(() => ({ id: chatId, turns: turnsOf(chatId) }))
+  const [thread, setThread] = useState(loaded.turns) // [{ id, role, text, card?, action?, entries?, kind?, saved?, undone?, error?, persona? }]
   const [thinking, setThinking] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [voiceMode, setVoiceMode] = useState(false)
   const [followUp, setFollowUp] = useState(false)
+  // Switched to another chat: show its turns, and leave whatever the old one was doing (React's "adjust state while
+  // rendering" pattern, so there's no flash of the old thread).
+  if (loaded.id !== chatId) {
+    const turns = turnsOf(chatId)
+    setLoaded({ id: chatId, turns })
+    setThread(turns)
+    setVoiceMode(false)
+    setFollowUp(false)
+    setThinking(false)
+  }
   const [typed, setTyped] = useState('')
   const [prefs, setPrefs] = useState(readPrefs)
   const [persona, setPersona] = useState('auto')
@@ -66,11 +97,20 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settings
   const camera = useRef(null)
   const endRef = useRef(null)
   const threadRef = useRef(thread)
+  const chatRef = useRef(chatId)
   const askRef = useRef(null)
   const quiet = useRef(false) // set when the user closes voice mode: no follow-up listening after this answer
   useEffect(() => {
     threadRef.current = thread
-  }, [thread])
+    // Keep the chat as it grows (not when it was only reopened, so opening an old chat doesn't reorder the list).
+    if (thread !== loaded.turns) saveChat(loaded.id, thread)
+  }, [thread, loaded])
+  // Leaving a chat stops listening and speaking (an answer still on its way is kept with the chat it belongs to).
+  useEffect(() => {
+    chatRef.current = chatId
+    quiet.current = true
+    hush()
+  }, [chatId])
 
   const savePrefs = (next) => {
     setPrefs(next)
@@ -97,6 +137,28 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settings
       alive = false
     }
   }, [prefs])
+
+  useEffect(() => {
+    onGlance?.(glance)
+  }, [glance, onGlance])
+  const scene = sceneOf(glance?.code)
+  const phase = usePhase()
+
+  // Background music: follows the settings and, on "Match the weather", the sky. Browsers only allow sound after a
+  // tap, so if it was left on it starts with the first one. Leaving Tara stops it.
+  const musicStyle = resolveStyle(prefs.musicStyle, scene, phase)
+  useEffect(() => {
+    if (!prefs.music) return void ambient.stop()
+    let off = () => {}
+    void ambient.play(musicStyle, prefs.musicVolume).then((ok) => {
+      if (ok) return
+      const go = () => void ambient.play(musicStyle, prefs.musicVolume)
+      window.addEventListener('pointerdown', go, { once: true })
+      off = () => window.removeEventListener('pointerdown', go)
+    })
+    return () => off()
+  }, [prefs.music, musicStyle, prefs.musicVolume])
+  useEffect(() => () => ambient.stop(), [])
 
   // Braces matter: newer browsers return a Promise from scrollIntoView, and an effect may only return a cleanup.
   useEffect(() => {
@@ -138,6 +200,18 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settings
       if (!q) return
       track('tara_ask') // counted, never the words
       quiet.current = false
+      const chat = chatRef.current
+      const musicOff = MUSIC_OFF.test(q)
+      if (musicOff || MUSIC_ON.test(q)) {
+        const kind = MUSIC_KIND.find(([re]) => re.test(q))?.[1]
+        const next = musicOff ? { ...prefs, music: false } : { ...prefs, music: true, ...(kind ? { musicStyle: kind } : {}) }
+        savePrefs(next)
+        const label = STYLES.find((x) => x.id === next.musicStyle)?.label.toLowerCase() ?? 'calm music'
+        const reply = musicOff ? 'Music off.' : `Playing ${label}. It goes quiet while I listen. Say “stop the music” any time.`
+        setThread((t) => [...t, { id: crypto.randomUUID(), role: 'user', text: q, spoken }, { id: crypto.randomUUID(), role: 'assistant', text: reply }])
+        if (spoken) setVoiceMode(false)
+        return
+      }
       const history = threadRef.current.slice(-6).map((t) => ({ role: t.role, text: (t.text || '').slice(0, 700) }))
       setThread((t) => [...t, { id: crypto.randomUUID(), role: 'user', text: q, spoken }])
       setThinking(true)
@@ -146,14 +220,21 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settings
         // A weather question with no home city and no location shared: ask the device just this once.
         if (!pos && !prefs.city.trim() && WEATHERY.test(q)) pos = await currentPosition().catch(() => null)
         const res = await keeperApi.command(q, { history, prefs: replyPrefs(prefs), persona, ...(pos ?? {}) })
-        setMood(res.emotion && res.emotion !== 'neutral' ? res.emotion : null)
         const reply = res.reply || 'Done.'
         const created = res.action === 'add' && res.entries?.length > 0 && res.entries.every((e) => e.created_at === e.updated_at)
-        setThread((t) => [...t, {
+        const turn = {
           id: crypto.randomUUID(), role: 'assistant', text: reply, card: res.card ?? null, action: res.client_action ?? null,
           entries: res.action === 'add' || res.action === 'done' ? res.entries : [], kind: res.kind, saved: created, persona: res.persona ?? null,
-        }])
+        }
         if (res.action === 'add' || res.action === 'done') onChanged()
+        if (chatRef.current !== chat) {
+          // The user moved to another chat while this was on its way: file the answer with its own conversation.
+          saveChat(chat, [...turnsOf(chat), turn])
+          setThinking(false)
+          return
+        }
+        setMood(res.emotion && res.emotion !== 'neutral' ? res.emotion : null)
+        setThread((t) => [...t, turn])
         // "Speak slower", "use a female voice", "call me Sid": the user's own settings, applied right here (and the
         // reply is spoken in the new voice). Anything that can't be applied opens the settings panel instead.
         let voicePrefs = prefs
@@ -179,6 +260,7 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settings
         setThinking(false)
         setSpeaking(false)
         setVoiceMode(false)
+        if (chatRef.current !== chat) return void onError(e)
         const msg = onError(e)
         setThread((t) => [...t, { id: crypto.randomUUID(), role: 'assistant', text: msg || "Sorry, I couldn't do that. Please try again.", error: true }])
       }
@@ -242,18 +324,52 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settings
   const name = prefs.name.trim()
   const chosen = personaOf(persona)
 
+  // Music hushes while Tara listens (so the microphone hears you) and dips while she speaks.
+  useEffect(() => {
+    ambient.duck(voiceState === 'listening' ? 0 : voiceState === 'speaking' || voiceState === 'thinking' ? 0.3 : 1)
+  }, [voiceState])
+
+  const briefMe = useCallback(async () => {
+    primeSpeech()
+    const text = briefText({ name, glance, due })
+    setThread((t) => (t.length ? [...t, { id: crypto.randomUUID(), role: 'assistant', text }] : t))
+    if (canSpeak()) {
+      setSpeaking(true)
+      await say(text, prefs)
+      setSpeaking(false)
+    }
+    return text
+  }, [name, glance, due, prefs])
+  // "Brief me when I open Tara": once per visit, on the first tap (browsers need one before anything can speak).
+  useEffect(() => {
+    if (!prefs.briefOnOpen) return
+    try {
+      if (sessionStorage.getItem('tara-briefed')) return
+    } catch {
+      /* no storage: brief anyway */
+    }
+    const go = () => {
+      try {
+        sessionStorage.setItem('tara-briefed', '1')
+      } catch {
+        /* fine */
+      }
+      void briefMe()
+    }
+    window.addEventListener('pointerdown', go, { once: true })
+    return () => window.removeEventListener('pointerdown', go)
+  }, [prefs.briefOnOpen]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="relative mx-auto flex min-h-[calc(100svh-7rem)] w-full max-w-3xl flex-col">
-      <Motes />
+      {!personal && <Motes />}
       <CursorGlow />
       <div className="flex-1 pb-40">
         {thread.length === 0 ? (
-          <Home name={name} glance={glance} due={due} mood={mood} wake={voice.wake} heard={voice.heard} onTalk={talk} onPick={send} onOpenToday={() => onOpen('today')} onSettings={onSettings} />
+          <Home name={name} glance={glance} due={due} mood={mood} wake={voice.wake} heard={voice.heard} onTalk={talk} onPick={send} onOpenToday={() => onOpen('today')} onSettings={onSettings}
+            personal={personal} scene={scene} music={prefs.music} onBrief={() => void briefMe()} />
         ) : (
           <ol className="space-y-6 pt-2" aria-live="polite">
-            <li className="flex justify-end">
-              <button type="button" onClick={() => { stopAll(); setThread([]) }} className="text-[12px] text-ink-500 hover:text-white">New conversation</button>
-            </li>
             <AnimatePresence initial={false}>
               {thread.map((t) => (
                 <motion.li key={t.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
@@ -286,7 +402,10 @@ export function Assistant({ agenda, onChanged, onOpen, onScan, onError, settings
             <span className="truncate">{persona === 'auto' ? 'Auto expert' : chosen.label}</span>
             <ChevronDown className="size-3.5 shrink-0 text-ink-500" />
           </button>
-          {persona !== 'auto' && <button type="button" onClick={() => setPersona('auto')} className="text-[12px] text-ink-500 hover:text-white">Back to Auto</button>}
+          <span className="flex items-center gap-2">
+            {persona !== 'auto' && <button type="button" onClick={() => setPersona('auto')} className="text-[12px] text-ink-500 hover:text-white">Back to Auto</button>}
+            <MusicButton prefs={prefs} style={musicStyle} onChange={savePrefs} />
+          </span>
         </div>
         <form
           className="flex items-end gap-1.5 rounded-[28px] border border-white/10 bg-ink-900/90 p-1.5 shadow-2xl shadow-black/30 backdrop-blur-xl focus-within:border-white/20"
@@ -411,7 +530,8 @@ function PersonaItem({ p, value, onPick, inputRef }) {
 }
 
 /** The home screen, voice first: a greeting, the orb at the centre, today at a glance, and things to try. */
-function Home({ name, glance, due, mood, wake, heard, onTalk, onPick, onOpenToday, onSettings }) {
+function Home({ name, glance, due, mood, wake, heard, onTalk, onPick, onOpenToday, onSettings, personal, scene, music, onBrief }) {
+  const clock = useClock()
   const [page, setPage] = useState(0)
   const [paused, setPaused] = useState(false)
   useEffect(() => {
@@ -430,18 +550,40 @@ function Home({ name, glance, due, mood, wake, heard, onTalk, onPick, onOpenToda
       </h1>
       <p className="mt-1 text-[15px] text-ink-400">How can I help?</p>
 
-      <button type="button" onClick={onTalk} aria-label="Talk to Tara" className="group relative my-12 grid place-items-center rounded-full outline-none transition-transform duration-300 hover:scale-[1.04] focus-visible:ring-4 focus-visible:ring-pink-400/40">
-        <Orb size={148}>
-          <Mic className="size-12 drop-shadow transition group-hover:scale-110" />
-        </Orb>
-      </button>
+      {personal ? (
+        <div className="my-9 sm:my-12">
+          <Hud size={270} readouts={[
+            { label: 'Local time', value: clock },
+            { label: glance ? glance.text : 'Weather', value: glance ? `${glance.temp}°` : '—' },
+            { label: 'Due today', value: String(due.length) },
+            { label: music ? 'Music' : 'Systems', value: music ? 'Playing' : 'Online' },
+          ]}>
+            <button type="button" onClick={onTalk} aria-label="Talk to Tara" className="group relative grid place-items-center rounded-full outline-none transition-transform duration-300 hover:scale-[1.04] focus-visible:ring-4 focus-visible:ring-pink-400/40">
+              <Orb size={148}>
+                <Mic className="size-12 drop-shadow transition group-hover:scale-110" />
+              </Orb>
+            </button>
+          </Hud>
+        </div>
+      ) : (
+        <button type="button" onClick={onTalk} aria-label="Talk to Tara" className="group relative my-12 grid place-items-center rounded-full outline-none transition-transform duration-300 hover:scale-[1.04] focus-visible:ring-4 focus-visible:ring-pink-400/40">
+          <Orb size={148}>
+            <Mic className="size-12 drop-shadow transition group-hover:scale-110" />
+          </Orb>
+        </button>
+      )}
       <p className="text-[14px] text-ink-300">
         Tap the orb{wakeSupported() ? <> or say <span className="font-semibold text-white">“Hey Tara”</span></> : ''}, then just talk. I'll answer when you pause.
       </p>
       <WakeStatus state={wake} onSettings={onSettings} />
+      {personal && canSpeak() && (
+        <button type="button" onClick={onBrief} className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-1.5 text-[12.5px] font-medium text-ink-200 backdrop-blur hover:border-white/25 hover:text-white">
+          <Radio className="size-3.5" /> Brief me{scene && scene !== 'clear' ? ` · ${scene === 'storm' ? 'storm' : scene} outside` : ''}
+        </button>
+      )}
       {heard && <p aria-live="polite" className="mt-1 max-w-sm truncate text-[12px] text-ink-500">Heard “{heard}”. Say “Hey Tara” first to wake me.</p>}
 
-      <div className="mt-8 grid w-full max-w-xl gap-3 text-left sm:grid-cols-2">
+      <div className={`mt-8 grid w-full max-w-xl gap-3 text-left sm:grid-cols-2 ${personal && glance ? 'hidden' : ''}`}>
         {glance ? (
           <div className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-gradient-to-br from-sky-500/10 to-transparent p-3">
             <WeatherIcon code={glance.code} className="size-8 shrink-0 text-sky-200" strokeWidth={1.5} />
@@ -456,7 +598,7 @@ function Home({ name, glance, due, mood, wake, heard, onTalk, onPick, onOpenToda
             <span className="text-[12.5px] text-ink-300">Add your city to see the weather here</span>
           </button>
         )}
-        <button type="button" onClick={onOpenToday} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-gradient-to-br from-orange-400/10 to-transparent p-3 text-left hover:border-white/15">
+        <button type="button" onClick={onOpenToday} className={`flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-gradient-to-br from-orange-400/10 to-transparent p-3 text-left hover:border-white/15 ${personal ? 'hidden' : ''}`}>
           <span className={`grid size-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${GRAD} text-[14px] font-semibold text-on-accent`}>{due.length}</span>
           <span className="min-w-0">
             <span className="block text-[14px] font-semibold text-white">{due.length ? `${due.length} due today` : 'Nothing due today'}</span>
@@ -465,6 +607,19 @@ function Home({ name, glance, due, mood, wake, heard, onTalk, onPick, onOpenToda
         </button>
       </div>
 
+      {personal ? (
+        <div className="mt-7 w-full max-w-2xl">
+          <p className="mb-2 text-[12px] text-ink-500">Try saying</p>
+          <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_10%,#000_90%,transparent)]">
+            <div className="tara-stream">
+              {[...IDEAS, ...IDEAS].map((s, i) => (
+                <button key={i} type="button" onClick={() => onPick(s)} tabIndex={i < IDEAS.length ? 0 : -1} aria-hidden={i >= IDEAS.length || undefined}
+                  className="shrink-0 rounded-full border border-white/[0.1] bg-white/[0.04] px-3.5 py-1.5 text-[13px] whitespace-nowrap text-ink-200 backdrop-blur hover:border-white/25 hover:text-white">“{s}”</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
       <div className="mt-7 w-full max-w-xl" onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}>
         <p className="mb-2 text-[12px] text-ink-500">Try saying</p>
         <AnimatePresence mode="wait">
@@ -475,7 +630,53 @@ function Home({ name, glance, due, mood, wake, heard, onTalk, onPick, onOpenToda
           </motion.div>
         </AnimatePresence>
       </div>
+      )}
     </div>
+  )
+}
+
+/** Background music on and off, its sound and volume, from the composer. */
+function MusicButton({ prefs, style, onChange }) {
+  const [open, setOpen] = useState(false)
+  const box = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (e) => (e.key === 'Escape' || (e.type === 'pointerdown' && !box.current?.contains(e.target))) && setOpen(false)
+    window.addEventListener('keydown', close)
+    window.addEventListener('pointerdown', close)
+    return () => {
+      window.removeEventListener('keydown', close)
+      window.removeEventListener('pointerdown', close)
+    }
+  }, [open])
+  if (!ambient.supported) return null
+  const set = (k, v) => onChange({ ...prefs, [k]: v })
+  const now = STYLES.find((x) => x.id === style)?.label
+  return (
+    <span ref={box} className="relative">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label={prefs.music ? `Music: ${now}` : 'Background music'}
+        className={`inline-flex items-center gap-1.5 rounded-full border py-1 pr-2.5 pl-2 text-[12.5px] backdrop-blur-xl transition ${prefs.music ? 'border-pink-400/40 bg-pink-500/10 text-pink-100' : 'border-white/10 bg-ink-900/80 text-ink-300 hover:text-white'}`}>
+        <Music2 className={`size-3.5 ${prefs.music ? 'animate-pulse' : ''}`} /> <span className="hidden sm:inline">{prefs.music ? now : 'Music'}</span>
+      </button>
+      {open && (
+        <span role="dialog" aria-label="Background music" className="absolute right-0 bottom-full z-30 mb-2 block w-64 rounded-2xl border border-white/10 bg-ink-900 p-3 text-left shadow-2xl shadow-black/40">
+          <label className="flex items-center justify-between gap-3 text-[13px] font-semibold text-white">
+            Soothing music
+            <input type="checkbox" className="size-4 accent-pink-500" checked={prefs.music} onChange={(e) => set('music', e.target.checked)} />
+          </label>
+          <span className="mt-2 block space-y-0.5">
+            {STYLES.map((x) => (
+              <button key={x.id} type="button" onClick={() => onChange({ ...prefs, music: true, musicStyle: x.id })}
+                className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-[12.5px] ${prefs.musicStyle === x.id ? 'bg-white/[0.08] text-white' : 'text-ink-300 hover:bg-white/[0.04] hover:text-white'}`}>
+                {x.label}{x.id === 'weather' && prefs.musicStyle === 'weather' && <span className="text-[11px] text-ink-500">now: {now}</span>}
+              </button>
+            ))}
+          </span>
+          <input type="range" min="0.05" max="1" step="0.05" value={prefs.musicVolume} onChange={(e) => set('musicVolume', Number(e.target.value))} aria-label="Music volume" className="mt-2 w-full accent-pink-500" />
+          <span className="mt-1 block text-[11px] text-ink-500">Made in your browser. Quiet while I listen.</span>
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -521,7 +722,7 @@ function VoiceOverlay({ state, followUp, interim, error, persona, lastReply, onT
       <p aria-live="polite" className="mt-10 line-clamp-6 max-w-xl text-center text-[20px] leading-snug text-white sm:text-[24px]">{caption}</p>
       {hint && <p className="mt-3 text-center text-[13px] text-ink-400">{hint}</p>}
       {error && <p className="mt-3 text-center text-[14px] text-rose-300">{error}</p>}
-      <p className="absolute bottom-8 text-[12.5px] text-ink-500">Esc or ✕ to close</p>
+      <p className="absolute bottom-8 text-[12.5px] text-ink-500">Press Esc to close</p>
     </motion.div>
   )
 }

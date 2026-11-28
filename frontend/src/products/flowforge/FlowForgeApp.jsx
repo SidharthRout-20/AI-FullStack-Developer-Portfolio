@@ -267,7 +267,6 @@ export default function FlowForgeApp() {
       name="FlowForge"
       tagline="Build your own AI automations by dragging steps onto a canvas"
       icon={Workflow}
-      accent={ACCENT}
       right={meta && dirty ? <Pill tone="warn">unsaved</Pill> : undefined}
     >
       {!meta ? (

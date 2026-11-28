@@ -1,5 +1,9 @@
-/** Budget & expenses: estimates kept apart from actual spend, dated reference rates, group settle-up, receipt scan. */
-import { Camera, PiggyBank, Plus, Receipt, Trash2, Users } from 'lucide-react'
+/**
+ * Budget & expenses: estimates kept apart from actual spend, dated reference rates, group settle-up, receipt scan.
+ * `compact` (the personal space's Money tab, under the wallet): the headline numbers and settle-up live in the wallet,
+ * so this shows where the money went and the history, with the detailed form and settings one tap away.
+ */
+import { Camera, ChevronDown, PiggyBank, Plus, Receipt, Trash2, Users } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { errorText } from '@appcore/web/http'
 import { Button, Card, ErrorNote, Field, inputClass, Pill, Spinner } from '@appcore/web/ui'
@@ -8,7 +12,8 @@ import { compressImage } from '@appcore/web/device'
 
 const blank = (cur) => ({ amount: '', currency: cur, category: 'food', kind: 'actual', date: localDate(), day: '', paid_by: '', split_between: '', note: '', rate: '' })
 
-export function Budget({ trip, api, owner, onTrip, setNote }) {
+export function Budget({ trip, api, owner, onTrip, setNote, compact = false, onChanged }) {
+  const [details, setDetails] = useState(!compact) // compact: the detailed form opens on request
   const cur = trip.budget?.currency ?? 'EUR'
   const [sum, setSum] = useState(null)
   const [items, setItems] = useState([])
@@ -41,6 +46,7 @@ export function Budget({ trip, api, owner, onTrip, setNote }) {
       setDraftNote(null)
       setNote(e.currency !== cur && !e.fx ? `Saved, but no reference rate was available for ${e.currency}: it's listed as not converted.` : 'Expense saved.')
       load()
+      onChanged?.()
     } catch (e) {
       setError(errorText(e))
     } finally {
@@ -53,6 +59,7 @@ export function Budget({ trip, api, owner, onTrip, setNote }) {
       onTrip(await api.update({ budget: settings.total === '' ? null : Number(settings.total), currency: settings.currency.toUpperCase() }))
       setNote('Budget updated.')
       load()
+      onChanged?.()
     } catch (e) {
       setError(errorText(e))
     } finally {
@@ -82,6 +89,8 @@ export function Budget({ trip, api, owner, onTrip, setNote }) {
       <ErrorNote message={error} />
       {!sum ? <Spinner label="Loading budget…" /> : (
         <Card>
+          {compact ? <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><PiggyBank className="pa-ink size-4" /> Where the money went</p> : (
+          <>
           <div className="flex flex-wrap items-baseline gap-3">
             <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><PiggyBank className="pa-ink size-4" /> Budget</p>
             <p className="text-[13px] text-ink-300">
@@ -96,6 +105,8 @@ export function Budget({ trip, api, owner, onTrip, setNote }) {
             </div>
           )}
           {sum.remaining_after_estimates != null && sum.estimated_total > 0 && <p className="mt-1 text-[12px] text-ink-400">After estimates: {money(sum.remaining_after_estimates, sum.currency)} left.</p>}
+          </>
+          )}
           {!Object.values(sum.by_category).some((v) => v.actual || v.estimated || v.budget) ? (
             <p className="mt-3 rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-[12.5px] text-ink-400">Nothing spent or planned yet. Add an expense below, or set a total budget to track against.</p>
           ) : (
@@ -110,7 +121,7 @@ export function Budget({ trip, api, owner, onTrip, setNote }) {
           )}
           {sum.unconverted.length > 0 && <p className="mt-2 text-[12px] text-amber-300">{sum.unconverted.length} expense(s) in another currency had no reference rate, so they're not in the totals. Re-add them with your own rate.</p>}
           {sum.rates.length > 0 && <p className="mt-2 text-[11.5px] text-ink-500">Rates used: {sum.rates.join('; ')}. Reference rates, not live quotes.</p>}
-          {sum.settlements.length > 0 && (
+          {!compact && sum.settlements.length > 0 && (
             <div className="mt-3">
               <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-white"><Users className="size-3.5" /> Settle up</p>
               <ul className="mt-1 text-[12.5px] text-ink-200">{sum.settlements.map((s) => <li key={`${s.from}-${s.to}`}>{s.from} pays {s.to} {money(s.amount, sum.currency)}</li>)}</ul>
@@ -119,6 +130,13 @@ export function Budget({ trip, api, owner, onTrip, setNote }) {
         </Card>
       )}
 
+      {!details ? (
+        <button type="button" onClick={() => setDetails(true)} className="flex w-full items-center justify-between gap-2 rounded-2xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 text-left text-[13px] text-ink-200 hover:border-white/15 hover:text-white">
+          <span className="flex items-center gap-2"><Receipt className="size-4 text-amber-300" /> Add with details: another currency, a split, a receipt photo, or budget settings</span>
+          <ChevronDown className="size-4 shrink-0" />
+        </button>
+      ) : (
+      <>
       <Card>
         <div className="flex flex-wrap items-center gap-2">
           <p className="flex items-center gap-2 text-[13px] font-semibold text-white"><Receipt className="size-4 text-amber-300" /> Add an expense</p>
@@ -157,6 +175,8 @@ export function Budget({ trip, api, owner, onTrip, setNote }) {
           </div>
         </Card>
       )}
+      </>
+      )}
 
       {items.length > 0 && (
         <Card>
@@ -168,7 +188,7 @@ export function Budget({ trip, api, owner, onTrip, setNote }) {
                 <span className="min-w-0 flex-1 truncate text-ink-200">{e.note || e.category}{e.paid_by ? ` · paid by ${e.paid_by}` : ''}</span>
                 {e.kind === 'estimate' && <Pill tone="info">estimate</Pill>}
                 <span className="text-white tabular-nums">{money(e.amount, e.currency)}</span>
-                {owner && <button type="button" aria-label="Delete expense" className="text-ink-500 hover:text-rose-300" onClick={() => void api.deleteExpense(e.id).then(load)}><Trash2 className="size-3.5" /></button>}
+                {owner && <button type="button" aria-label="Delete expense" className="text-ink-500 hover:text-rose-300" onClick={() => void api.deleteExpense(e.id).then(() => { load(); onChanged?.() })}><Trash2 className="size-3.5" /></button>}
               </li>
             ))}
           </ul>

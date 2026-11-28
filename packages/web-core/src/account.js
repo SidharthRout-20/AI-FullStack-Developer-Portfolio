@@ -108,8 +108,3 @@ export async function signOut() {
   }
 }
 
-/** For tests: forget the cached session check. */
-export function _resetForTests() {
-  loading = null
-  state = { user: null, ready: false }
-}

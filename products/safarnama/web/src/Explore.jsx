@@ -23,8 +23,9 @@ export const GROUPS = [
   { id: 'services', label: 'Services', icon: Stethoscope },
 ]
 
-export function Explore({ trip, api, owner, onTrip, onPins, setNote, initialGroup = 'food' }) {
+export function Explore({ trip, api, owner, onTrip, onPins, setNote, initialGroup = 'food', order }) {
   const [group, setGroup] = useState(initialGroup)
+  const groups = order ? order.map((id) => GROUPS.find((g) => g.id === id)).filter(Boolean) : GROUPS
   const dests = trip.destinations ?? []
   const stops = useMemo(() => trip.days.flatMap((d) => d.activities.filter((a) => a.lat != null).map((a) => ({ ...a, day: d.day }))), [trip])
   const [anchor, setAnchor] = useState(`dest:${dests[0]?.id ?? ''}`)
@@ -119,7 +120,7 @@ export function Explore({ trip, api, owner, onTrip, onPins, setNote, initialGrou
     <div className="space-y-3">
       <Card>
         <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none]">
-          {GROUPS.map(({ id, label, icon: Icon }) => (
+          {groups.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" onClick={() => setGroup(id)} className={`chip shrink-0 ${group === id ? '!bg-white/10 !text-white' : ''}`}>
               <Icon className="size-3" /> {label}
             </button>

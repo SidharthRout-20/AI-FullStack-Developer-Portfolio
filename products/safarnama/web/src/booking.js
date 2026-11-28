@@ -4,7 +4,8 @@
  * then save the confirmation with the trip. Pure helpers, unit-tested in booking.test.js.
  *
  * `prefilled` says what we checked: true = the provider opened with the place, dates and guests filled in when the
- * link was tested in a browser; 'place' = it opens the right search but dates may need re-entering; false = built from
+ * link was tested in a browser; 'dates' = the place and dates, but the guests need setting there (Google Hotels);
+ * 'place' = it opens the right search but dates may need re-entering; false = built from
  * the provider's public URL pattern but not verifiable automatically (the site blocks automated browsers).
  *
  * To earn commission later, join a provider's affiliate programme and add its tracking parameter in AFFILIATE below.
@@ -24,6 +25,20 @@ const withAffiliate = (provider, url) => {
   return u.toString()
 }
 
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+/** "14 December 2026": how Google's travel search reads a date written into the query. */
+export const longDate = (iso) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`
+
+/**
+ * A Google Hotels search for `what` with the dates written into the query. Checked in a browser (Nov 2026): Google
+ * ignores checkin/checkout parameters but reads dates from the text; it reads the guest count from neither, so the
+ * traveller sets that on Google.
+ */
+export function googleHotels(what, { checkin, checkout } = {}) {
+  const dates = checkin && checkout ? ` from ${longDate(checkin)} to ${longDate(checkout)}` : ''
+  return `https://www.google.com/travel/search?q=${enc(`${what}${dates}`)}`
+}
+
 /** Day after an ISO date (checkout after the last night). */
 export function dayAfter(iso) {
   const [y, m, d] = iso.split('-').map(Number)
@@ -32,15 +47,20 @@ export function dayAfter(iso) {
 }
 
 /**
- * The stay window for each destination of a trip: check in on its first day, check out the morning after its last.
- * Destinations without dated days get no dates (the links still open the right city).
+ * The stay window for each destination of a trip: check in on its first day, check out the morning after its last,
+ * except at the end of the trip, where the last day is the day you leave (a 4-day trip is 4 days, 3 nights, as the
+ * budget plan counts it). A destination with no night has no dates; neither do undated days (the links still open
+ * the right city).
  */
 export function stays(trip) {
   const dests = trip.destinations?.length ? trip.destinations : trip.city ? [{ ...trip.city, start_day: 1, end_day: trip.days.length }] : []
-  return dests.map((d) => {
+  return dests.map((d, i) => {
+    const end = i === dests.length - 1
+    const nights = d.end_day - d.start_day + (end ? 0 : 1)
     const first = trip.days.find((x) => x.day === d.start_day)?.date ?? null
     const last = trip.days.find((x) => x.day === d.end_day)?.date ?? null
-    return { name: d.name, country: d.country ?? '', checkin: first, checkout: last ? dayAfter(last) : null, nights: d.end_day - d.start_day + 1 }
+    const dated = !!(first && last && nights > 0)
+    return { name: d.name, country: d.country ?? '', checkin: dated ? first : null, checkout: dated ? (end ? last : dayAfter(last)) : null, nights }
   })
 }
 
@@ -58,11 +78,11 @@ export function bookingLinks({ place, adults = 2, from = '', info = {} }) {
 
   const stay = [
     {
-      provider: 'google', label: 'Google Hotels', prefilled: true,
-      url: `https://www.google.com/travel/search?q=${enc(`hotels in ${where}`)}${dated ? `&checkin=${checkin}&checkout=${checkout}` : ''}&adults=${n}`,
+      provider: 'google', label: 'Google Hotels', prefilled: 'dates',
+      url: googleHotels(`hotels in ${where}`, { checkin, checkout }),
     },
     {
-      provider: 'airbnb', label: 'Airbnb', prefilled: true,
+      provider: 'airbnb', label: 'Airbnb', prefilled: false,
       url: `https://www.airbnb.com/s/${enc(where.replace(/,\s*/g, '--').replace(/\s+/g, '-'))}/homes?${dated ? `checkin=${checkin}&checkout=${checkout}&` : ''}adults=${n}`,
     },
     {

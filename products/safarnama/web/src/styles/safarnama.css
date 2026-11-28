@@ -113,3 +113,92 @@
 /* The map: a dark basemap made from the standard OpenStreetMap tiles */
 .map-tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.6); }
 .leaflet-container { background: var(--color-ink-900); font-family: inherit; }
+
+/* ─── The personal space's look (skin.js) ───────────────────────────────────────────────────────────────────────
+ * Safarnaama inside the personal space looks like the personal space (frontend/src/site/personal/PersonalSpace.jsx):
+ * plain paper or near-black, Oswald uppercase headings, ink pills, and bright cards in the palette (--pc-1…4, set by
+ * skin.js). It re-maps the same semantic tokens the light theme uses (the ink scale, "white" = foreground) so every
+ * screen follows, and restyles the shared primitives through their ui-* hooks. Set on <html data-pa-theme="personal">
+ * only while Safarnaama is open. */
+:root[data-pa-theme='personal'][data-theme='light'] {
+  --pl-bg: #ffffff; --pl-ink: #363636; --pl-muted: #5f5f5f; --pl-line: #e0e0e0; --pl-chip: #f2f2f2;
+  --color-ink-950: #ffffff; --color-ink-925: #fafafa; --color-ink-900: #ffffff; --color-ink-850: #f6f6f6;
+  --color-ink-800: #ececec; --color-ink-700: #e0e0e0; --color-ink-600: #d0d0d0; --color-ink-500: #7a7a7a;
+  --color-ink-400: #5f5f5f; --color-ink-300: #4a4a4a; --color-ink-200: #363636; --color-ink-100: #2a2a2a;
+  --color-white: #363636; --color-black: #1f1f1f;
+  --hairline: rgb(0 0 0 / 0.1); --glass-from: #ffffff; --glass-to: #ffffff; --glass-shadow: 0 14px 34px -20px rgb(0 0 0 / 0.3);
+}
+:root[data-pa-theme='personal'][data-theme='dark'] {
+  --pl-bg: #0f1012; --pl-ink: #ececec; --pl-muted: #a6a6a6; --pl-line: #2b2b30; --pl-chip: #1d1d21;
+  --color-ink-950: #0f1012; --color-ink-925: #121315; --color-ink-900: #141518; --color-ink-850: #1d1d21;
+  --color-ink-800: #232328; --color-ink-700: #2b2b30; --color-ink-600: #38383c; --color-ink-500: #84848b;
+  --color-ink-400: #a6a6a6; --color-ink-300: #c2c2c2; --color-ink-200: #dcdcdc; --color-ink-100: #ececec;
+  --color-white: #ececec; --color-black: #0f1012;
+  --hairline: rgb(255 255 255 / 0.09); --glass-from: #141518; --glass-to: #141518; --glass-shadow: 0 14px 34px -20px rgb(0 0 0 / 0.6);
+}
+:root[data-pa-theme='personal'] [data-product='safarnama'] {
+  --pa-1: var(--pc-1); --pa-2: var(--pc-1); --pa-3: var(--pc-1); --pa-solid: var(--pl-ink); --pa-ink: var(--pl-ink);
+  --pa-glow: transparent; --pa-soft: var(--pl-chip); --pa-line: var(--pl-line);
+  font-family: Inter, system-ui, sans-serif;
+}
+:root[data-pa-theme='personal'] .backdrop-fx,
+:root[data-pa-theme='personal'] [data-product='safarnama'] .pa-fx::after { display: none; }
+:root[data-pa-theme='personal'] [data-product='safarnama'] .pa-fx { background: var(--pl-bg); }
+
+/* Type: the personal space's condensed uppercase headings */
+:root[data-pa-theme='personal'] [data-product='safarnama'] :is(.pa-display, .pc-head, .ui-shell-name) {
+  font-family: 'Oswald', 'Arial Narrow', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: -0.01em;
+}
+:root[data-pa-theme='personal'] [data-product='safarnama'] .pa-gradient-text {
+  color: inherit; -webkit-background-clip: border-box; background-clip: border-box;
+  background: linear-gradient(transparent 58%, var(--pc-1) 58%, var(--pc-1) 92%, transparent 92%);
+}
+:root[data-pa-theme='personal'] [data-product='safarnama'] .pa-gradient { background-image: none; background-color: var(--pc-1); color: var(--pc-on-1); }
+
+/* The product header: plain paper, an ink badge, the name in Oswald */
+:root[data-pa-theme='personal'] [data-product='safarnama'] .ui-shell-header {
+  background: color-mix(in srgb, var(--pl-bg) 85%, transparent); border-color: var(--pl-line);
+}
+:root[data-pa-theme='personal'] [data-product='safarnama'] .ui-brand {
+  background-image: none; background-color: var(--pl-ink); color: var(--pl-bg); border-radius: 999px; box-shadow: none;
+}
+:root[data-pa-theme='personal'] [data-product='safarnama'] .ui-shell-name { font-size: 17px; letter-spacing: 0.02em; }
+
+/* Tabs: an ink pill slides under the chosen one, like the personal space's section nav */
+:root[data-pa-theme='personal'] [data-product='safarnama'] .ui-tabs-list {
+  border-radius: 999px; border-color: var(--pl-line); background: var(--pl-bg); padding: 5px;
+}
+:root[data-pa-theme='personal'] [data-product='safarnama'] .ui-tab {
+  font-family: 'Oswald', 'Arial Narrow', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; font-size: 13.5px;
+  border-radius: 999px; padding: 7px 14px; color: var(--pl-ink);
+}
+:root[data-pa-theme='personal'] [data-product='safarnama'] .ui-tab[aria-pressed='true'] { color: var(--pl-bg); }
+:root[data-pa-theme='personal'] [data-product='safarnama'] .ui-tab-pill { border-radius: 999px; background: var(--pl-ink); box-shadow: none; }
+
+/* Cards, buttons, chips and fields */
+:root[data-pa-theme='personal'] [data-product='safarnama'] .ui-card {
+  border-radius: 26px; border-color: var(--pl-line); background: var(--pl-bg); box-shadow: 0 24px 50px -34px rgb(0 0 0 / 0.35);
+}
+:root[data-pa-theme='personal'] [data-product='safarnama'] :is(.ui-btn-primary, .btn-primary) {
+  background-image: none !important; background-color: var(--pl-ink) !important; color: var(--pl-bg) !important; box-shadow: none !important;
+  border-radius: 999px !important; font-family: 'Oswald', 'Arial Narrow', sans-serif; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+}
+:root[data-pa-theme='personal'] [data-product='safarnama'] :is(.ui-btn-primary, .btn-primary):hover:not(:disabled) { filter: none; opacity: 0.88; }
+:root[data-pa-theme='personal'] [data-product='safarnama'] .ui-btn-ghost { border-radius: 999px; border-color: transparent; background: var(--pl-chip); color: var(--pl-ink); }
+:root[data-pa-theme='personal'] [data-product='safarnama'] .chip { border-color: transparent; background: var(--pl-chip); color: var(--pl-ink); font-weight: 600; }
+:root[data-pa-theme='personal'] [data-product='safarnama'] .chip:hover { background: var(--pl-line); }
+/* chips marked as chosen with the dark-theme classes (day filter, Explore groups) read as ink pills here */
+:root[data-pa-theme='personal'] [data-product='safarnama'] .chip[class*='!bg-white/10'] { background: var(--pl-ink) !important; color: var(--pl-bg) !important; }
+:root[data-pa-theme='personal'] [data-product='safarnama'] .ui-input { border-radius: 14px; border-color: var(--pl-line); background: var(--pl-bg); }
+:root[data-pa-theme='personal'] [data-product='safarnama'] .pa-on { border-color: var(--pl-ink) !important; background: var(--pl-ink) !important; color: var(--pl-bg) !important; }
+:root[data-pa-theme='personal'] [data-product='safarnama'] .pa-hover:hover { border-color: var(--pl-ink); }
+:root[data-pa-theme='personal'] [data-product='safarnama'] .pc-round { background: var(--pl-chip); color: var(--pl-ink); }
+:root[data-pa-theme='personal'] [data-product='safarnama'] .pc-round:hover { background: var(--pl-line); }
+
+/* Colour cards (pc-card + cardColour(i) inline): the personal space's tilted cards with a soft drop shadow */
+.pc-card { border-radius: 26px; box-shadow: 0 26px 50px -26px rgb(0 0 0 / 0.38); transition: transform 0.35s cubic-bezier(0.2, 0.9, 0.2, 1); }
+.pc-card:hover { transform: rotate(0deg) translateY(-4px) !important; }
+.pc-pill { background: #1f1f1f; color: #fff; transition: opacity 0.2s; }
+.pc-pill:hover:not(:disabled) { opacity: 0.85; }
+.pc-chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 5px 11px; font-size: 12.5px; font-weight: 600; background: rgb(0 0 0 / 0.08); }
+@media (prefers-reduced-motion: reduce) { .pc-card, .pc-card:hover { transition: none; transform: none !important; } }

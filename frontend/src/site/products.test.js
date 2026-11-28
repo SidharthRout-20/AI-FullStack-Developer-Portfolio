@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { forecastFreshness } from '@safarnama/web/freshness'
 import * as config from './config'
-import { fillCounts, FROZEN, LABS, LIVE_COUNT, MODULE_STATUSES, PORTFOLIO, PRODUCTS, productBySlug, productHref, STATUSES } from './products'
+import { fillCounts, FROZEN, LIVE_COUNT, MODULE_STATUSES, PORTFOLIO, PRODUCTS, productBySlug, productHref, STATUSES } from './products'
 
 const ids = (list) => list.map((p) => p.id)
 const FEATURED = ['tripweaver', 'codelens', 'keeper', 'efi']
@@ -22,7 +22,6 @@ describe('catalogue', () => {
   it('freezes everything else as in development', () => {
     expect(ids(FROZEN).sort()).toEqual(['careerpilot', 'documind-respond', 'evolve', 'flowforge', 'follow-through'])
     expect(FROZEN.every((p) => p.status === 'frozen' && STATUSES[p.status].label === 'In development')).toBe(true)
-    expect(LABS).toBe(FROZEN)
   })
 
   it('has no duplicate identities, slugs or aliases', () => {

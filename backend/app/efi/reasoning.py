@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
 import time
@@ -462,7 +461,3 @@ def _command_before(evidence: list[dict[str, Any]], failure: dict[str, Any]) -> 
         and (e["line"] or 0) <= (failure["line"] or 0)
     ]
     return cmds[-1] if cmds else None
-
-
-def to_json(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, default=str)

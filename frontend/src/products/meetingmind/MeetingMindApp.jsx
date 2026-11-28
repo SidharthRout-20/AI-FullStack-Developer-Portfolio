@@ -47,7 +47,7 @@ export default function MeetingMindApp() {
   }
 
   return (
-    <ProductShell name="MeetingMind" tagline="Meetings in, decisions and action items out" icon={AudioLines} accent={ACCENT}>
+    <ProductShell name="MeetingMind" tagline="Meetings in, decisions and action items out" icon={AudioLines}>
       <Tabs
         value={tab}
         onChange={setTab}

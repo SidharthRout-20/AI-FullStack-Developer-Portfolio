@@ -184,3 +184,15 @@ export function dayCheck(d) {
   const tips = (d.insights ?? []).map((x) => ({ ...x, important: x.level === 'warn' }))
   return { problems, tips, timing: problems.filter((p) => p.kind === 'timing').length, unmapped: problems.filter((p) => p.kind === 'map').length }
 }
+
+/**
+ * Where a destination's days happen: the middle of its mapped stops (so a stay is near the plan, not just the city
+ * centre), or the destination itself when nothing is mapped yet.
+ */
+export function stopsCentre(trip, dest) {
+  const pts = trip.days
+    .filter((d) => (d.destination ? d.destination === dest.id : d.day >= (dest.start_day ?? 1) && d.day <= (dest.end_day ?? trip.days.length)))
+    .flatMap((d) => d.activities.filter((a) => a.lat != null && a.lng != null))
+  if (!pts.length) return { lat: dest.lat, lng: dest.lng }
+  return { lat: pts.reduce((n, a) => n + a.lat, 0) / pts.length, lng: pts.reduce((n, a) => n + a.lng, 0) / pts.length }
+}

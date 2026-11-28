@@ -40,7 +40,7 @@ export default function EvolveApp() {
   }, [load])
 
   return (
-    <ProductShell name="Evolve" tagline="Prompts that learn from their mistakes" icon={Dna} accent={ACCENT}>
+    <ProductShell name="Evolve" tagline="Prompts that learn from their mistakes" icon={Dna}>
       {openId ? (
         <TaskView id={openId} samples={templates.find((t) => tasks?.find((x) => x.id === openId)?.name === t.name)?.samples ?? []} onBack={() => { setOpenId(null); void load() }} />
       ) : creating ? (
