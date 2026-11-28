@@ -25,6 +25,7 @@ from appcore.logs import configure_logging
 from appcore.security import SecurityHeadersMiddleware, limiter
 from appcore.settings import database_hint
 from safarnama import api
+from safarnama.liteapi import LiteAPI
 from safarnama.service import Tools, TripService
 from safarnama.settings import SafarnamaSettings, get_settings
 
@@ -49,6 +50,7 @@ def create_app(
     store = DocStore(settings.data_dir / "tripweaver.sqlite3", settings.db_url)
     app.state.settings = settings
     app.state.trips = TripService(store, get_llm, tools)
+    app.state.trips.live = LiteAPI.from_settings(settings)  # None without LITEAPI_KEY: live hotel prices off
     app.state.accounts = accounts_from(settings.neon_auth_base_url)  # None: sign-in off
 
     app.add_middleware(ErrorsAsJSON)  # inside CORS: even a crash answers with CORS headers

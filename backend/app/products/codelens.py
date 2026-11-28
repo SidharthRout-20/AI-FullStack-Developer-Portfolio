@@ -11,6 +11,9 @@ Pipeline (streamed as SSE progress events):
             falling back to 60-line windows)
   → embed  (local FastEmbed, same model as DocuMind) + BM25, fused with Reciprocal Rank Fusion at query time
   → graph  (import edges between files: Python `ast`, JS/TS `import`/`require` relative paths)
+
+Beyond questions and the pack: a hand-over readiness report (readiness.py: checks with evidence, risks, a module
+map, a meeting plan and starter files) and the hand-over document (handover.py), both deterministic.
 """
 
 from __future__ import annotations
@@ -35,6 +38,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from rank_bm25 import BM25Okapi
 
 from app.identity import OWNER, account, browser, tenant
+from app.products import handover as handover_doc
+from app.products import readiness as readiness_report
 from app.rag.retriever import reciprocal_rank_fusion, tokenize
 from appcore.ai import Lenient, ask_json, ask_text, clip, llm_failure, sse
 from appcore.docstore import DocStore, new_id
@@ -191,7 +196,8 @@ def chunk_python(path: str, source: str) -> list[dict[str, Any]]:
     if rest:  # module-level code (imports, constants, main block)
         for i in range(0, len(rest), WINDOW_LINES):
             block = rest[i : i + WINDOW_LINES]
-            chunks.append({"path": path, "start": block[0], "end": block[-1], "symbol": "(module)",
+            # the lines aren't next to each other: keep their numbers so findings can point at the right one
+            chunks.append({"path": path, "start": block[0], "end": block[-1], "symbol": "(module)", "lines": block,
                            "text": "\n".join(lines[n - 1] for n in block)})  # fmt: skip
     return chunks
 
@@ -374,6 +380,7 @@ class CodeService:
         blob = await self.download(owner, name, ref)
         yield {"event": "stage", "stage": "read", "detail": f"{len(blob) / 1e6:.1f} MB archive"}
         files, readme = await asyncio.to_thread(read_zip, blob)
+        extra = await asyncio.to_thread(readiness_report.archive_meta, blob)  # every path + .env.example, CODEOWNERS…
         if not files:
             raise HTTPException(422, "No supported source files found in this repository.")
         langs: dict[str, int] = {}
@@ -412,7 +419,7 @@ class CodeService:
                 "owner": owner, "name": name, "ref": ref, "url": f"https://github.com/{owner}/{name}",
                 "files": sorted(files), "file_lines": {p: t.count("\n") + 1 for p, t in files.items()},
                 "edges": edges, "languages": dict(sorted(langs.items(), key=lambda kv: -kv[1])),
-                "chunks": len(chunks), "readme": readme[:6000], "tour": None, "pack": None,
+                "chunks": len(chunks), "readme": readme[:6000], "tour": None, "pack": None, **extra,
             },
             id=repo_id,
         )  # fmt: skip
@@ -510,6 +517,24 @@ class CodeService:
         self.db.patch("repos", repo["id"], {"pack": result})
         return result
 
+    async def readiness(self, repo: dict[str, Any]) -> dict[str, Any]:
+        """Is it ready to hand over? Deterministic checks, risks, module map, meeting plan and starter files."""
+        chunks, _, _ = await asyncio.to_thread(self._load, repo["id"])
+        return await asyncio.to_thread(readiness_report.assess, repo, chunks, repo.get("pack"))
+
+    async def handover(self, repo: dict[str, Any]) -> dict[str, Any]:
+        """The hand-over document (Markdown + printable HTML): the pack, plus facts read from the code itself."""
+        pack = await self.pack(repo)
+        chunks, _, _ = await asyncio.to_thread(self._load, repo["id"])
+        facts = handover_doc.facts(repo, chunks)
+        ready = await asyncio.to_thread(readiness_report.assess, repo, chunks, pack)
+        return {
+            "markdown": handover_doc.markdown(repo, pack, facts, ready=ready),
+            "html": handover_doc.to_html(repo, pack, facts, ready=ready),
+            "filename": handover_doc.filename(repo, "md"),
+            "html_filename": handover_doc.filename(repo, "html"),
+        }
+
     def snippet(self, repo_id: str, path: str, start: int, end: int) -> dict[str, Any]:
         chunks, _, _ = self._load(repo_id)
         parts = sorted((c for c in chunks if c["path"] == path), key=lambda c: c["start"])
@@ -546,7 +571,7 @@ def preview_of(files: dict[str, str], langs: dict[str, int], readme: str) -> dic
 
 
 def public(doc: dict[str, Any]) -> dict[str, Any]:
-    return {k: v for k, v in doc.items() if k not in ("readme", "file_lines", "pack")}
+    return {k: v for k, v in doc.items() if k not in ("readme", "file_lines", "pack", "all_paths", "meta")}
 
 
 # ── API ───────────────────────────────────────────────────────────────────
@@ -666,6 +691,29 @@ async def pack(request: Request, repo_id: str, svc: Code) -> dict[str, Any]:
         return await svc.pack(repo)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(503, llm_failure(exc)) from None
+
+
+@router.post("/repos/{repo_id}/handover")
+@limiter.limit(rate_limit_value)
+async def handover(request: Request, repo_id: str, svc: Code) -> dict[str, Any]:
+    """A hand-over document to download and share (Markdown, and HTML to print or save as PDF)."""
+    repo = _repo(svc, repo_id)
+    try:
+        return await svc.handover(repo)
+    except KeyError:
+        raise HTTPException(404, "This repository's index is gone. Index it again.") from None
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, llm_failure(exc)) from None
+
+
+@router.get("/repos/{repo_id}/readiness")
+@limiter.limit("20/minute")
+async def readiness(request: Request, repo_id: str, svc: Code) -> dict[str, Any]:
+    repo = _repo(svc, repo_id)
+    try:
+        return await svc.readiness(repo)
+    except KeyError as exc:
+        raise HTTPException(404, "This repository's index is gone. Index it again.") from exc
 
 
 @router.get("/repos/{repo_id}/file")

@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, KeyRound, LayoutGrid, Mic, Route as RouteIcon, Settings2, Sparkles, WifiOff } from 'lucide-react'
+import { ArrowLeft, CalendarDays, History, KeyRound, LayoutGrid, MessageSquare, Route as RouteIcon, Settings2, Sparkles, SquarePen, WifiOff, X } from 'lucide-react'
 import { AnimatePresence, motion, MotionConfig } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Backdrop } from '../../components/shell/Backdrop'
@@ -16,10 +16,13 @@ import { currentPosition, notify, registerServiceWorker } from '@appcore/web/dev
 import { EntryCard } from './EntryCard'
 import { AlarmBanner, ReminderSettingsCard, useAlarms } from './Reminders'
 import { localISO, MODULES, moduleOf } from './modules'
-import { onAccount } from '@appcore/web/account'
+import { accountState, onAccount } from '@appcore/web/account'
+import { newChat, openChat, ownerFor, removeChat, setChatOwner, useChats } from './chats'
 import { AccountButton } from '../../site/AccountButton'
 import { ScanSheet } from './ScanSheet'
 import { TodayView } from './TodayView'
+import { useSkin } from '../../theme/theme'
+import { sceneOf, Sky, usePhase } from './Sky'
 
 const NOTIFIED_KEY = 'keeper-notified'
 
@@ -38,6 +41,12 @@ export default function KeeperApp() {
   const [needKey, setNeedKey] = useState(false)
   const [scan, setScan] = useState(null)
   const [toast, setToast] = useState(null)
+  const [history, setHistory] = useState(false) // the list of chats, on phones
+  const chats = useChats()
+  // In the personal space Tara sits under the real sky: the weather where you are, and the time of day.
+  const personal = useSkin() === 'personal'
+  const [glance, setGlance] = useState(null)
+  const phase = usePhase()
   const [perm, setPerm] = useState(() =>
     'Notification' in window ? Notification.permission : 'unsupported',
   )
@@ -63,8 +72,12 @@ export default function KeeperApp() {
   // Signing in or out changes whose Tara this is; a claim moves this browser's things into the account: reload.
   useEffect(() => {
     const reload = () => void refresh()
+    setChatOwner(ownerFor(accountState.user?.email))
     window.addEventListener('account-claimed', reload)
-    const off = onAccount(reload)
+    const off = onAccount((s) => {
+      setChatOwner(ownerFor(s.user?.email))
+      reload()
+    })
     return () => {
       window.removeEventListener('account-claimed', reload)
       off()
@@ -231,6 +244,16 @@ export default function KeeperApp() {
     if (v === 'today') setModule('today')
     else if (v === 'saved' && module === 'today') setModule(MODULES[1]?.id ?? 'stash')
   }
+  const startChat = () => {
+    newChat()
+    setHistory(false)
+    setView('assistant')
+  }
+  const pickChat = (id) => {
+    openChat(id)
+    setHistory(false)
+    setView('assistant')
+  }
   const openSettings = (open = true) => {
     if (open) setView('assistant') // the settings sheet lives with the assistant
     setSettings(open)
@@ -243,10 +266,10 @@ export default function KeeperApp() {
 
   return (
     <MotionConfig reducedMotion={LITE ? 'always' : 'user'}>
-      <Backdrop />
+      {personal ? <Sky scene={sceneOf(glance?.code)} phase={phase} /> : <Backdrop />}
       <div className="flex min-h-full">
         {/* Sidebar (desktop) */}
-        <aside className="sticky top-0 hidden h-svh w-64 shrink-0 flex-col border-r border-white/[0.06] bg-ink-950/60 px-3 py-4 backdrop-blur-xl lg:flex">
+        <aside className="sticky top-0 z-40 hidden h-svh w-64 shrink-0 flex-col border-r border-white/[0.06] bg-ink-950/60 px-3 py-4 backdrop-blur-xl lg:flex">
           <div className="flex items-center gap-2.5 px-2">
             <span className="grid size-9 place-items-center rounded-2xl bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400 text-on-accent shadow-lg shadow-pink-950/40"><Sparkles className="size-4.5" /></span>
             <div className="leading-tight">
@@ -254,8 +277,8 @@ export default function KeeperApp() {
               <p className="text-[11px] text-ink-500">Personal assistant</p>
             </div>
           </div>
-          <button type="button" onClick={() => go('assistant')} className="mt-6 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-500/90 to-orange-400/90 px-3.5 py-2.5 text-[13.5px] font-semibold text-on-accent shadow-lg hover:opacity-95">
-            <Mic className="size-4" /> Talk to Tara
+          <button type="button" onClick={startChat} className="mt-6 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-500/90 to-orange-400/90 px-3.5 py-2.5 text-[13.5px] font-semibold text-on-accent shadow-lg hover:opacity-95">
+            <SquarePen className="size-4" /> New conversation
           </button>
           <nav aria-label="Tara" className="mt-5 space-y-1">
             {NAV.map((n) => {
@@ -270,8 +293,9 @@ export default function KeeperApp() {
               )
             })}
           </nav>
-          <div className="mt-auto space-y-1">
-            <div className="px-2 pb-1"><AccountButton /></div>
+          <ChatList chats={chats} active={view === 'assistant'} onPick={pickChat} className="mt-5 min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin]" />
+          <div className="mt-3 space-y-1">
+            <div className="px-2 pb-1"><AccountButton up /></div>
             <button type="button" onClick={() => openSettings(true)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-ink-300 hover:bg-white/[0.04] hover:text-white"><Settings2 className="size-4.5" /> Voice & personality</button>
             {status && (
               <p className="flex items-center gap-2 px-3 py-1 text-[11.5px] text-ink-500">
@@ -292,8 +316,10 @@ export default function KeeperApp() {
             <span className="grid size-8 place-items-center rounded-xl bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400 text-on-accent"><Sparkles className="size-4" /></span>
             <p className="text-[15px] font-semibold text-white">Tara</p>
             {offline && <span className="flex items-center gap-1 rounded-lg bg-rose-500/10 px-2 py-0.5 text-[11px] text-rose-300"><WifiOff className="size-3" /> Offline</span>}
-            <div className="ml-auto flex items-center gap-1.5">
-              <ThemeToggle compact />
+            <div className="ml-auto flex items-center gap-1">
+              <button type="button" onClick={() => setHistory(true)} aria-label="Your conversations" className="grid size-9 place-items-center rounded-lg text-ink-300 hover:text-white"><History className="size-4.5" /></button>
+              <button type="button" onClick={startChat} aria-label="New conversation" className="grid size-9 place-items-center rounded-lg text-ink-300 hover:text-white"><SquarePen className="size-4.5" /></button>
+              <AccountButton />
             </div>
           </header>
 
@@ -313,6 +339,7 @@ export default function KeeperApp() {
                     settingsOpen={settings}
                     onWake={() => setView('assistant')}
                     onSettings={openSettings}
+                    onGlance={setGlance}
                   />
                 </AssistantBoundary>
               </div>
@@ -377,7 +404,7 @@ export default function KeeperApp() {
                     briefLoading={briefLoading}
                     onRefreshBrief={() => void loadBrief()}
                     agenda={agenda}
-                    onDone={(item) => void mutate(() => keeperApi.done(item.entry.id), 'Done ✓')}
+                    onDone={(item) => void mutate(() => keeperApi.done(item.entry.id), 'Done')}
                     telegram={!!status?.telegram}
                     onSendTelegram={() => void mutate(() => keeperApi.sendBrief(), 'Brief sent to Telegram')}
                     notifications={perm}
@@ -408,7 +435,7 @@ export default function KeeperApp() {
                             <EntryCard
                               key={e.id}
                               entry={e}
-                              onDone={(x) => void mutate(() => keeperApi.done(x.id), `${moduleOf(x.kind).doneLabel ?? 'Done'} ✓`)}
+                              onDone={(x) => void mutate(() => keeperApi.done(x.id), moduleOf(x.kind).doneLabel ?? 'Done')}
                               onUsed={(x) => void mutate(() => keeperApi.used(x.id), 'Marked as used today')}
                               onDelete={(x) => void mutate(() => keeperApi.remove(x.id), `Deleted ${x.title}`)}
                             />
@@ -444,6 +471,25 @@ export default function KeeperApp() {
 
       <ScanSheet scan={scan} onClose={() => setScan(null)} onSave={saveScan} />
 
+      <AnimatePresence>
+        {history && (
+          <motion.div role="dialog" aria-modal="true" aria-label="Your conversations" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end bg-black/50 backdrop-blur-sm lg:hidden" onClick={() => setHistory(false)}>
+            <motion.div initial={{ y: 40 }} animate={{ y: 0 }} exit={{ y: 40 }} onClick={(e) => e.stopPropagation()}
+              className="max-h-[80svh] w-full overflow-y-auto rounded-t-3xl border border-white/10 bg-ink-900 p-4 pb-8">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[16px] font-semibold text-white">Your conversations</p>
+                <button type="button" onClick={() => setHistory(false)} aria-label="Close" className="grid size-9 place-items-center rounded-full bg-white/[0.06] text-ink-300"><X className="size-4.5" /></button>
+              </div>
+              <button type="button" onClick={startChat} className="mt-3 flex w-full items-center gap-2 rounded-2xl bg-gradient-to-r from-fuchsia-500/90 to-orange-400/90 px-3.5 py-2.5 text-[14px] font-semibold text-on-accent">
+                <SquarePen className="size-4" /> New conversation
+              </button>
+              <ChatList chats={chats} active onPick={pickChat} className="mt-4" empty />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <AlarmBanner alerts={alarms.active} onResolve={(a, action) => void alarms.resolve(a, action).catch(handle)} />
 
       <AnimatePresence>
@@ -460,6 +506,36 @@ export default function KeeperApp() {
         )}
       </AnimatePresence>
     </MotionConfig>
+  )
+}
+
+/** Recent conversations (kept in this browser): tap to reopen, × to delete. */
+function ChatList({ chats, active, onPick, className = '', empty = false }) {
+  if (!chats.list.length)
+    return empty ? <p className={`${className} text-[13px] text-ink-500`}>Your conversations appear here. They're kept only in this browser.</p> : <div className={className} />
+  return (
+    <div className={className}>
+      <p className="px-3 pb-1.5 text-[11px] font-semibold tracking-wide text-ink-500 uppercase">Recent</p>
+      <ul className="space-y-0.5">
+        {chats.list.map((c) => {
+          const on = active && c.id === chats.current
+          return (
+            <li key={c.id} className="group relative">
+              <button type="button" onClick={() => onPick(c.id)} aria-current={on ? 'true' : undefined} title={c.title}
+                className={`flex w-full items-center gap-2.5 rounded-xl py-2 pr-8 pl-3 text-left text-[13px] transition ${on ? 'bg-white/[0.08] text-white' : 'text-ink-300 hover:bg-white/[0.04] hover:text-white'}`}>
+                <MessageSquare className="size-3.5 shrink-0 opacity-60" />
+                <span className="truncate">{c.title}</span>
+              </button>
+              <button type="button" onClick={() => removeChat(c.id)} aria-label={`Delete “${c.title}”`}
+                className="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-lg text-ink-500 opacity-100 hover:bg-white/[0.06] hover:text-rose-300 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100">
+                <X className="size-3.5" />
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      <p className="px-3 pt-2 text-[11px] text-ink-600">Kept only in this browser.</p>
+    </div>
   )
 }
 

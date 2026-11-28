@@ -49,7 +49,7 @@ REPLAN = {"explanation": "Swapped the castle for a museum because of rain.",
 
 
 class FakeTools:
-    async def geocode_city(self, name, country):
+    async def geocode_city(self, name, country, region=None):
         return {"name": "Lisbon", "country": "Portugal", "lat": 38.72, "lng": -9.14, "timezone": "Europe/Lisbon"}
 
     async def geocode_place(self, query, near):

@@ -34,6 +34,8 @@ from appcore.docstore import DocStore, new_id
 from safarnama import logic as trip_logic
 from safarnama import stops, travel
 from safarnama.ecosystem import TripEcosystem
+from safarnama.guide import GuideMixin
+from safarnama.liteapi import LiteAPI
 from safarnama.logic import destination_of
 
 logger = logging.getLogger(__name__)
@@ -47,6 +49,7 @@ OVERPASS = ("https://overpass-api.de/api/interpreter",)
 class Leg(Lenient):
     destination: str = Field(max_length=120)
     country: str | None = Field(None, max_length=60)
+    region: str | None = Field(None, max_length=80)  # state / province: tells Manali (Himachal) from Manali (Chennai)
     days: int = Field(1, ge=1, le=10)
 
     @field_validator("days", mode="before")
@@ -61,6 +64,7 @@ class Leg(Lenient):
 class TripRequest(Lenient):
     destination: str = Field(max_length=120)
     country: str | None = Field(None, max_length=60)
+    region: str | None = Field(None, max_length=80)
     start_date: dt.date | None = None
     days: int = Field(3, ge=1, le=10)
     interests: list[str] = Field(default_factory=list, max_length=10)
@@ -116,7 +120,7 @@ class TripRequest(Lenient):
         legs = (
             self.legs
             if len(self.legs) >= 2
-            else [Leg(destination=self.destination, country=self.country, days=self.days)]
+            else [Leg(destination=self.destination, country=self.country, region=self.region, days=self.days)]
         )
         out, left = [], 10
         for leg in legs:
@@ -275,10 +279,11 @@ class Replan(Lenient):
 
 
 UNDERSTAND_SYSTEM = """Extract a trip request as JSON: {"destination": str (city/region), "country": str|null,
+"region": str|null (the state or province it is in, e.g. "Himachal Pradesh" for Manali; null if unsure),
 "start_date": "YYYY-MM-DD"|null (resolve relative dates from today), "days": int (1-10, default 3),
 "interests": [str], "pace": "relaxed"|"balanced"|"packed", "travellers": str|null,
 "party": "solo"|"couple"|"family"|"friends"|"group"|null,
-"legs": [{"destination": str, "country": str|null, "days": int}] (ONLY when several cities are requested, in order;
+"legs": [{"destination": str, "country": str|null, "region": str|null, "days": int}] (ONLY when several cities are requested, in order;
 otherwise [])}. Today is {today}."""
 
 PLAN_SYSTEM = """You are an expert local travel planner. Plan a realistic day-by-day itinerary using REAL, existing,
@@ -295,7 +300,10 @@ Rules:
 - Meals and breaks at the traveller's own accommodation are fine, written as "Breakfast at your stay".
 - "name" is the place itself, exactly as a map knows it (no brackets, no "Stroll through…"); put the activity in
   the note. "place_query" is that name plus the town.
-- Follow dietary and access requests strictly (vegetarian means no meat suggestions at all).
+- Diet and access: only if the request asks for one, follow it strictly (e.g. vegetarian then means no meat at
+  all). Never assume a diet nobody asked for, and don't mention diet in the title, summary or notes otherwise.
+- Notes say what to do or try there. Never claim what a business offers (menu options, Wi-Fi, prices, ratings,
+  "best in town"): that isn't known.
 - For famous sights with long queues or limited entry, suggest arriving at opening time.
 - Never repeat a place on two days.
 - Don't invent arrival or departure times, flights or airport stops: plan the days at the destination.
@@ -326,6 +334,44 @@ def _fold(s: Any) -> str:
 
 def _same(a: Any, b: Any) -> bool:
     return bool(a) and bool(b) and _fold(a) == _fold(b)
+
+
+# The same country under the names people (and the model) use and the names geocoders return.
+_COUNTRY_ALIASES = {
+    "netherlands": "netherlands", "holland": "netherlands", "united states": "usa", "united states of america": "usa",
+    "us": "usa", "usa": "usa", "united kingdom": "uk", "uk": "uk", "great britain": "uk", "britain": "uk", "england": "uk",
+    "scotland": "uk", "wales": "uk", "uae": "uae", "united arab emirates": "uae", "czechia": "czechia",
+    "czech republic": "czechia", "turkey": "turkiye", "turkiye": "turkiye", "south korea": "south korea",
+    "korea": "south korea", "republic of korea": "south korea", "vietnam": "vietnam", "viet nam": "vietnam",
+    "russia": "russia", "russian federation": "russia", "bahamas": "bahamas", "philippines": "philippines",
+}  # fmt: skip
+
+
+def _country(c: Any) -> str:
+    folded = _fold(c)
+    folded = folded[4:] if folded.startswith("the ") else folded
+    return _COUNTRY_ALIASES.get(folded, folded)
+
+
+def same_country(a: Any, b: Any) -> bool:
+    """ "Netherlands" is "The Netherlands", "UK" is "United Kingdom", "Turkey" is "Türkiye"."""
+    return bool(a) and bool(b) and _country(a) == _country(b)
+
+
+def _pick(candidates: list[dict[str, Any]], name: str) -> dict[str, Any]:
+    """The biggest place; among places of about the same size, the one spelled exactly as asked (GeoNames has
+    near-duplicates: two Mahabaleshwars of ~13,500 people, the hill station spelled without the accent)."""
+    top = max((x.get("population") or 0) for x in candidates)
+    close = [x for x in candidates if (x.get("population") or 0) >= 0.5 * top]
+    return max(close, key=lambda x: (x.get("name") == name.strip(), x.get("population") or 0))
+
+
+def region_match(region: str, x: dict[str, Any]) -> bool:
+    """Is a geocoder result in this state / province ("Himachal Pradesh", or "Himachal")?"""
+    want = _fold(region)
+    return any(
+        want and (want == _fold(a) or _fold(a).startswith(want)) for a in (x.get("admin1"), x.get("admin2")) if a
+    )
 
 
 def _significant(x: dict[str, Any]) -> bool:
@@ -360,33 +406,41 @@ class Tools:
             self._client = httpx.AsyncClient(timeout=15, headers=UA)
         return self._client
 
-    async def geocode_city(self, name: str, country: str | None) -> dict[str, Any] | None:
+    async def geocode_city(self, name: str, country: str | None, region: str | None = None) -> dict[str, Any] | None:
         """The destination's coordinates. Never a place in another country, and never a hamlet that merely shares the
         name: "Goa" alone matches Genoa (Italy) first in Open-Meteo, and its Indian matches are villages, because Goa
-        is a state. Open-Meteo first (it gives the timezone), then OpenStreetMap, which knows states and regions."""
+        is a state. With a `region` (state / province), a town there wins over a bigger namesake elsewhere: "Manali"
+        alone is a Chennai suburb (35,000 people) before the Himachal hill town (8,000). Open-Meteo first (it gives the
+        timezone), then OpenStreetMap, which knows states and regions."""
         r = await self.client.get("https://geocoding-api.open-meteo.com/v1/search", params={"name": name, "count": 10})
         results = r.json().get("results") or []
         if country:
-            results = [x for x in results if _same(country, x.get("country"))]
+            results = [x for x in results if same_country(country, x.get("country"))]
+        if region:
+            local = [x for x in results if _same(name, x.get("name")) and region_match(region, x)]
+            if local:
+                x = _pick([y for y in local if _significant(y)] or local, name)
+                return {"name": x["name"], "country": x.get("country"), "lat": x["latitude"], "lng": x["longitude"],
+                        "timezone": x.get("timezone")}  # fmt: skip
         good = [x for x in results if _same(name, x.get("name")) and _significant(x)]
         if good:
-            x = max(good, key=lambda x: x.get("population") or 0)
+            x = _pick(good, name)
             return {"name": x["name"], "country": x.get("country"), "lat": x["latitude"], "lng": x["longitude"],
                     "timezone": x.get("timezone")}  # fmt: skip
-        if hit := await self._nominatim_city(name, country):
+        if hit := await self._nominatim_city(name, country, region):
             return hit
         x = results[0] if results else None  # last resort, still in the right country
         return {"name": x["name"], "country": x.get("country"), "lat": x["latitude"], "lng": x["longitude"],
                 "timezone": x.get("timezone")} if x else None  # fmt: skip
 
-    async def _nominatim_city(self, name: str, country: str | None) -> dict[str, Any] | None:
-        query = f"{name}, {country}" if country else name
+    async def _nominatim_city(self, name: str, country: str | None, region: str | None = None) -> dict[str, Any] | None:
+        query = ", ".join(x for x in (name, region, country) if x)
         async with self._nominatim_lock:
             started = time.monotonic()
             try:
                 r = await self.client.get(
                     "https://nominatim.openstreetmap.org/search",
-                    params={"q": query, "format": "jsonv2", "limit": 3, "addressdetails": 1},
+                    params={"q": query, "format": "jsonv2", "limit": 3, "addressdetails": 1, "accept-language": "en"},
                     timeout=httpx.Timeout(10, connect=5),
                 )
                 rows = r.json() if r.status_code == 200 else []
@@ -396,7 +450,7 @@ class Tools:
                 await asyncio.sleep(max(0.0, 1.05 - (time.monotonic() - started)))
         for row in rows:
             got_country = (row.get("address") or {}).get("country")
-            if country and not _same(country, got_country):
+            if country and not same_country(country, got_country):
                 continue
             return {"name": name.strip().title() if name.islower() else name.strip(), "country": got_country or country,
                     "lat": float(row["lat"]), "lng": float(row["lon"]), "timezone": None}  # fmt: skip
@@ -743,12 +797,13 @@ def day_dates(start: dt.date | None, n: int) -> list[str | None]:
     return [(start + dt.timedelta(days=i)).isoformat() if start else None for i in range(n)]
 
 
-class TripService(TripEcosystem):
+class TripService(TripEcosystem, GuideMixin):
     def __init__(self, store: DocStore, get_llm: Callable[[], Any], tools: Tools | None = None) -> None:
         self.db = store
         self.get_llm = get_llm
         self.tools = tools or Tools()
         self.hub = Hub()
+        self.live: LiteAPI | None = None  # live hotel prices, when a LiteAPI key is set (liteapi.py)
 
     async def plan(
         self,
@@ -758,6 +813,8 @@ class TripService(TripEcosystem):
         *,
         party: str | None = None,
         travellers: int | None = None,
+        budget: float | None = None,
+        currency: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         def step(name: str, detail: str) -> dict[str, Any]:
             return {"event": "step", "step": name, "detail": detail}
@@ -784,7 +841,7 @@ class TripService(TripEcosystem):
         destinations: list[dict[str, Any]] = []
         first_day = 1
         for leg in legs:
-            place = await self.tools.geocode_city(leg.destination, leg.country)
+            place = await self.tools.geocode_city(leg.destination, leg.country, region=leg.region)
             if place is None:
                 raise HTTPException(422, f"Couldn't find “{leg.destination}” on the map.")
             destinations.append({**place, "id": new_id(), "start_day": first_day, "end_day": first_day + leg.days - 1})
@@ -824,7 +881,15 @@ class TripService(TripEcosystem):
             f"Interests: {', '.join(req.interests) or 'general sightseeing'}\nPace: {req.pace}\nTravellers: {req.travellers or 'n/a'}\n"
             f"Weather: {'; '.join(known) or 'unknown'}\n"
             f"Dates: {'; '.join(f'Day {i + 1} = {d} ({dt.date.fromisoformat(d).strftime("%A")})' for i, d in enumerate(dates) if d) or 'flexible'}\n\n"
-            f"Original request: {prompt}"
+            + (
+                f"Budget: {currency or ''} {budget:,.0f} for the whole trip, about {currency or ''} "
+                f"{budget / max(1, req.days) / max(1, travellers or 1):,.0f} a person a day including "
+                "getting there. Match the plan to that level: favour free and good-value sights, local food and public "
+                "transport when it's tight, and don't hold back when it's generous; never state prices or costs.\n"
+                if budget
+                else ""
+            )
+            + f"Original request: {prompt}"
         )
         plan = await self._full_plan(plan_prompt, req.days)
         if not plan.title.strip():
@@ -856,7 +921,8 @@ class TripService(TripEcosystem):
             "trips",
             {"request": req.model_dump(mode="json"), "prompt": prompt, "title": plan.title, "summary": plan.summary,
              "tips": plan.tips, "city": city, "destinations": destinations, "days": days, "version": 1, "history": [],
-             "weather_updated_at": weather_at, **self.new_trip_fields(owner, req, country=city.get("country"), travellers=travellers)},
+             "weather_updated_at": weather_at,
+             **self.new_trip_fields(owner, req, country=city.get("country"), travellers=travellers, budget=budget, currency=currency)},
         )  # fmt: skip
         yield {"event": "done", "trip": trip}
 

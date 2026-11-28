@@ -1,5 +1,5 @@
 import {
-  Bug,
+  AlertTriangle,
   CheckCircle2,
   Clock,
   Download,
@@ -86,7 +86,7 @@ export default function EFIApp() {
   }
 
   return (
-    <ProductShell name="Jasoos" tagline="Paste a failing build, test or deploy log. Get the likely cause and a fix, with the exact lines as proof." icon={Bug} accent={ACCENT}>
+    <ProductShell name="Jasoos" tagline="Paste a failing build, test or deploy log. Get the likely cause and a fix, with the exact lines as proof." icon={ScanSearch}>
       <Tabs
         value={tab === 'investigation' ? 'investigation' : tab}
         onChange={(t) => {
@@ -654,7 +654,7 @@ function Hypothesis({ h, idx, onCite }) {
         </>
       )}
       {h.verification_notes.length > 0 && (
-        <ul className="mt-2 space-y-0.5 text-[11.5px] text-amber-300/90">{h.verification_notes.map((n) => <li key={n}>⚠ {n}</li>)}</ul>
+        <ul className="mt-2 space-y-0.5 text-[11.5px] text-amber-300/90">{h.verification_notes.map((n) => <li key={n} className="flex gap-1.5"><AlertTriangle className="mt-0.5 size-3 shrink-0" /> {n}</li>)}</ul>
       )}
     </Card>
   )

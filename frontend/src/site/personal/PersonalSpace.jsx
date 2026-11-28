@@ -15,7 +15,7 @@
  *  - CONTACT stretches up out of the floor as you reach it; its letters squash and stretch under the cursor
  *  - the palette button recolours every card
  */
-import { ArrowUp, Search } from 'lucide-react'
+import { ArrowUp, Palette, Search, Sparkle } from 'lucide-react'
 import {
   animate,
   AnimatePresence,
@@ -418,7 +418,7 @@ const STREAM = ['React', 'Python', 'FastAPI', 'RAG', 'LangGraph', 'Claude', 'Gro
 function TechStream({ still }) {
   const row = STREAM.map((t) => (
     <span key={t} style={{ ...HEAD, fontSize: 'clamp(44px, 7vw, 104px)', lineHeight: 1, color: 'var(--pl-faint)', padding: '0 0.35em', whiteSpace: 'nowrap' }}>
-      {t} <span style={{ color: 'var(--pl-line)' }}>✦</span>
+      {t} <Sparkle aria-hidden style={{ color: 'var(--pl-line)', width: '0.5em', height: '0.5em', verticalAlign: '0.12em' }} />
     </span>
   ))
   return (
@@ -485,7 +485,7 @@ function Experience() {
     <section id="experience" aria-label="Experience" style={{ maxWidth: 1040, margin: '180px auto 0', padding: '0 20px', scrollMarginTop: 80 }}>
       <div style={{ textAlign: 'center' }}>
         <Rise text="Experience" style={{ ...HEAD, fontSize: 'clamp(40px, 5.4vw, 76px)', lineHeight: 1, color: INK }} />
-        <p style={{ margin: '10px 0 0', fontSize: 16, fontWeight: 500 }}>{SITE.current} · {SITE.years}+ years</p>
+        <p style={{ margin: '10px 0 0', fontSize: 16, fontWeight: 500 }}>{SITE.years}+ years building software · Deloitte since 2023, Wipro before that</p>
       </div>
       <ol style={{ listStyle: 'none', margin: '48px 0 0', padding: 0 }}>
         {jobs.map((j, i) => (
@@ -702,10 +702,7 @@ export function PersonalSpace() {
           <img src={SITE.avatarFace || SITE.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
         </a>
         <motion.button type="button" onClick={recolour} aria-label="Change the colours" whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.9 }} style={{ position: 'fixed', bottom: 14, right: 14, zIndex: 30, width: 50, height: 50, borderRadius: '50%', border: 0, background: 'var(--pl-chip)', color: INK, boxShadow: '0 12px 30px rgba(0,0,0,0.16)', display: 'grid', placeItems: 'center', cursor: 'pointer', rotate: spin }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.6-.8 1.6-1.6 0-.5-.2-.8-.5-1.1-.3-.3-.5-.7-.5-1.2 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.1-4-7.5-9-7.5Z" />
-            <circle cx="7.5" cy="10.5" r="1.2" fill="currentColor" /><circle cx="10.5" cy="7" r="1.2" fill="currentColor" /><circle cx="15" cy="7.5" r="1.2" fill="currentColor" />
-          </svg>
+          <Palette size={22} aria-hidden />
         </motion.button>
 
         <main>

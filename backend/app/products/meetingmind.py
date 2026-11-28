@@ -30,12 +30,6 @@ MAX_AUDIO_MB = 24  # Groq's per-file limit is 25 MB
 WINDOW_CHARS = 700
 
 
-class Segment(BaseModel):
-    start: float = 0.0
-    end: float = 0.0
-    text: str
-
-
 class Decision(Lenient):
     text: str = Field(max_length=400)
     owner: str | None = Field(None, max_length=80)

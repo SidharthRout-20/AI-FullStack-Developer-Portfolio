@@ -2,6 +2,7 @@
 import { Play, RotateCcw, X } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 import { DEFAULTS, LANGUAGES } from './prefs'
+import { STYLES } from './ambient'
 import { canSpeak, hearingMode, say, useVoices, wakeSupported } from './voice'
 
 const field = 'w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[14px] text-white focus:border-white/25 focus:outline-none'
@@ -117,6 +118,21 @@ export function AssistantSettings({ prefs, onChange, onClose }) {
             {wakeSupported() && <Toggle checked={prefs.wake} onChange={set('wake')}>Answer to “Hey Tara” while this page is open (your browser's speech service listens for it; Tara only gets what you say after it)</Toggle>}
             {hearingMode() && <Toggle checked={prefs.keep} onChange={set('keep')}>After a spoken answer, listen for a follow-up, so you can keep talking (say “that's all” to stop)</Toggle>}
             <Toggle checked={prefs.sounds} onChange={set('sounds')}>Chime when I start and stop listening</Toggle>
+            {canSpeak() && <Toggle checked={prefs.briefOnOpen} onChange={set('briefOnOpen')}>Brief me when I open Tara: the time, the weather and what's due</Toggle>}
+          </section>
+
+          <section className="space-y-4">
+            <p className="text-[11.5px] font-semibold tracking-[0.14em] text-ink-500 uppercase">Background music</p>
+            <Toggle checked={prefs.music} onChange={set('music')}>Play slow, soothing music while Tara is open (it goes quiet while I listen)</Toggle>
+            <Row title="Sound">
+              <select className={field} value={prefs.musicStyle} onChange={(e) => set('musicStyle')(e.target.value)}>
+                {STYLES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </Row>
+            <Row title="Volume" hint={`${Math.round(prefs.musicVolume * 100)}%`}>
+              <input type="range" min="0.05" max="1" step="0.05" value={prefs.musicVolume} onChange={(e) => set('musicVolume')(Number(e.target.value))} className="w-full accent-pink-500" aria-label="Music volume" />
+            </Row>
+            <p className="text-[12px] text-ink-500">Made live in your browser, so nothing is downloaded and it never repeats exactly. “Match the weather” plays rain when it rains and a night sky after dark.</p>
           </section>
         </div>
 

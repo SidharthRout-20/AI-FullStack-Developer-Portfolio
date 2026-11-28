@@ -120,15 +120,36 @@ class TripEcosystem:
 
     # ── trip records & access helpers ────────────────────────────────────────
     @staticmethod
+    def budget_record(
+        total: float | None, currency: str, *, country: str | None, days: int, split: str = "auto"
+    ) -> dict[str, Any]:
+        """The trip's budget. With a total, the categories start from a suggested split of it (`split` "auto"), which
+        follows the total until the traveller sets the categories themselves ("own")."""
+        if total is None:
+            return {"total": None, "currency": currency, "categories": {}}
+        abroad = trip_logic.currency_for(country, fallback=currency) != currency
+        cats = trip_logic.split_budget(float(total), nights=max(0, days - 1), abroad=abroad)
+        return {"total": total, "currency": currency, "categories": cats, "split": split}
+
+    @staticmethod
     def new_trip_fields(
-        owner: str | None, req: Any = None, *, country: str | None = None, travellers: int | None = None
+        owner: str | None,
+        req: Any = None,
+        *,
+        country: str | None = None,
+        travellers: int | None = None,
+        budget: float | None = None,
+        currency: str | None = None,
     ) -> dict[str, Any]:
         party = getattr(req, "party", None) if req is not None else None
-        currency = trip_logic.currency_for(country)
+        # The traveller's own currency when they gave a budget in it (an Indian family thinks in rupees in Bali too);
+        # otherwise the destination's.
+        currency = currency or trip_logic.currency_for(country)
+        days = int(getattr(req, "days", 1) or 1) if req is not None else 1
         return {
             "owner": owner, "share_key": secrets.token_urlsafe(18), "status": "planning",
             "party": {"type": party, "travellers": travellers},
-            "budget": {"total": None, "currency": currency, "categories": {}},
+            "budget": TripEcosystem.budget_record(budget, currency, country=country, days=days),
             "checklists": [], "companion": [], "weather_now": {},
         }  # fmt: skip
 
@@ -179,7 +200,7 @@ class TripEcosystem:
     async def _geocode_destinations(self, items: list[dict[str, Any]], first_day: int = 1) -> list[dict[str, Any]]:
         out = []
         for it in items:
-            place = await self.tools.geocode_city(it["name"], it.get("country"))
+            place = await self.tools.geocode_city(it["name"], it.get("country"), region=it.get("region"))
             if place is None:
                 raise HTTPException(422, f"Couldn't find “{it['name']}” on the map.")
             n = int(it.get("days", 1))
@@ -222,7 +243,9 @@ class TripEcosystem:
             trip["weather_updated_at"] = None  # fetched, but nothing covers these dates: don't imply a forecast
         trip["party"] = {"type": body.get("party"), "travellers": body.get("travellers")}
         currency = body.get("currency") or trip_logic.currency_for(dests[0].get("country"))
-        trip["budget"] = {"total": body.get("budget"), "currency": currency, "categories": {}}
+        trip["budget"] = self.budget_record(
+            body.get("budget"), currency, country=dests[0].get("country"), days=len(days)
+        )
         await self._enrich(trip)  # type: ignore[attr-defined]
         return self.db.put("trips", trip)
 
@@ -240,12 +263,17 @@ class TripEcosystem:
             patch["party"] = party
         if any(k in changes for k in ("budget", "currency", "budget_categories")):
             b = dict(trip.get("budget") or {"currency": "EUR", "categories": {}})
-            if "budget" in changes:
-                b["total"] = changes["budget"]
             if "currency" in changes:
                 b["currency"] = changes["currency"]
+            if "budget" in changes:
+                b["total"] = changes["budget"]
+                # A suggested split follows a new total; one the traveller set stays as they left it.
+                if b.get("split") == "auto" or not any((b.get("categories") or {}).values()):
+                    country = ((trip.get("destinations") or [{}])[0] or {}).get("country")
+                    b = {**b, **self.budget_record(b["total"], b["currency"], country=country, days=len(trip["days"]))}
             if "budget_categories" in changes:
                 b["categories"] = changes["budget_categories"]
+                b["split"] = "own"
             patch["budget"] = b
         if any(k in changes for k in ("interests", "pace")):
             req = dict(trip.get("request") or {})

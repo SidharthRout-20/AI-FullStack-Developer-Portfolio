@@ -58,7 +58,8 @@ function useServerOn() {
   return on
 }
 
-export function AccountButton({ className = '' }) {
+/** `up`: the panel opens above the button, from its left edge (for a button at the bottom of a sidebar). */
+export function AccountButton({ className = '', up = false }) {
   const { user, ready } = useAccount()
   const enabled = useServerOn()
   const [open, setOpen] = useState(false)
@@ -111,10 +112,10 @@ export function AccountButton({ className = '' }) {
           <motion.div
             role="dialog"
             aria-label="Account"
-            initial={{ opacity: 0, y: -6 }}
+            initial={{ opacity: 0, y: up ? 6 : -6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            className="glass absolute right-0 z-50 mt-2 w-[min(320px,calc(100vw-24px))] rounded-2xl border border-white/10 p-4 text-left text-[12.5px] text-ink-300 shadow-2xl"
+            exit={{ opacity: 0, y: up ? 6 : -6 }}
+            className={`absolute z-50 w-[min(300px,calc(100vw-24px))] rounded-2xl border border-white/10 bg-ink-900 p-4 text-left text-[12.5px] text-ink-300 shadow-2xl shadow-black/40 ${up ? 'bottom-full left-0 mb-2' : 'top-full right-0 mt-2'}`}
           >
             {user ? (
               <>

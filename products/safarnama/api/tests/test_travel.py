@@ -61,6 +61,14 @@ def test_opening_hours_common_patterns():
     assert travel.is_open("sunrise-sunset", tue_noon) is None  # unknown pattern → unknown, not closed
 
 
+def test_a_lunch_the_planner_already_gave_is_never_doubled():
+    acts = [{"time": "09:00", "name": "Amber Fort", "kind": "outdoor", "duration_min": 150},
+            {"time": "11:30", "name": "Lunch at Laxmi Misthan Bhandar", "kind": "food", "duration_min": 60},
+            {"time": "13:00", "name": "City Palace", "kind": "indoor", "duration_min": 120},
+            {"time": "18:45", "name": "Chokhi Dhani", "kind": "food", "duration_min": 120}]  # fmt: skip
+    assert travel.meal_gaps(acts) == []
+
+
 def test_meal_gaps_and_picking_a_nearby_restaurant():
     acts = [act(0, "09:00", dur=120), act(1, "11:30", dur=90), act(2, "15:00", dur=120), act(3, "18:00", dur=90)]
     gaps = travel.meal_gaps(acts)

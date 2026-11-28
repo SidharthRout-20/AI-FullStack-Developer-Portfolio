@@ -4,22 +4,32 @@
  *   2 When   – this weekend / next week / in two weeks / next month, as real dates (or pick a date)
  *   3 Who    – just me / the two of us / family / friends
  *   4 Plan   – interests come pre-selected from the destination; special requests are optional chips
+ *              (in the personal space this step leads with the budget, which shapes the whole plan)
  * The choices become a precise request for the AI planner, which streams its progress and opens the new trip.
  */
-import { ArrowLeft, CalendarDays, Check, Dices, MapPin, Plus, RefreshCw, Sparkles, Users, Wand2 } from 'lucide-react'
+import { ArrowLeft, Baby, CalendarDays, Check, Dices, Heart, MapPin, Plus, RefreshCw, Search, Sparkles, User, Users, Wand2 } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useMemo, useState } from 'react'
 import { navigate } from '@appcore/web/router'
 import { errorText } from '@appcore/web/http'
 import { Button, ErrorNote, inputClass, Steps } from '@appcore/web/ui'
-import { trips as tripsApi } from './api'
+import { tripApi, trips as tripsApi } from './api'
 import { appPath } from './base'
 import { PhotoCredit, photoFor } from './Visuals'
-import { composePrompt, customDestination, DESTINATIONS, INTERESTS, isoDate, PARTIES, rangeText, REQUESTS, suggestDestinations, whenOptions } from './choices'
+import { homeCurrency, shortMoney, symbolOf } from './money'
+import { cardColour, usePersonal } from './skin'
+import { composePrompt, customDestination, DESTINATIONS, FILTERS, filterPool, INTERESTS, isoDate, PARTIES, rangeText, REQUESTS, searchDestinations, suggestDestinations, whenOptions } from './choices'
 
 export const ACCENT = 'from-amber-400 via-orange-500 to-rose-500'
 const NEXT_STEP = { understand: 'geocode', geocode: 'weather', weather: 'plan', plan: 'map', map: 'meals', meals: 'wellbeing' }
 const STEP_LABELS = ['Where', 'When', 'Who', 'Plan']
+// Spending levels to pick from, a person a day in rupees (the traveller chooses; these aren't prices).
+const LEVELS = [
+  { id: 'easy', label: 'Easy on the wallet', perDay: 1500 },
+  { id: 'comfy', label: 'Comfortable', perDay: 3500 },
+  { id: 'treat', label: 'Treat yourselves', perDay: 8000 },
+]
+const roundTo = (n, step) => Math.max(step, Math.round(n / step) * step)
 
 /** Runs the AI planner and streams its steps; opens the trip when it's ready. Shared with the free-text planner. */
 export function usePlanStream() {
@@ -38,7 +48,12 @@ export function usePlanStream() {
             const next = NEXT_STEP[String(ev.step)]
             return [...rest, { name: String(ev.step), detail: String(ev.detail), done: true }, ...(next ? [{ name: next, detail: '…', done: false }] : [])]
           })
-        } else if (ev.event === 'done') navigate(appPath(`/${ev.trip.id}`))
+        } else if (ev.event === 'done') {
+          // A server that doesn't take a budget while planning yet still keeps it: set it on the new trip.
+          const t = ev.trip
+          const keepBudget = choices.budget && t.budget?.total == null ? tripApi(t.id).update({ budget: choices.budget, currency: choices.currency }).catch(() => null) : null
+          void Promise.resolve(keepBudget).then(() => navigate(appPath(`/${t.id}`)))
+        }
         else if (ev.event === 'error') setError(String(ev.message))
       })
     } catch (e) {
@@ -71,6 +86,16 @@ export function QuickPlan() {
   const [interests, setInterests] = useState(() => preset?.tags.slice(0, 2) ?? [])
   const [requests, setRequests] = useState([])
   const [note, setNote] = useState('')
+  const [budget, setBudget] = useState('')
+  const [origin, setOrigin] = useState(() => {
+    try {
+      return localStorage.getItem('safarnaama-origin') ?? ''
+    } catch {
+      return ''
+    }
+  })
+  const personal = usePersonal()
+  const currency = useMemo(() => homeCurrency() ?? 'INR', [])
   const plan = usePlanStream()
 
   const go = (n) => {
@@ -83,8 +108,18 @@ export function QuickPlan() {
     setWhen(null)
     go(1)
   }
-  const submit = () =>
-    void plan.run(composePrompt({ dest, when, party, interests, requests, note }), { party, travellers: PARTIES.find((p) => p.id === party)?.travellers })
+  const submit = () => {
+    try {
+      if (origin.trim()) localStorage.setItem('safarnaama-origin', origin.trim()) // the guide reads it for "getting there"
+    } catch {
+      /* not remembered */
+    }
+    void plan.run(composePrompt({ dest, when, party, interests, requests, note }), {
+      party,
+      travellers: PARTIES.find((p) => p.id === party)?.travellers,
+      ...(personal && Number(budget) > 0 ? { budget: Number(budget), currency } : {}),
+    })
+  }
   const toggle = (list, set, id) => set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id])
 
   const slide = reduce
@@ -93,9 +128,9 @@ export function QuickPlan() {
 
   if (plan.busy || plan.steps.length > 0) {
     return (
-      <section className="rounded-3xl border border-white/[0.07] bg-ink-900/60 p-5 sm:p-7">
+      <section className="ui-card rounded-3xl border border-white/[0.07] bg-ink-900/60 p-5 sm:p-7">
         <p className="text-[13px] text-ink-400">Planning</p>
-        <h2 className="mt-0.5 text-2xl font-semibold tracking-tight text-white">
+        <h2 className="pc-head mt-0.5 text-2xl font-semibold tracking-tight text-white">
           {when?.days} days in {dest?.name}
         </h2>
         <p className="mt-1 text-[13px] text-ink-400">{when?.range} · {PARTIES.find((p) => p.id === party)?.label}</p>
@@ -112,7 +147,7 @@ export function QuickPlan() {
   }
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-white/[0.07] bg-ink-900/60 p-5 sm:p-7">
+    <section className="ui-card overflow-hidden rounded-3xl border border-white/[0.07] bg-ink-900/60 p-5 sm:p-7">
       {/* progress + the choices so far (tap one to change it) */}
       <div className="flex items-center gap-3">
         {step > 0 && (
@@ -139,7 +174,7 @@ export function QuickPlan() {
 
       <AnimatePresence mode="wait" initial={false}>
         <motion.div key={step} {...slide} className="mt-5">
-          {step === 0 && <Where today={today} seed={seed} onSeed={() => setSeed((s) => s + 1)} onPick={chooseDest} />}
+          {step === 0 && <Where today={today} seed={seed} onSeed={() => setSeed((s) => s + 1)} onPick={chooseDest} personal={personal} />}
           {step === 1 && dest && (
             <When today={today} dest={dest} onPick={(w) => (setWhen(w), go(2))} />
           )}
@@ -148,7 +183,10 @@ export function QuickPlan() {
           )}
           {step === 3 && dest && when && party && (
             <div>
-              <h2 className="text-2xl font-semibold tracking-tight text-white">Anything special?</h2>
+              {personal && (
+                <BudgetStep budget={budget} setBudget={setBudget} currency={currency} days={when.days} people={PARTIES.find((p) => p.id === party)?.travellers ?? 2} origin={origin} setOrigin={setOrigin} />
+              )}
+              <h2 className={`pc-head font-semibold tracking-tight text-white ${personal ? 'mt-7 text-[18px]' : 'text-2xl'}`}>Anything special?</h2>
               <p className="mt-1 text-[13.5px] text-ink-400">Optional. We've picked a few from {dest.name}'s strengths; tap to change.</p>
               <ChipGroup label="What it's about">
                 {[...new Set([...dest.tags, 'food', 'nature', 'culture'])].slice(0, 6).map((id) => (
@@ -176,6 +214,46 @@ export function QuickPlan() {
   )
 }
 
+/**
+ * The budget, first thing on the last step (personal space): one number for the whole trip, or a spending level that
+ * turns into one. It shapes the plan, the stays, the budget plan and the trip pack.
+ */
+function BudgetStep({ budget, setBudget, currency, days, people, origin, setOrigin }) {
+  const rupees = currency === 'INR'
+  return (
+    <fieldset>
+      <legend className="pc-head text-2xl font-semibold tracking-tight text-white">Your budget</legend>
+      <p className="mt-1 text-[13.5px] text-ink-400">For the whole trip: {people} {people === 1 ? 'person' : 'people'}, {days} days, getting there included. Safarnaama plans to it and shows what's left as you go.</p>
+      <label className="relative mt-3 block max-w-sm">
+        <span className="pc-head pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-[26px] text-ink-400">{symbolOf(currency)}</span>
+        <input type="number" min="0" inputMode="numeric" aria-label={`Budget in ${currency}`} placeholder={rupees ? '40000' : '1500'} value={budget} onChange={(e) => setBudget(e.target.value)}
+          className={`${inputClass} pc-head !py-3 !pl-11 !text-[28px] tabular-nums`} />
+      </label>
+      {rupees && (
+        <div className="mt-3 flex flex-wrap gap-2.5" role="group" aria-label="Or pick a level">
+          {LEVELS.map((l, i) => {
+            const total = roundTo(l.perDay * days * people, 1000)
+            const on = Number(budget) === total
+            return (
+              <button key={l.id} type="button" aria-pressed={on} onClick={() => setBudget(String(total))}
+                className={`pc-card px-3.5 py-2.5 text-left ${on ? 'ring-2 ring-[var(--pl-ink)]' : ''}`} style={{ ...cardColour(i), transform: `rotate(${[-1.2, 0.8, -0.6][i]}deg)` }}>
+                <span className="block text-[12px] font-semibold opacity-85">{l.label}</span>
+                <span className="pc-head block text-[20px] leading-tight">{shortMoney(total, 'INR')}</span>
+                <span className="block text-[11px] font-medium opacity-80">about {shortMoney(l.perDay, 'INR')} a person a day</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      <p className="mt-2 text-[11.5px] text-ink-500">Optional. Leave it empty to plan without a budget; you can add one later.</p>
+      <label className="mt-4 block max-w-sm">
+        <span className="text-[12px] font-medium text-ink-400">Starting from <span className="text-ink-500">(optional: adds fares to get there)</span></span>
+        <input value={origin} onChange={(e) => setOrigin(e.target.value.slice(0, 80))} placeholder="e.g. Bengaluru" aria-label="Starting from" className={`${inputClass} mt-1.5`} />
+      </label>
+    </fieldset>
+  )
+}
+
 function Choice({ icon: Icon, children, onClick }) {
   return (
     <button type="button" onClick={onClick} className="chip !gap-1 !py-1 !text-[12px]">
@@ -184,24 +262,70 @@ function Choice({ icon: Icon, children, onClick }) {
   )
 }
 
-function Where({ today, seed, onSeed, onPick }) {
+function Where({ today, seed, onSeed, onPick, personal }) {
   const [typing, setTyping] = useState(false)
   const [text, setText] = useState('')
-  const picks = useMemo(() => suggestDestinations(today.getMonth() + 1, seed), [today, seed])
+  const [filter, setFilter] = useState('all')
+  const [query, setQuery] = useState('')
+  const pool = useMemo(() => filterPool(filter), [filter])
+  const found = useMemo(() => searchDestinations(query, DESTINATIONS), [query])
+  const picks = useMemo(() => (query.trim().length >= 2 ? found.slice(0, 6) : suggestDestinations(today.getMonth() + 1, seed, 6, pool)), [today, seed, pool, query, found])
   const custom = customDestination(text)
+  const typed = customDestination(query)
   const surprise = () => onPick(picks[Math.floor(Math.random() * picks.length)])
   return (
     <div>
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight text-white">Where to?</h2>
-          <p className="mt-1 text-[13.5px] text-ink-400">Good this time of year. Tap one.</p>
+          <h2 className="pc-head text-2xl font-semibold tracking-tight text-white">Where to?</h2>
+          <p className="mt-1 text-[13.5px] text-ink-400">{DESTINATIONS.length} places, the ones in season first. Tap one, or search.</p>
         </div>
         <div className="flex gap-1.5">
           <button type="button" className="chip" onClick={onSeed}><RefreshCw className="size-3" /> Others</button>
           <button type="button" className="chip" onClick={surprise}><Dices className="size-3" /> Surprise me</button>
         </div>
       </div>
+      <label className="relative mt-4 block">
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-500" />
+        <input aria-label="Search places" value={query} onChange={(e) => setQuery(e.target.value.slice(0, 80))} placeholder="Search a city, state or country (e.g. Kerala, beaches, Japan)" className={`${inputClass} !pl-9`} />
+      </label>
+      {query.trim().length < 2 && (
+        <div className="-mx-1 mt-2.5 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none]" role="group" aria-label="Narrow the list">
+          {FILTERS.map((f) => (
+            <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}
+              className={`shrink-0 rounded-full border px-3 py-1 text-[12.5px] font-medium transition ${filter === f.id ? 'pa-on' : 'border-white/10 bg-white/[0.03] text-ink-300 hover:text-white'}`}>{f.label}</button>
+          ))}
+        </div>
+      )}
+      {query.trim().length >= 2 && picks.length === 0 && (
+        <p className="mt-3 text-[13px] text-ink-400">
+          Not in the list yet.{' '}
+          {typed && <button type="button" className="font-semibold text-white underline-offset-2 hover:underline" onClick={() => onPick(typed)}>Plan “{typed.name}” anyway →</button>}
+        </p>
+      )}
+      {personal ? (
+        <ul className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {picks.map((d, i) => (
+            <motion.li key={d.name} className="relative" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
+              <button type="button" onClick={() => onPick(d)} className="pc-card flex w-full flex-col p-2 text-left" style={{ ...cardColour(i), transform: `rotate(${[-1.5, 1, -0.8, 1.4, -1.1, 0.7][i % 6]}deg)` }}>
+                <span className="relative block h-28 overflow-hidden rounded-[18px] sm:h-32">
+                  {photoFor(d.name) ? (
+                    <img src={photoFor(d.name).src} alt="" loading={i < 3 ? 'eager' : 'lazy'} decoding="async" className="size-full object-cover" />
+                  ) : (
+                    <span className="pc-head grid size-full place-items-center bg-black/10 text-[34px]">{d.name.charAt(0)}</span>
+                  )}
+                </span>
+                <span className="block px-1.5 pt-2 pb-1">
+                  <span className="block text-[11px] font-semibold opacity-75">{d.country}</span>
+                  <span className="pc-head block text-[20px] leading-none">{d.name}</span>
+                  <span className="mt-1 line-clamp-2 block text-[11.5px] leading-snug font-medium opacity-85">{d.hook}</span>
+                </span>
+              </button>
+              <PhotoCredit photo={photoFor(d.name)} className="top-3 right-3" />
+            </motion.li>
+          ))}
+        </ul>
+      ) : (
       <ul className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         {picks.map((d, i) => (
           <motion.li key={d.name} className="relative" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
@@ -223,6 +347,7 @@ function Where({ today, seed, onSeed, onPick }) {
           </motion.li>
         ))}
       </ul>
+      )}
       {typing ? (
         <form className="mt-3 flex gap-2" onSubmit={(e) => (e.preventDefault(), custom && onPick(custom))}>
           <input autoFocus aria-label="Destination" className={inputClass} value={text} onChange={(e) => setText(e.target.value)} placeholder="City, country (e.g. Shillong, India)" />
@@ -249,7 +374,7 @@ function When({ today, dest, onPick }) {
   }
   return (
     <div>
-      <h2 className="text-2xl font-semibold tracking-tight text-white">When?</h2>
+      <h2 className="pc-head text-2xl font-semibold tracking-tight text-white">When?</h2>
       <p className="mt-1 text-[13.5px] text-ink-400">{dest.days} days suits a first visit to {dest.name}.</p>
       <ul className="mt-4 grid gap-2.5 sm:grid-cols-2">
         {options.map((o) => (
@@ -283,17 +408,22 @@ function When({ today, dest, onPick }) {
   )
 }
 
+const PARTY_ICON = { solo: User, couple: Heart, family: Baby, friends: Users }
+function PartyIcon({ id }) {
+  const Icon = PARTY_ICON[id] ?? Users
+  return <Icon className="size-5" />
+}
+
 function Who({ onPick, selected }) {
-  const ICON = { solo: '🧳', couple: '💞', family: '👨‍👩‍👧', friends: '🎒' }
   return (
     <div>
-      <h2 className="text-2xl font-semibold tracking-tight text-white">Who's going?</h2>
+      <h2 className="pc-head text-2xl font-semibold tracking-tight text-white">Who's going?</h2>
       <ul className="mt-4 grid grid-cols-2 gap-2.5">
         {PARTIES.map((p) => (
           <li key={p.id}>
             <button type="button" onClick={() => onPick(p.id)} aria-pressed={selected === p.id}
               className={`flex w-full flex-col items-start gap-2 rounded-2xl border px-4 py-4 text-left transition pa-hover ${selected === p.id ? 'pa-on' : 'border-white/[0.08] bg-white/[0.02]'}`}>
-              <span aria-hidden className="text-[26px] leading-none">{ICON[p.id]}</span>
+              <span aria-hidden className="grid size-10 place-items-center rounded-full bg-white/[0.06] text-white"><PartyIcon id={p.id} /></span>
               <span className="text-[15px] font-semibold text-white">{p.label}</span>
             </button>
           </li>

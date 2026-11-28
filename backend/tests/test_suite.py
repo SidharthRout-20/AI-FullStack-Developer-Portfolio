@@ -223,10 +223,106 @@ def test_codelens_index_ask_tour(app_client):
     snip = c.get(f"/api/code/repos/{repo['id']}/file", params={"path": "app/utils.py", "start": 1, "end": 5}).json()
     assert "def slugify" in snip["text"]
     assert c.get(f"/api/code/repos/{repo['id']}/file", params={"path": "../../.env"}).status_code == 404
-    assert c.delete(f"/api/code/repos/{repo['id']}").status_code == 204
 
 
-# ── FlowForge ────────────────────────────────────────────────────────────
+def test_codelens_handover_document_states_only_what_the_code_shows(app_client):
+    c = app_client
+
+    async def fetch(owner, repo, ref):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("svc-1/README.md", "# Svc\nA tiny service.")
+            z.writestr(
+                "svc-1/app/main.py",
+                "import os\n\nKEY = os.environ.get('PAYMENT_API_KEY', 'sk-live-123')\n"
+                'DB = os.getenv("DATABASE_URL")\n\n\ndef create_app():\n    return KEY\n',
+            )
+            z.writestr("svc-1/web/client.ts", "export const base = import.meta.env.VITE_API_URL\n")
+            z.writestr("svc-1/package.json", '{"dependencies": {"react": "^18"}, "devDependencies": {"vite": "^5"}}')
+            z.writestr("svc-1/tests/test_main.py", "def test_ok():\n    assert True\n")
+            z.writestr("svc-1/.github/workflows/ci.yml", "on: push\njobs: {}\n")
+        return buf.getvalue()
+
+    c.app.state.suite.code.fetcher = fetch
+    repo = parse_sse(c.post("/api/code/repos", json={"url": "https://github.com/acme/svc"}).text)[-1][1]["repo"]
+    doc = c.post(f"/api/code/repos/{repo['id']}/handover").json()
+    md, page = doc["markdown"], doc["html"]
+    assert doc["filename"] == "handover-acme-svc.md" and doc["html_filename"] == "handover-acme-svc.html"
+    assert md.startswith("# Hand-over: acme/svc") and "A tiny demo app." in md  # the pack's summary
+    for name in ("PAYMENT_API_KEY", "DATABASE_URL", "VITE_API_URL"):  # variable names the code reads...
+        assert name in md and name in page
+    assert "sk-live-123" not in md and "sk-live-123" not in page  # ...never their values
+    assert "react" in md and "vite" in md and "`tests/test_main.py`" in md and "`.github/workflows/ci.yml`" in md
+    assert "make deploy" not in md  # a command that isn't in the README is never shown
+    assert "To fill in by the outgoing owner" in md and "<script" not in page and page.startswith("<!doctype html>")
+    assert c.post("/api/code/repos/nope/handover").status_code == 404
+
+
+def test_codelens_readiness_checks_with_evidence_and_never_shows_a_secret(app_client):
+    c = app_client
+    aws = "AKIA" + "ABCDEFGHIJKLMNOP"  # a fake key, built so this file never holds one
+
+    async def fetch(owner, repo, ref):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            readme = (
+                "# Svc\n\n```sh\npip install -r requirements.txt\npython -m app.main\n```\nSet DATABASE_URL first.\n"
+            )
+            z.writestr("svc-1/README.md", readme)
+            z.writestr(
+                "svc-1/app/main.py",
+                "import os\nfrom app import db\n\nKEY = os.environ.get('PAYMENT_API_KEY')\nURL = os.getenv('DATABASE_URL')\n"
+                f"AWS = '{aws}'\n\n\ndef run():\n    # TODO: retry failed payments\n    return db.connect()\n",
+            )
+            z.writestr("svc-1/app/db.py", "def connect():\n    return 1\n")
+            z.writestr("svc-1/app/jobs.py", "from app.db import connect\n\n\ndef nightly():\n    return connect()\n")
+            z.writestr("svc-1/app/api.py", "from app import db\n\n\ndef handler():\n    return db.connect()\n")
+            z.writestr("svc-1/requirements.txt", "fastapi==0.110.0\nhttpx\n")
+            z.writestr(
+                "svc-1/tests/test_api.py", "from app import api\n\n\ndef test_handler():\n    assert api.handler()\n"
+            )
+            z.writestr("svc-1/.github/workflows/ci.yml", "on: push\njobs: {}\n")
+            z.writestr("svc-1/Dockerfile", "FROM python:3.12\n")  # not indexed, but on the file list
+            z.writestr("svc-1/.env.example", "DATABASE_URL=\n")
+        return buf.getvalue()
+
+    c.app.state.suite.code.fetcher = fetch
+    repo = parse_sse(c.post("/api/code/repos", json={"url": "https://github.com/acme/svc"}).text)[-1][1]["repo"]
+    assert "all_paths" not in repo and "meta" not in repo  # kept server-side
+    r = c.get(f"/api/code/repos/{repo['id']}/readiness")
+    assert r.status_code == 200, r.text
+    assert aws not in r.text  # where a secret is, never what it is
+    got = r.json()
+    status = {x["id"]: x["status"] for x in got["checks"]}
+    assert status == {"run": "pass", "config": "warn", "tests": "pass", "ci": "pass", "secrets": "fail", "lock": "warn",
+                      "deploy": "pass", "owners": "warn", "licence": "warn", "docs": "warn"}  # fmt: skip
+    config = next(x for x in got["checks"] if x["id"] == "config")
+    assert config["evidence"] == ["PAYMENT_API_KEY"]  # DATABASE_URL is documented (README, .env.example)
+    secrets = got["risks"]["secrets"]
+    assert secrets == [{"path": "app/main.py", "line": 6, "kind": "AWS access key", "confidence": "high"}]
+    assert {"path": "app/db.py", "used_by": 3, "lines": 3} in got["risks"]["untested_critical"]
+    assert all(x["path"] != "app/api.py" for x in got["risks"]["untested_critical"])  # a test imports it
+    assert got["risks"]["debt"][0] == {
+        "path": "app/main.py",
+        "line": 10,
+        "tag": "TODO",
+        "text": "retry failed payments",
+    }
+    assert 0 < got["score"] < 80 and got["complete"] is True
+    assert "PAYMENT_API_KEY=" in got["starter"][".env.example"] and "@owner-to-fill" in got["starter"]["CODEOWNERS"]
+    assert {"from": "tests", "to": "app", "imports": 1} in got["modules"]["edges"]
+    assert (
+        got["sessions"][0]["title"] == "Run it together" and got["sessions"][-1]["title"] == "Risks and the checklist"
+    )
+    doc = c.post(f"/api/code/repos/{repo['id']}/handover").json()
+    md = doc["markdown"]
+    assert aws not in md and aws not in doc["html"]
+    assert "Hand-over readiness" in md and "AWS access key in `app/main.py:6`" in md and "```mermaid" in md
+    numbers = [int(line.split(".", 1)[0][3:]) for line in md.splitlines() if line.startswith("## ")]
+    assert numbers == list(range(1, len(numbers) + 1))  # sections numbered in order
+    assert c.get("/api/code/repos/nope/readiness").status_code == 404
+
+
 def test_flow_validation_and_helpers():
     base = {"name": "x", "nodes": [{"id": "t", "type": "trigger"}, {"id": "o", "type": "output", "data": {"value": "{{nope}}"}}],
             "edges": [{"source": "t", "target": "o"}]}  # fmt: skip

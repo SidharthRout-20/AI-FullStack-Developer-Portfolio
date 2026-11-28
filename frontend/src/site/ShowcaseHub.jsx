@@ -6,7 +6,7 @@
  * Same content as Off the clock: config.js and the product registry. Every effect is decorative, and with
  * prefers-reduced-motion the page renders static (scroll-linked styles are skipped, sticky stages collapse).
  */
-import { BrainCircuit, ChevronLeft, ChevronRight, Download, Lock, Mail, Menu, PanelsTopLeft, Search, ServerCog, X } from 'lucide-react'
+import { BrainCircuit, ChevronLeft, ChevronRight, Download, Lock, Mail, Menu, PanelsTopLeft, Search, ServerCog, Sparkle, X } from 'lucide-react'
 import { AnimatePresence, motion, useInView, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useMediaQuery } from '../hooks/useMediaQuery'
@@ -630,7 +630,7 @@ function Footer() {
           <div className={col}>
             <p className="font-semibold text-ink-200">This site</p>
             <button type="button" onClick={(e) => setSkin('personal', originOf(e))} className={`block text-left ${link}`}>
-              {SKIN_NAMES.personal.name} ✦
+              <span className="inline-flex items-center gap-1">{SKIN_NAMES.personal.name} <Sparkle className="size-3" aria-hidden /></span>
             </button>
             <a href="#overview" className={`block ${link}`}>Back to top</a>
           </div>

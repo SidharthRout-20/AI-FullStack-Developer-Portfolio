@@ -1,4 +1,4 @@
-import { AlertTriangle, LayoutGrid, LoaderCircle } from 'lucide-react'
+import { AlertTriangle, Check, LayoutGrid, LoaderCircle } from 'lucide-react'
 import { motion, MotionConfig } from 'motion/react'
 import { createContext, useContext, useId } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -17,12 +17,15 @@ export function ShellProvider({ backdrop = null, controls = ModeToggle, home = n
   return <ShellContext.Provider value={{ backdrop, controls, home }}>{children}</ShellContext.Provider>
 }
 
-/** Common frame for every product: back to the hub (when there is one), brand, tabs, theme. */
+/**
+ * Common frame for every product: back to the hub (when there is one), brand, tabs, theme.
+ * The `ui-*` class names on these primitives are stable hooks a product theme can restyle (see Safarnaama's
+ * personal look); they carry no styles of their own.
+ */
 export function ProductShell({
   name,
   tagline,
   icon: Icon,
-  accent,
   right,
   product,
   children,
@@ -34,7 +37,7 @@ export function ProductShell({
       {Backdrop && <Backdrop />}
       <div className="flex min-h-full flex-col" data-product={product}>
         {product && <div aria-hidden className="pa-fx" />}
-        <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-ink-950/70 backdrop-blur-xl">
+        <header className="ui-shell-header sticky top-0 z-30 border-b border-white/[0.06] bg-ink-950/70 backdrop-blur-xl">
           <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4">
             {home && (
               <Link
@@ -46,14 +49,14 @@ export function ProductShell({
                 <span className="hidden md:inline">{home.short ?? home.label}</span>
               </Link>
             )}
-            <span className={`grid size-8 place-items-center rounded-xl bg-gradient-to-br ${accent} text-on-accent shadow-lg`}>
+            <span className="ui-brand grid size-8 place-items-center rounded-lg bg-white/[0.08] text-white ring-1 ring-white/10">
               <Icon className="size-4" />
             </span>
             <div className="min-w-0 leading-tight">
-              <p className="text-[15px] font-semibold tracking-tight text-white">{name}</p>
+              <p className="ui-shell-name truncate text-[15px] font-semibold tracking-tight text-white">{name}</p>
               <p className="hidden truncate text-[11px] text-ink-400 sm:block">{tagline}</p>
             </div>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
               {right}
               {Controls && <Controls />}
             </div>
@@ -72,22 +75,22 @@ export function Tabs({
 }) {
   const pill = useId()
   return (
-    <nav className="-mx-4 mb-5 overflow-x-auto px-4 [scrollbar-width:none]">
-      <div className="inline-flex gap-0.5 rounded-xl border border-white/[0.06] bg-ink-900/60 p-1">
+    <nav className="ui-tabs -mx-4 mb-5 overflow-x-auto px-4 [scrollbar-width:none]">
+      <div className="ui-tabs-list inline-flex gap-0.5 rounded-xl border border-white/[0.06] bg-ink-900/60 p-1">
         {tabs.map(({ id, label, icon: Icon, badge }) => (
           <button
             key={id}
             type="button"
             onClick={() => onChange(id)}
             aria-pressed={value === id}
-            className={`relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium whitespace-nowrap transition-colors ${
+            className={`ui-tab relative flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium whitespace-nowrap transition-colors ${
               value === id ? 'text-white' : 'text-ink-400 hover:text-ink-200'
             }`}
           >
             {value === id && (
               <motion.span
                 layoutId={pill}
-                className="absolute inset-0 rounded-lg bg-white/[0.08] ring-1 ring-white/10"
+                className="ui-tab-pill absolute inset-0 rounded-lg bg-white/[0.08] ring-1 ring-white/10"
                 transition={{ type: 'spring', bounce: 0.2, duration: 0.4 }}
               />
             )}
@@ -102,7 +105,7 @@ export function Tabs({
 }
 
 export function Card({ children, className = '' }) {
-  return <section className={`rounded-2xl border border-white/[0.07] bg-ink-900/60 p-4 sm:p-5 ${className}`}>{children}</section>
+  return <section className={`ui-card rounded-2xl border border-white/[0.07] bg-ink-900/60 p-4 sm:p-5 ${className}`}>{children}</section>
 }
 
 export function Button({
@@ -118,8 +121,8 @@ export function Button({
   const base = 'inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold transition disabled:opacity-50'
   const look =
     variant === 'primary'
-      ? `btn-primary bg-gradient-to-r ${accent} text-on-accent shadow-lg shadow-black/20 hover:brightness-110 active:scale-[0.98]`
-      : 'border border-white/10 bg-white/[0.03] text-ink-200 hover:border-white/20 hover:text-white'
+      ? `btn-primary ui-btn-primary bg-gradient-to-r ${accent} text-on-accent shadow-lg shadow-black/20 hover:brightness-110 active:scale-[0.98]`
+      : 'ui-btn-ghost border border-white/10 bg-white/[0.03] text-ink-200 hover:border-white/20 hover:text-white'
   return (
     <button type={type} onClick={onClick} disabled={disabled || busy} className={`${base} ${look} ${className}`}>
       {busy && <LoaderCircle className="size-4 animate-spin" />}
@@ -143,7 +146,7 @@ export function Field({
 }
 
 export const inputClass =
-  'w-full rounded-xl border border-white/10 bg-ink-950/50 px-3 py-2.5 text-[14px] text-white outline-none transition placeholder:text-ink-500 focus:border-brand-400/60'
+  'ui-input w-full rounded-xl border border-white/10 bg-ink-950/50 px-3 py-2.5 text-[14px] text-white outline-none transition placeholder:text-ink-500 focus:border-brand-400/60'
 
 export function ErrorNote({ message, items = [] }) {
   if (!message) return null
@@ -191,7 +194,7 @@ export function Steps({ steps, active }) {
               s.done ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/[0.06] text-ink-300'
             }`}
           >
-            {s.done ? '✓' : active && i === steps.length - 1 ? <LoaderCircle className="size-3 animate-spin" /> : i + 1}
+            {s.done ? <Check className="size-3" /> : active && i === steps.length - 1 ? <LoaderCircle className="size-3 animate-spin" /> : i + 1}
           </span>
           <span>
             <span className="font-medium text-white capitalize">{s.name}</span>

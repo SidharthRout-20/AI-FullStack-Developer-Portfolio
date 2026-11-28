@@ -1,3 +1,4 @@
+import { Sparkle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { SITE } from '../site/config'
@@ -37,7 +38,7 @@ export function SkinWelcome() {
           className="pointer-events-none fixed inset-x-0 bottom-[12vh] z-[70] flex justify-center px-6"
         >
           <p className="font-hand glass rounded-2xl px-6 py-3 text-center text-[28px] leading-tight text-ink-100 sm:text-[34px]">
-            {greeting(new Date().getHours())}, welcome in <span className="text-amber-300">✦</span>
+            {greeting(new Date().getHours())}, welcome in <Sparkle className="inline size-6 text-amber-300" aria-hidden />
             <span className="block text-[20px] text-ink-300">make yourself at home · {first}</span>
           </p>
         </motion.div>

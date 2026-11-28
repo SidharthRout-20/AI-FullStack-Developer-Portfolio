@@ -15,6 +15,10 @@ export const DEFAULTS = {
   wake: true, // answer to "Hey Tara" while the page is open (starts after the first tap; can be turned off)
   city: '', // home city: weather when location isn't shared
   useLocation: false, // share this device's location for weather and directions
+  music: false, // soothing background music, made in the browser (ambient.js)
+  musicStyle: 'weather', // weather | calm | piano | rain | night | ocean
+  musicVolume: 0.35,
+  briefOnOpen: false, // read a short briefing when Tara opens (after the first tap: browsers need one for sound)
 }
 
 export const LANGUAGES = [

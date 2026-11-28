@@ -1,12 +1,12 @@
 import {
   AudioLines,
   BriefcaseBusiness,
-  Bug,
+  BotMessageSquare,
   Code2,
   Dna,
   FileSearch,
-  HandHelping,
-  Route,
+  Luggage,
+  ScanSearch,
   Workflow,
 } from 'lucide-react'
 
@@ -66,7 +66,7 @@ const REGISTRY = [
       'and changed lines are extracted with plain parsing, and an LLM proposes root-cause hypotheses that must cite that ' +
       'evidence. Unsupported claims are rejected, and you get a validation checklist for the fix.',
     category: 'Developer Tools',
-    icon: Bug,
+    icon: ScanSearch,
     accent: 'from-rose-500 via-red-500 to-orange-400',
     tags: ['Evidence-grounded AI', 'Log & diff parsing', 'Secret redaction'],
     app: { label: 'Open Jasoos', route: '/jasoos', kind: 'product' },
@@ -101,7 +101,7 @@ const REGISTRY = [
       'deadlines (verified, confirmed by you, estimated or unknown, never guessed), and when something breaks, assembles the ' +
       'claim evidence and drafts the message for you to send.',
     category: 'Personal assistant',
-    icon: HandHelping,
+    icon: BotMessageSquare,
     accent: 'from-fuchsia-500 via-pink-500 to-orange-400',
     tags: ['Voice assistant', 'Live weather & news', 'Actions on your device'],
     app: { label: 'Open Tara', route: '/keeper', kind: 'product' },
@@ -208,7 +208,7 @@ const REGISTRY = [
       'traveller\'s location, time and budget. Recommendations come from real provider data, never invented places, ratings ' +
       'or availability, and nothing is ordered, booked or paid by Safarnaama: external actions are confirmed hand-offs to the provider.',
     category: 'Travel',
-    icon: Route,
+    icon: Luggage,
     accent: 'from-lime-500 via-emerald-500 to-teal-500',
     tags: ['Itinerary-centred', 'Contextual discovery', 'Travel companion'],
     app: { label: 'Open Safarnaama', route: '/safarnaama', kind: 'product' },
@@ -318,8 +318,6 @@ const REGISTRY = [
 /** The approved portfolio, in priority order. Its length is THE product count shown anywhere on the site. */
 export const PORTFOLIO = REGISTRY.filter((p) => p.visibility === 'portfolio').sort((a, b) => a.priority - b.priority)
 export const FROZEN = REGISTRY.filter((p) => p.visibility === 'frozen')
-/** @deprecated the in-development tiles: use FROZEN */
-export const LABS = FROZEN
 /** Everything with an identity (featured first, then the frozen ones). */
 export const PRODUCTS = [...PORTFOLIO, ...FROZEN]
 

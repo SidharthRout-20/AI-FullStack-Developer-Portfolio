@@ -268,11 +268,19 @@ def pick_meal(places: list[dict[str, Any]], when: dt.datetime, prefer_veg: bool)
     return min(candidates, key=score, default=None)
 
 
+# A food stop already covers a meal when it's named for it ("Lunch at…") or sits near the usual time.
+COVERS = {"lunch": ("11:30", "15:00"), "dinner": ("18:30", "22:00")}
+
+
 def meal_gaps(acts: list[dict[str, Any]]) -> list[tuple[str, str]]:
     """Meal slots ("lunch"/"dinner", "HH:MM") the day is missing, timed after the stop in progress."""
     gaps = []
     for label, window in (("lunch", LUNCH), ("dinner", DINNER)):
-        if any(a.get("kind") == "food" and in_window(a.get("time", ""), window) for a in acts):
+        if any(
+            a.get("kind") == "food"
+            and (label in str(a.get("name", "")).lower() or in_window(a.get("time", ""), COVERS[label]))
+            for a in acts
+        ):
             continue
         ends = [to_min(a.get("time", "09:00")) + int(a.get("duration_min", 60)) for a in acts]
         inside = [e for e in ends if to_min(window[0]) <= e <= to_min(window[1]) - 45]

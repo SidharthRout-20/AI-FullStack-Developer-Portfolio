@@ -38,7 +38,7 @@ export default function CareerPilotApp() {
   const [score, setScore] = useState(null)
 
   return (
-    <ProductShell name="CareerPilot" tagline="Your job hunt, with a copilot" icon={BriefcaseBusiness} accent={ACCENT}>
+    <ProductShell name="CareerPilot" tagline="Your job hunt, with a copilot" icon={BriefcaseBusiness}>
       <Tabs
         value={tab}
         onChange={setTab}

@@ -86,10 +86,10 @@ export function BookPanel({ trip }) {
                                 start: g.id === 'stay' && p.checkin ? `${p.checkin}T14:00` : '', end: g.id === 'stay' && p.checkout ? `${p.checkout}T11:00` : '' },
                             })}
                             className="pa-hover inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[12.5px] font-medium text-ink-100 transition hover:bg-white/[0.06]"
-                            title={it.prefilled === true ? 'Opens with your details filled in' : it.prefilled === 'place' ? 'Opens the right place; check the dates there' : 'Opens the provider; check the place and dates there'}
+                            title={it.prefilled === true ? 'Opens with your details filled in' : it.prefilled === 'dates' ? 'Opens with the place and dates filled in; set the guests there' : it.prefilled === 'place' ? 'Opens the right place; check the dates there' : 'Opens the provider; check the place and dates there'}
                           >
                             {it.label}
-                            {it.prefilled !== true && <span className="text-[10.5px] font-normal text-ink-500">· check dates</span>}
+                            {it.prefilled !== true && <span className="text-[10.5px] font-normal text-ink-500">· {it.prefilled === 'dates' ? 'set guests' : 'check dates'}</span>}
                             <ArrowUpRight className="size-3 text-ink-400" />
                           </button>
                         ))}

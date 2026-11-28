@@ -46,6 +46,7 @@ from appcore.logs import configure_logging
 from appcore.security import SecurityHeadersMiddleware, limiter
 from appcore.tls import use_system_certificates
 from safarnama import api as trip_api
+from safarnama.liteapi import LiteAPI
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ def create_app(
         reminder_task = asyncio.create_task(keeper.scheduler_loop(settings.public_url)) if jobs else None
         app.state.suite = Suite(settings, rag, keeper)
         app.state.trips = app.state.suite.trips  # Safarnaama's API reads its service from here
+        app.state.trips.live = LiteAPI.from_settings(settings)  # live hotel prices, when LITEAPI_KEY is set
         app.state.efi = efi_factory(settings)
         scheduler = asyncio.create_task(app.state.suite.flows.scheduler()) if jobs else None
         logger.info("Ready - %d chunks indexed, LLM provider=%s", rag.store.count(), settings.llm_provider)

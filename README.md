@@ -26,9 +26,9 @@ The single source of truth for product identity, status and visibility is
 
 | # | Product | Problem it solves | What exists today |
 | --- | --- | --- | --- |
-| 1 | **Safarnaama** (`/safarnaama`) | Planning a trip means juggling a dozen tabs and apps | Plans, places and moments in one story-like flow; Google sign-in (Neon Auth) to keep trips across devices; a "did you book it?" return prompt after provider hand-offs. Live prices and in-app booking need provider partnerships |
-| 2 | **CodeLens** (`/codelens`) | Joining a new codebase and waiting days for KT sessions | Paste a public GitHub repo: symbol-aware chunking, hybrid search (BM25 + embeddings, fused with RRF), an import graph and a guided onboarding pack, with live progress while it indexes |
-| 3 | **Tara** (`/tara`) | An assistant that actually gets things done, by voice or text | Voice-first assistant: "Hey Tara" and pause-aware listening, weather/news/facts/rates, device actions, memory and phone reminders, 20 expert personas picked per question. **Products first**: trips go to Safarnaama (with the place filled in), repos to CodeLens, failing builds to Jasoos. Answers about this site's own code and documents, and owner-only code changes proposed as reviewed pull requests |
+| 1 | **Safarnaama** (`/safarnaama`) | Planning a trip means juggling a dozen tabs and apps, and worrying about money | Tell it where, when, who, your budget and where you start: it reads like a local guide. What the trip will likely cost against the budget; stays at budget, comfort or treat level with what a room usually costs there, **live hotel prices for your dates** (LiteAPI by Nuitee) with booking on the whitelabel site, real places near the plan and dated booking links; swipeable days with each stop's usual cost; a food haul and adventure, culture and local-life ideas you add to a day in one tap; fares to get there and around; a wallet and budget plan; and a trip pack to download, print or share. Costs are labelled estimates (typical prices), never live prices. 70 checked places (or any you type); Google sign-in to keep trips across devices. Live prices and in-app booking need provider partnerships |
+| 2 | **CodeLens** (`/codelens`) | Joining (or handing over) a codebase without days of KT sessions | Paste a public GitHub repo: symbol-aware chunking, hybrid search (BM25 + embeddings, fused with RRF), an import graph and a guided onboarding pack, with live progress while it indexes. **Hand-over readiness**: a score from checks with evidence (undocumented settings, secrets in the code by file and line, widely used files no test touches, lockfiles, CI, ownership), a module map, a meeting plan for the hand-over and starter `.env.example` / `CODEOWNERS` files; all of it in a downloadable hand-over document (Markdown, web page or PDF) |
+| 3 | **Tara** (`/tara`) | An assistant that actually gets things done, by voice or text | Voice-first assistant: "Hey Tara" and pause-aware listening, weather/news/facts/rates, device actions, memory and phone reminders, 20 expert personas picked per question, conversations kept per browser, and soothing background music made in the browser. **Products first**: trips go to Safarnaama (with the place filled in), repos to CodeLens, failing builds to Jasoos. Answers about this site's own code and documents, and owner-only code changes proposed as reviewed pull requests |
 | 4 | **Jasoos** (`/jasoos`) | A build, test or deploy failed and the log is thousands of lines long | Parses CI logs and stack traces into evidence, then reasons to a likely cause and fix |
 
 Frozen (shown as "in development"): Pramaan, Vaada, CareerPilot, FlowForge, Evolve. Their working code stays in the
@@ -420,6 +420,11 @@ Claude Code review run on every proposal; only you approve and merge.
    only, with *Actions: read and write* and *Pull requests: read* (it can start the workflow and see the open proposal,
    nothing more). Redeploy.
 4. **Branch protection for `main`.** Require a pull request with 1 approval and the CI checks passing.
+
+## One repository per product
+
+The plan to give each featured product its own repository (with its history) while this site keeps composing them:
+[docs/REPO_SPLIT.md](docs/REPO_SPLIT.md).
 
 ## Roadmap
 

@@ -14,7 +14,6 @@ every label carries the evidence it rests on; anything a model produced is marke
 from __future__ import annotations
 
 import datetime as dt
-import math
 import re
 from collections import defaultdict
 from typing import Any
@@ -45,15 +44,16 @@ SELECTORS: dict[str, tuple[str, ...]] = {
     "services": ('["amenity"~"^(pharmacy|hospital|clinic|atm|bank|police|toilets|bureau_de_change)$"]',
                  '["tourism"="information"]["information"="office"]'),
     "airports": ('["aeroway"="aerodrome"]["iata"]',),
+    "stay": ('["tourism"~"^(hotel|guest_house|hostel|motel|apartment|chalet|alpine_hut)$"]',),
 }  # fmt: skip
 GROUPS = tuple(SELECTORS)
-DEFAULT_RADIUS = {"airports": 60_000, "transport": 2_000, "services": 1_500, "nature": 3_000}
+DEFAULT_RADIUS = {"airports": 60_000, "transport": 2_000, "services": 1_500, "nature": 3_000, "stay": 2_500}
 NOMINATIM_WORDS = {
     "food": ("restaurant", "cafe"), "sights": ("museum", "attraction", "viewpoint", "park"),
     "experiences": ("theatre", "zoo", "aquarium"), "shopping": ("souvenir", "market", "gift shop"),
     "nature": ("park", "beach", "viewpoint"), "nightlife": ("bar", "pub"), "family": ("playground", "zoo"),
     "indoor": ("museum", "gallery"), "transport": ("station",), "services": ("pharmacy", "atm"),
-    "airports": ("airport",),
+    "airports": ("airport",), "stay": ("hotel", "guest house", "hostel"),
 }  # fmt: skip
 _KEYS = ("amenity", "tourism", "shop", "leisure", "natural", "historic", "craft", "railway", "public_transport",
          "aeroway")  # fmt: skip
@@ -68,7 +68,8 @@ _TAG_GROUP = {
                 "bureau_de_change": "services"},
     "tourism": {"museum": "sights", "gallery": "sights", "attraction": "sights", "viewpoint": "sights",
                 "artwork": "sights", "zoo": "experiences", "aquarium": "experiences", "theme_park": "experiences",
-                "picnic_site": "nature", "information": "services"},
+                "picnic_site": "nature", "information": "services", "hotel": "stay", "guest_house": "stay",
+                "hostel": "stay", "motel": "stay", "apartment": "stay", "chalet": "stay", "alpine_hut": "stay"},
     "leisure": {"park": "sights", "garden": "sights", "nature_reserve": "nature", "beach_resort": "nature",
                 "playground": "family", "water_park": "experiences", "escape_game": "experiences",
                 "miniature_golf": "experiences", "amusement_arcade": "experiences", "sports_centre": "experiences"},
@@ -111,6 +112,7 @@ CURRENCIES: dict[str, str] = {
     "hungary": "HUF", "poland": "PLN", "united states": "USD", "united states of america": "USD", "usa": "USD",
     "canada": "CAD", "mexico": "MXN", "brazil": "BRL", "argentina": "ARS", "peru": "PEN", "australia": "AUD",
     "new zealand": "NZD", "mauritius": "MUR", "seychelles": "SCR", "georgia": "GEL", "azerbaijan": "AZN",
+    "kazakhstan": "KZT", "the netherlands": "EUR", "hong kong": "HKD", "taiwan": "TWD", "israel": "ILS", "jordan": "JOD",
 }  # fmt: skip
 
 
@@ -178,13 +180,19 @@ def handoff_links(place: dict[str, Any]) -> list[dict[str, str]]:
     return links
 
 
+def _stars(value: str | None) -> int | None:
+    """An official star rating as mapped in OpenStreetMap ("3", "4S"); None when absent or not a rating."""
+    m = re.match(r"\s*([1-7])", value or "")
+    return int(m.group(1)) if m else None
+
+
 def place_from(
     tags: dict[str, str], lat: float, lng: float, origin: tuple[float, float], osm_id: str | None
 ) -> dict[str, Any]:
     group, category = describe(tags)
     diet_v, diet_vg = tags.get("diet:vegetarian") or "", tags.get("diet:vegan") or ""
     p = {
-        "name": tags["name"], "group": group, "category": category, "lat": lat, "lng": lng,
+        "name": tags.get("name:en") or tags["name"], "group": group, "category": category, "lat": lat, "lng": lng,
         "distance_m": round(travel.km_between(origin, (lat, lng)) * 1000),
         "cuisine": (tags.get("cuisine") or "").replace(";", ", ").replace("_", " ") or None,
         "veg": diet_v in ("yes", "only") or diet_vg in ("yes", "only"), "vegan": diet_vg in ("yes", "only"),
@@ -194,6 +202,8 @@ def place_from(
         "phone": tags.get("phone") or tags.get("contact:phone"), "reservation": tags.get("reservation"),
         "delivery": tags.get("delivery"), "takeaway": tags.get("takeaway"), "fee": tags.get("fee"),
         "wheelchair": tags.get("wheelchair"), "iata": tags.get("iata"), "osm_id": osm_id,
+        "stars": _stars(tags.get("stars")), "rooms": tags.get("rooms"),
+        "wiki": bool(tags.get("wikipedia") or tags.get("wikidata")),
         "aerodrome_type": tags.get("aerodrome:type") or tags.get("aerodrome"),
         "military": bool(tags.get("military")) or tags.get("landuse") == "military" or "military" in (tags.get("aerodrome:type") or ""),
         "indoor": category in INDOOR_CATEGORIES, "source": "OpenStreetMap",
@@ -205,6 +215,8 @@ def place_from(
 def matches(p: dict[str, Any], group: str) -> bool:
     if group == p["group"]:
         return True
+    if group == "stay":
+        return False
     cat = p.get("category") or ""
     return {
         "indoor": cat in INDOOR_CATEGORIES,
@@ -333,11 +345,6 @@ def stop_labels(a: dict[str, Any], day: dict[str, Any]) -> list[dict[str, str]]:
     return out
 
 
-def day_part(hhmm: str) -> str:
-    m = travel.to_min(hhmm)
-    return "morning" if m < 12 * 60 else "afternoon" if m < 17 * 60 else "evening"
-
-
 def validate_day(day: dict[str, Any]) -> list[dict[str, str]]:
     """Deterministic schedule checks: overlaps (travel included), very late ends, closed-at-visit, unlocated stops."""
     issues: list[dict[str, str]] = []
@@ -463,6 +470,26 @@ def packing_list(trip: dict[str, Any]) -> list[dict[str, str]]:
 
 # ── money ───────────────────────────────────────────────────────────────────
 EXPENSE_CATEGORIES = ("lodging", "food", "transport", "activities", "shopping", "other")
+
+# A starting split of the traveller's own budget across the categories ("other" is the buffer). Getting there takes a
+# bigger share when the trip is abroad. It is a plan for their money, never a price: the traveller can change it.
+BUDGET_SPLIT = {
+    "home": {"transport": 0.25, "lodging": 0.35, "food": 0.2, "activities": 0.1, "shopping": 0.05, "other": 0.05},
+    "abroad": {"transport": 0.35, "lodging": 0.3, "food": 0.17, "activities": 0.1, "shopping": 0.04, "other": 0.04},
+}
+
+
+def split_budget(total: float, *, nights: int, abroad: bool = False) -> dict[str, float]:
+    """The budget split by category, in whole units that add up to the total. A day trip has no stay: its share is
+    spread over the rest in proportion."""
+    shares = dict(BUDGET_SPLIT["abroad" if abroad else "home"])
+    if nights <= 0:
+        lodging = shares.pop("lodging")
+        rest = sum(shares.values())
+        shares = {k: v + lodging * v / rest for k, v in shares.items()} | {"lodging": 0.0}
+    out = {c: float(round(total * shares.get(c, 0.0))) for c in EXPENSE_CATEGORIES}
+    out["other"] += float(round(total)) - sum(out.values())  # rounding lands in the buffer
+    return out
 
 
 def convert(amount: float, from_cur: str, to_cur: str, fx: dict[str, Any] | None) -> float | None:
@@ -655,10 +682,6 @@ def trip_summary(trip: dict[str, Any], expenses: list[dict[str, Any]], places: l
             ((c, v["actual"]) for c, v in money["by_category"].items() if v["actual"]), key=lambda x: -x[1]
         )[:3],  # fmt: skip
     }
-
-
-def ceil5(m: float) -> int:
-    return int(math.ceil(m / 5) * 5)
 
 
 def destination_of(trip: dict[str, Any], day: dict[str, Any]) -> dict[str, Any]:
